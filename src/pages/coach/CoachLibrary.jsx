@@ -3,7 +3,8 @@ import { supabase } from '../../lib/supabase'
 
 const EMPTY_EX = { name: '', category: '', metric: 'reps', video_url: '', notes: '' }
 const EMPTY_COND = { name: '', format: '', instructions: '', video_url: '' }
-const EMPTY_LIFE = { name: '', category: '', instructions: '', video_url: '' }
+const EMPTY_LIFE = { name: '', category: '', instructions: '', video_url: '', tracking_type: 'yesno', reminder_time: '' }
+const TRACK_LABEL = { count: 'Count', time: 'Time', yesno: 'Yes / No', scale: 'Quality 1–10' }
 
 export default function CoachLibrary() {
   const [tab, setTab] = useState('exercises')
@@ -69,7 +70,7 @@ export default function CoachLibrary() {
   // ---- lifestyle ----
   async function saveLife() {
     if (!lifeForm.name.trim()) return
-    const row = { name: lifeForm.name.trim(), category: lifeForm.category.trim(), instructions: lifeForm.instructions.trim(), video_url: lifeForm.video_url.trim() }
+    const row = { name: lifeForm.name.trim(), category: lifeForm.category.trim(), instructions: lifeForm.instructions.trim(), video_url: lifeForm.video_url.trim(), tracking_type: lifeForm.tracking_type, reminder_time: lifeForm.reminder_time.trim() }
     if (editingId) await supabase.from('lifestyle_library').update(row).eq('id', editingId)
     else await supabase.from('lifestyle_library').insert(row)
     setLifeForm(EMPTY_LIFE); setEditingId(null); load()
@@ -82,7 +83,7 @@ export default function CoachLibrary() {
   }
   function editLife(i) {
     setEditingId(i.id)
-    setLifeForm({ name: i.name, category: i.category, instructions: i.instructions, video_url: i.video_url })
+    setLifeForm({ name: i.name, category: i.category, instructions: i.instructions, video_url: i.video_url, tracking_type: i.tracking_type || 'yesno', reminder_time: i.reminder_time || '' })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -154,8 +155,17 @@ export default function CoachLibrary() {
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
             <span className="eyebrow" style={{ fontSize: 10 }}>{editingId ? 'Edit lifestyle Rx' : 'Add lifestyle Rx'}</span>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <input placeholder="Name (e.g. 10k Steps, Sleep 8hrs, Sauna 20 min)" value={lifeForm.name} onChange={e => setLifeForm({ ...lifeForm, name: e.target.value })} />
-              <input placeholder="Category (e.g. Recovery, Sleep, Nutrition)" value={lifeForm.category} onChange={e => setLifeForm({ ...lifeForm, category: e.target.value })} />
+              <input placeholder="Name (e.g. Steps, Bed Time, Units of Water)" value={lifeForm.name} onChange={e => setLifeForm({ ...lifeForm, name: e.target.value })} />
+              <input placeholder="Category (e.g. Movement, Energy, Hydration)" value={lifeForm.category} onChange={e => setLifeForm({ ...lifeForm, category: e.target.value })} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <select value={lifeForm.tracking_type} onChange={e => setLifeForm({ ...lifeForm, tracking_type: e.target.value })} title="How the client logs it">
+                <option value="count">Tracks: Count (a number)</option>
+                <option value="time">Tracks: Time (clock time)</option>
+                <option value="yesno">Tracks: Yes / No</option>
+                <option value="scale">Tracks: Quality (1–10)</option>
+              </select>
+              <input placeholder="Reminder time shown to client (e.g. 8:00pm)" value={lifeForm.reminder_time} onChange={e => setLifeForm({ ...lifeForm, reminder_time: e.target.value })} />
             </div>
             <textarea rows="2" placeholder="Instructions" value={lifeForm.instructions} onChange={e => setLifeForm({ ...lifeForm, instructions: e.target.value })} />
             <input placeholder="Video URL (optional)" value={lifeForm.video_url} onChange={e => setLifeForm({ ...lifeForm, video_url: e.target.value })} />
@@ -168,13 +178,17 @@ export default function CoachLibrary() {
           <input placeholder="Search lifestyle…" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 14 }} />
 
           <table className="data">
-            <thead><tr><th>Name</th><th>Category</th><th>Instructions</th><th>Video</th><th></th></tr></thead>
+            <thead><tr><th>Name &amp; Type</th><th>Tracking</th><th>Reminder</th><th>Instructions</th><th>Video</th><th></th></tr></thead>
             <tbody>
               {filteredLife.map(i => (
                 <tr key={i.id}>
-                  <td style={{ fontWeight: 700 }}>{i.name}</td>
-                  <td className="muted">{i.category || '—'}</td>
-                  <td className="muted" style={{ maxWidth: 340 }}>{i.instructions || '—'}</td>
+                  <td>
+                    {i.category && <div className="muted" style={{ fontSize: 11 }}>{i.category}</div>}
+                    <div style={{ fontWeight: 700 }}>{i.name}</div>
+                  </td>
+                  <td className="muted">{TRACK_LABEL[i.tracking_type] || '—'}</td>
+                  <td className="muted">{i.reminder_time ? `⏰ ${i.reminder_time}` : '—'}</td>
+                  <td className="muted" style={{ maxWidth: 280 }}>{i.instructions || '—'}</td>
                   <td>{i.video_url ? <a href={i.video_url} target="_blank" rel="noreferrer">▶ Link</a> : <span className="muted">—</span>}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => editLife(i)}>Edit</button>

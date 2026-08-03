@@ -34,6 +34,7 @@ create table exercise_library (
   metric text not null default 'reps' check (metric in ('reps','time','distance')),
   kind text not null default 'exercise' check (kind in ('exercise','conditioning')),
   description text default '',
+  tracking_type text default '',
   video_url text default '',
   notes text default '',
   created_at timestamptz default now()
@@ -76,6 +77,7 @@ create table program_exercises (
   metric text not null default 'reps' check (metric in ('reps','time','distance')),
   kind text not null default 'exercise' check (kind in ('exercise','conditioning')),
   description text default '',
+  tracking_type text default '',
   video_url text default '',
   based_on_lift text default '',
   week_targets jsonb default '[]',
@@ -280,6 +282,8 @@ create table lifestyle_library (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   category text default '',
+  tracking_type text not null default 'yesno' check (tracking_type in ('count','time','yesno','scale')),
+  reminder_time text default '',
   instructions text default '',
   video_url text default '',
   created_at timestamptz default now()

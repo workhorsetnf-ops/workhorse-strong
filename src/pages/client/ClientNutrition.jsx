@@ -6,6 +6,11 @@ export default function ClientNutrition() {
   const { profile } = useAuth()
   const [meals, setMeals] = useState([])
   const [form, setForm] = useState({ meal_name: '', protein_g: '', carbs_g: '', fat_g: '' })
+  const [foodQ, setFoodQ] = useState('')
+  const [foodResults, setFoodResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [selFood, setSelFood] = useState(null)
+  const [grams, setGrams] = useState('100')
   const today = new Date().toISOString().slice(0, 10)
 
   async function load() {
@@ -14,6 +19,46 @@ export default function ClientNutrition() {
     setMeals(data || [])
   }
   useEffect(() => { if (profile) load() }, [profile])
+
+  async function searchFood() {
+    if (!foodQ.trim()) return
+    setSearching(true); setFoodResults([]); setSelFood(null)
+    try {
+      const res = await fetch(
+        'https://world.openfoodfacts.org/cgi/search.pl?action=process&json=1&page_size=8' +
+        '&fields=code,product_name,brands,nutriments&search_simple=1&search_terms=' + encodeURIComponent(foodQ.trim())
+      )
+      const data = await res.json()
+      const items = (data.products || [])
+        .map(pr => ({
+          id: pr.code,
+          name: pr.product_name || 'Unknown',
+          brand: (pr.brands || '').split(',')[0],
+          p: +pr.nutriments?.proteins_100g || 0,
+          c: +pr.nutriments?.carbohydrates_100g || 0,
+          f: +pr.nutriments?.fat_100g || 0,
+        }))
+        .filter(it => it.name !== 'Unknown' && (it.p || it.c || it.f))
+      setFoodResults(items)
+    } catch {
+      setFoodResults([])
+    }
+    setSearching(false)
+  }
+
+  async function addFood() {
+    if (!selFood || !+grams) return
+    const factor = +grams / 100
+    await supabase.from('meal_logs').insert({
+      client_id: profile.id,
+      meal_name: `${selFood.name}${selFood.brand ? ` (${selFood.brand})` : ''} — ${+grams}g`,
+      protein_g: Math.round(selFood.p * factor),
+      carbs_g: Math.round(selFood.c * factor),
+      fat_g: Math.round(selFood.f * factor),
+    })
+    setSelFood(null); setFoodQ(''); setFoodResults([]); setGrams('100')
+    load()
+  }
 
   async function addMeal() {
     if (!form.meal_name) return
@@ -58,7 +103,50 @@ export default function ClientNutrition() {
       </div>
 
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div className="eyebrow">Log a meal</div>
+        <div className="eyebrow">Search foods</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input placeholder="e.g. chicken breast, greek yogurt, Quest bar" value={foodQ}
+            onChange={e => setFoodQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchFood()} />
+          <button className="btn" style={{ padding: '12px 16px', whiteSpace: 'nowrap' }} onClick={searchFood} disabled={searching}>
+            {searching ? '…' : 'Search'}
+          </button>
+        </div>
+        {foodResults.length > 0 && !selFood && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {foodResults.map(it => (
+              <button key={it.id} className="btn-ghost" style={{ textAlign: 'left', fontSize: 13, padding: '8px 10px' }}
+                onClick={() => setSelFood(it)}>
+                <strong>{it.name}</strong>{it.brand ? ` · ${it.brand}` : ''}
+                <span className="muted" style={{ display: 'block', fontSize: 11.5, marginTop: 2 }}>
+                  per 100g: P {it.p.toFixed(0)} · C {it.c.toFixed(0)} · F {it.f.toFixed(0)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        {selFood && (
+          <div style={{ background: 'var(--steel)', borderRadius: 8, padding: '10px 12px' }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>{selFood.name}{selFood.brand ? ` · ${selFood.brand}` : ''}</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+              <input inputMode="numeric" style={{ width: 90 }} value={grams} onChange={e => setGrams(e.target.value)} />
+              <span className="muted" style={{ fontSize: 13 }}>grams</span>
+              <span style={{ fontSize: 13, fontWeight: 700, marginLeft: 'auto' }}>
+                P {Math.round(selFood.p * (+grams || 0) / 100)} · C {Math.round(selFood.c * (+grams || 0) / 100)} · F {Math.round(selFood.f * (+grams || 0) / 100)}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button className="btn" style={{ padding: '8px 16px', fontSize: 12 }} onClick={addFood}>Add to log</button>
+              <button className="btn-ghost" style={{ padding: '8px 14px', fontSize: 12 }} onClick={() => setSelFood(null)}>Back</button>
+            </div>
+          </div>
+        )}
+        {foodResults.length === 0 && foodQ && !searching && !selFood && (
+          <p className="muted" style={{ fontSize: 12.5 }}>No results yet — search, or log it manually below.</p>
+        )}
+      </div>
+
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="eyebrow">Log a meal manually</div>
         <input placeholder="Meal (e.g. Chicken, rice, broccoli)" value={form.meal_name} onChange={e => setForm({ ...form, meal_name: e.target.value })} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
           <input inputMode="numeric" placeholder="P (g)" value={form.protein_g} onChange={e => setForm({ ...form, protein_g: e.target.value })} />

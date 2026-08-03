@@ -247,9 +247,36 @@ export default function ClientTraining() {
               ▶ Watch demo
             </a>
           )}
-          {ex.kind === 'conditioning' && (
+          {ex.kind === 'conditioning' && !ex.tracking_type && (
             <input placeholder="Result (time, rounds, notes)" value={results[ex.id] || ''}
               onChange={e => setResults(r => ({ ...r, [ex.id]: e.target.value }))} style={{ marginTop: 4 }} />
+          )}
+          {ex.kind === 'conditioning' && ex.tracking_type === 'count' && (
+            <input inputMode="numeric" placeholder="Count" value={results[ex.id] || ''}
+              onChange={e => setResults(r => ({ ...r, [ex.id]: e.target.value }))} style={{ marginTop: 4 }} />
+          )}
+          {ex.kind === 'conditioning' && ex.tracking_type === 'time' && (
+            <input type="time" value={results[ex.id] || ''}
+              onChange={e => setResults(r => ({ ...r, [ex.id]: e.target.value }))} style={{ marginTop: 4 }} />
+          )}
+          {ex.kind === 'conditioning' && ex.tracking_type === 'yesno' && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              {['Yes', 'No'].map(v => (
+                <button key={v} type="button" className={results[ex.id] === v ? 'btn' : 'btn-ghost'}
+                  style={{ flex: 1, padding: '10px 0', fontSize: 13 }}
+                  onClick={() => setResults(r => ({ ...r, [ex.id]: v }))}>{v}</button>
+              ))}
+            </div>
+          )}
+          {ex.kind === 'conditioning' && ex.tracking_type === 'scale' && (
+            <div style={{ marginTop: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+                <span>Quality</span><span style={{ color: 'var(--orange-hot)' }}>{results[ex.id] || 5}/10</span>
+              </div>
+              <input type="range" min="1" max="10" value={results[ex.id] || 5}
+                onChange={e => setResults(r => ({ ...r, [ex.id]: e.target.value }))}
+                style={{ accentColor: 'var(--orange)', padding: 0 }} />
+            </div>
           )}
           {ex.kind !== 'conditioning' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>

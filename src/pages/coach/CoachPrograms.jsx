@@ -124,6 +124,7 @@ export default function CoachPrograms() {
       name: text,
       kind,
       description: desc,
+      tracking_type: fromLib?.tracking_type || '',
       letter: nextFreeLetter(list),
       video_url: fromLib?.video_url || '',
       notes: fromLib?.notes || '',
@@ -551,7 +552,7 @@ export default function CoachPrograms() {
                                     ))}
                                     {lifeMatches.map(m => (
                                       <button key={m.id} className="btn-ghost" style={{ padding: '5px 9px', fontSize: 12, textAlign: 'left' }}
-                                        onClick={() => quickAddExercise(p, d.id, { name: m.name, video_url: m.video_url || '' }, 'conditioning', m.instructions || '')}>
+                                        onClick={() => quickAddExercise(p, d.id, { name: m.name, video_url: m.video_url || '', tracking_type: m.tracking_type || '' }, 'conditioning', [m.instructions, m.reminder_time ? `Log by ${m.reminder_time}` : ''].filter(Boolean).join(' · '))}>
                                         <span style={{ color: '#3E8E7E', fontWeight: 800, fontSize: 10, marginRight: 5 }}>LIFE</span>{m.name}
                                       </button>
                                     ))}

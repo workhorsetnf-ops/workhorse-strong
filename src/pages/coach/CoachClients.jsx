@@ -1,6 +1,31 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
+// Workhorse starting-macros methodology: Mifflin-St Jeor + wrestler multipliers
+function calcMacros({ weightLbs, age, sex, hft, hin, bf, activity, goal }) {
+  const kg = weightLbs / 2.2046
+  const cm = (hft * 12 + hin) * 2.54
+  const bmr = 10 * kg + 6.25 * cm - 5 * age + (sex === 'male' ? 5 : -161)
+  const mult = { 'lifting-only': 1.45, 'light-schedule': 1.55, 'working-talent': 1.65, 'heavy-schedule': 1.8 }[activity]
+  const tdee = Math.round((bmr * mult) / 25) * 25
+  let target = goal === 'cut' ? tdee - 500 : goal === 'build' ? tdee + 300 : tdee
+  const notes = []
+  if (goal === 'cut') {
+    const floor = 10 * weightLbs
+    if (target < floor) { target = Math.round(floor / 25) * 25; notes.push('Calories floored at 10× bodyweight — the straight −500 cut too deep.') }
+  }
+  let proteinBase = weightLbs
+  if (weightLbs >= 250 && bf && +bf > 25) {
+    proteinBase = (weightLbs * (1 - +bf / 100)) * 1.2
+    notes.push('Protein set off estimated lean mass +20% (250+ lbs at higher body fat).')
+  }
+  const protein = Math.round(proteinBase / 5) * 5
+  const fat = Math.max(50, Math.round((weightLbs * (goal === 'cut' ? 0.35 : 0.4)) / 5) * 5)
+  const carbs = Math.max(0, Math.round(((target - protein * 4 - fat * 9) / 4) / 5) * 5)
+  if (!bf) notes.push('No body fat estimate — first two weeks of scale data matter more than the formula.')
+  return { tdee, target, protein, carbs, fat, notes }
+}
+
 export default function CoachClients() {
   const [clients, setClients] = useState([])
   const [editing, setEditing] = useState(null)
@@ -9,6 +34,8 @@ export default function CoachClients() {
   const [savedId, setSavedId] = useState(null)
   const [photosFor, setPhotosFor] = useState(null)     // client id with timeline open
   const [timeline, setTimeline] = useState({})         // clientId -> rows
+  const [calc, setCalc] = useState({ weightLbs: '', age: '', sex: 'male', hft: '', hin: '', bf: '', activity: 'working-talent', goal: 'cut' })
+  const [calcResult, setCalcResult] = useState(null)
 
   async function load() {
     const { data } = await supabase.from('profiles').select('*').eq('role', 'client').order('full_name')
@@ -16,8 +43,24 @@ export default function CoachClients() {
   }
   useEffect(() => { load() }, [])
 
+  function runCalc() {
+    const { weightLbs, age, hft } = calc
+    if (!+weightLbs || !+age || !+hft) { setCalcResult({ error: 'Need at least weight, age, and height.' }) ; return }
+    setCalcResult(calcMacros({ ...calc, weightLbs: +calc.weightLbs, age: +calc.age, hft: +calc.hft, hin: +calc.hin || 0, bf: calc.bf }))
+  }
+
+  function applyCalc() {
+    if (!calcResult || calcResult.error) return
+    setForm(f => ({
+      ...f,
+      phase: calc.goal,
+      protein_g: calcResult.protein, carbs_g: calcResult.carbs, fat_g: calcResult.fat, calories: calcResult.target,
+    }))
+  }
+
   async function startEdit(c) {
     setEditing(c.id)
+    setCalcResult(null)
     setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories })
     const { data } = await supabase.from('client_maxes').select('*').eq('client_id', c.id).order('lift_name')
     setMaxes(data || [])
@@ -117,6 +160,42 @@ export default function CoachClients() {
                     </div>
                   ))}
                   {maxes.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No maxes on file. Lift names must match the "Based on lift" field in programs.</p>}
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+                  <span className="eyebrow" style={{ fontSize: 10 }}>Starting macros calculator</span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginTop: 8 }}>
+                    <input inputMode="decimal" placeholder="Weight lbs" value={calc.weightLbs} onChange={e => setCalc({ ...calc, weightLbs: e.target.value })} />
+                    <input inputMode="numeric" placeholder="Age" value={calc.age} onChange={e => setCalc({ ...calc, age: e.target.value })} />
+                    <select value={calc.sex} onChange={e => setCalc({ ...calc, sex: e.target.value })}>
+                      <option value="male">Male</option><option value="female">Female</option>
+                    </select>
+                    <input inputMode="numeric" placeholder="Ht ft" value={calc.hft} onChange={e => setCalc({ ...calc, hft: e.target.value })} />
+                    <input inputMode="numeric" placeholder="Ht in" value={calc.hin} onChange={e => setCalc({ ...calc, hin: e.target.value })} />
+                    <input inputMode="numeric" placeholder="BF% (opt)" value={calc.bf} onChange={e => setCalc({ ...calc, bf: e.target.value })} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 8, marginTop: 8 }}>
+                    <select value={calc.activity} onChange={e => setCalc({ ...calc, activity: e.target.value })}>
+                      <option value="lifting-only">Lifting only — 3–4x/wk, no matches</option>
+                      <option value="light-schedule">Light schedule — lifting + 1 match/wk</option>
+                      <option value="working-talent">Working talent — lifting + weekly TV/matches + travel</option>
+                      <option value="heavy-schedule">Heavy schedule — multiple matches/wk + training</option>
+                    </select>
+                    <select value={calc.goal} onChange={e => setCalc({ ...calc, goal: e.target.value })}>
+                      <option value="cut">Cut</option><option value="recomp">Recomp</option><option value="build">Build</option>
+                    </select>
+                    <button className="btn-ghost" onClick={runCalc}>Calculate</button>
+                  </div>
+                  {calcResult && !calcResult.error && (
+                    <div style={{ background: 'var(--steel)', borderRadius: 8, padding: '10px 12px', marginTop: 8 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>
+                        Maintenance {calcResult.tdee} kcal → Start <span style={{ color: 'var(--orange-hot)' }}>{calcResult.target} kcal</span> · P {calcResult.protein} / C {calcResult.carbs} / F {calcResult.fat}
+                      </div>
+                      {calcResult.notes.map((n, i) => <div key={i} className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>{n}</div>)}
+                      <button className="btn" style={{ padding: '8px 16px', fontSize: 12, marginTop: 8 }} onClick={applyCalc}>Apply to targets ↑</button>
+                    </div>
+                  )}
+                  {calcResult?.error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{calcResult.error}</div>}
                 </div>
 
                 <div style={{ display: 'flex', gap: 8 }}>
