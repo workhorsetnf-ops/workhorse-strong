@@ -1,0 +1,293 @@
+import { useEffect, useState } from 'react'
+import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
+
+function roundTo5(n) { return Math.round(n / 5) * 5 }
+
+function loomEmbed(url) {
+  const m = (url || '').match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/)
+  return m ? `https://www.loom.com/embed/${m[1]}` : null
+}
+
+const prefixOf = l => (l || '').replace(/[0-9]/g, '')
+const isNumbered = l => /^[A-Z]+\d+$/.test(l || '')
+const GROUP_COLORS = ['#BF5700', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
+
+function chunkGroups(list) {
+  const out = []
+  for (const ex of list) {
+    const prev = out[out.length - 1]
+    const pfx = prefixOf(ex.letter)
+    if (prev && isNumbered(ex.letter) && prev.prefix === pfx && prev.grouped) prev.items.push(ex)
+    else out.push({ prefix: pfx, grouped: isNumbered(ex.letter), items: [ex] })
+  }
+  return out.map(g => ({ ...g, grouped: g.grouped && g.items.length > 1 }))
+}
+
+export default function ClientTraining() {
+  const { profile } = useAuth()
+  const [program, setProgram] = useState(null)
+  const [week, setWeek] = useState(1)
+  const [startDate, setStartDate] = useState(null)
+  const [calMode, setCalMode] = useState(false)
+  const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
+  const [days, setDays] = useState([])
+  const [activeDay, setActiveDay] = useState(null)
+  const [exercises, setExercises] = useState([])
+  const [maxes, setMaxes] = useState({})
+  const [log, setLog] = useState({})
+  const [results, setResults] = useState({})
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    if (!profile) return
+    supabase.from('program_assignments')
+      .select('program_id, current_week, start_date, programs(id, name, notes, weeks)')
+      .eq('client_id', profile.id).maybeSingle()
+      .then(({ data }) => {
+        if (!data) return
+        setProgram(data.programs)
+        setWeek(data.current_week || 1)
+        setStartDate(data.start_date || null)
+        supabase.from('program_days').select('*')
+          .eq('program_id', data.program_id).order('day_number').order('position')
+          .then(({ data: d }) => setDays(d || []))
+      })
+    supabase.from('client_maxes').select('*').eq('client_id', profile.id)
+      .then(({ data }) => {
+        setMaxes(Object.fromEntries((data || []).map(m => [m.lift_name.toLowerCase(), m.max_weight])))
+      })
+  }, [profile])
+
+  function weekTarget(ex) {
+    const wt = Array.isArray(ex.week_targets) ? ex.week_targets[week - 1] : null
+    return {
+      sets: wt?.sets ?? ex.sets,
+      reps: wt?.reps ?? ex.reps,
+      target: wt?.target ?? ex.rir,
+    }
+  }
+
+  function targetText(ex) {
+    const { sets, reps, target } = weekTarget(ex)
+    if (ex.progression_type === 'percent') {
+      const max = maxes[(ex.based_on_lift || ex.name).toLowerCase()]
+      const load = max ? ` → ${roundTo5(max * (+target / 100))} lbs` : ''
+      return `${sets} × ${reps} @ ${target}%${load}${ex.rest ? ` · rest ${ex.rest}` : ''}`
+    }
+    if (ex.progression_type === 'rpe') return `${sets} × ${reps} @ RPE ${target}${ex.rest ? ` · rest ${ex.rest}` : ''}`
+    return `${sets} × ${reps} @ RIR ${target}${ex.rest ? ` · rest ${ex.rest}` : ''}`
+  }
+
+  useEffect(() => {
+    if (!activeDay) return
+    supabase.from('program_exercises').select('*')
+      .eq('day_id', activeDay.id).order('position')
+      .then(({ data }) => {
+        setExercises(data || [])
+        const init = {}
+        for (const ex of data || []) {
+          const wt = Array.isArray(ex.week_targets) ? ex.week_targets[week - 1] : null
+          const sets = wt?.sets ?? ex.sets
+          init[ex.id] = Array.from({ length: sets }, () => ({ weight: '', reps: '', rir: '' }))
+        }
+        setLog(init)
+        setResults({})
+      })
+  }, [activeDay, week])
+
+  function updateSet(exId, i, field, value) {
+    setLog(l => ({ ...l, [exId]: l[exId].map((s, j) => j === i ? { ...s, [field]: value } : s) }))
+  }
+
+  async function saveWorkout() {
+    const rows = []
+    for (const ex of exercises) {
+      (log[ex.id] || []).forEach((s, i) => {
+        if (s.weight || s.reps) rows.push({
+          client_id: profile.id, exercise_id: ex.id, exercise_name: ex.name,
+          set_number: i + 1, weight: s.weight || null, reps: s.reps || null, rir: s.rir || null
+        })
+      })
+    }
+    for (const ex of exercises) {
+      if (ex.kind === 'conditioning' && (results[ex.id] || '').trim()) {
+        rows.push({ client_id: profile.id, exercise_id: ex.id, exercise_name: ex.name, set_number: 1, result_text: results[ex.id].trim() })
+      }
+    }
+    if (!rows.length) return
+    const { error } = await supabase.from('workout_logs').insert(rows)
+    if (!error) { setSaved(true); setTimeout(() => setSaved(false), 2500) }
+  }
+
+  if (!program) return (
+    <div className="card">
+      <h2 style={{ fontSize: 18 }}>No program yet</h2>
+      <p className="muted" style={{ marginTop: 8, fontSize: 14 }}>Your coach hasn't assigned a program. Message them from the Coach tab.</p>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <header>
+        <div className="eyebrow">Training · Week {week} of {program.weeks || 4}{startDate ? '' : ''}</div>
+        <h1 style={{ fontSize: 24, marginTop: 4 }}>{program.name}</h1>
+        {program.notes && <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>{program.notes}</p>}
+      </header>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button className={calMode ? 'btn' : 'btn-ghost'} style={{ padding: '10px 14px', fontSize: 13 }}
+          onClick={() => setCalMode(!calMode)}>📅</button>
+        {!calMode && days.filter(d => (d.track || 'exercise') === 'exercise').map(d => (
+          <button key={d.id} className={activeDay?.id === d.id ? 'btn' : 'btn-ghost'}
+            style={{ padding: '10px 16px', fontSize: 13 }}
+            onClick={() => setActiveDay(d)}>{d.day_label}</button>
+        ))}
+        {!calMode && days.filter(d => (d.track || 'exercise') === 'lifestyle').map(d => (
+          <button key={d.id} className={activeDay?.id === d.id ? 'btn' : 'btn-ghost'}
+            style={{ padding: '10px 16px', fontSize: 13, borderColor: activeDay?.id === d.id ? undefined : '#3E8E7E', color: activeDay?.id === d.id ? undefined : '#3E8E7E' }}
+            onClick={() => setActiveDay(d)}>{d.day_label}</button>
+        ))}
+      </div>
+
+      {calMode && (() => {
+        const { y, m } = calMonth
+        const first = new Date(y, m, 1)
+        const offset = (first.getDay() + 6) % 7 // Monday-first
+        const numDays = new Date(y, m + 1, 0).getDate()
+        const cells = [...Array(offset).fill(null), ...Array.from({ length: numDays }, (_, i) => i + 1)]
+        const monthName = first.toLocaleString('default', { month: 'long', year: 'numeric' })
+        const sd = startDate ? new Date(startDate + 'T00:00:00') : null
+        const today = new Date(); today.setHours(0, 0, 0, 0)
+
+        function workoutsOn(dayNum) {
+          if (!sd) return []
+          const date = new Date(y, m, dayNum)
+          const diff = Math.round((date - sd) / 864e5)
+          if (diff < 0) return []
+          const wk = Math.floor(diff / 7) + 1
+          if (wk > (program.weeks || 4)) return []
+          const dn = (diff % 7) + 1
+          return days.filter(d => d.day_number === dn).map(d => ({ ...d, wk }))
+        }
+
+        return (
+          <div className="card" style={{ padding: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <button className="btn-ghost" style={{ padding: '6px 12px' }} onClick={() => setCalMonth(({ y, m }) => m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 })}>‹</button>
+              <strong style={{ fontSize: 14, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{monthName}</strong>
+              <button className="btn-ghost" style={{ padding: '6px 12px' }} onClick={() => setCalMonth(({ y, m }) => m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 })}>›</button>
+            </div>
+            {!sd && <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>No start date set — ask your coach to set one so your schedule shows here.</p>}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 4 }}>
+              {['M','T','W','T','F','S','S'].map((d, i) => <div key={i} style={{ textAlign: 'center' }}>{d}</div>)}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+              {cells.map((dayNum, i) => {
+                if (dayNum === null) return <div key={i} />
+                const w = workoutsOn(dayNum)
+                const isToday = today.getTime() === new Date(y, m, dayNum).getTime()
+                return (
+                  <div key={i} style={{ background: 'var(--steel)', borderRadius: 5, minHeight: 58, padding: '3px 4px', border: isToday ? '1px solid var(--orange)' : '1px solid transparent' }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: isToday ? 'var(--orange-hot)' : 'var(--muted)' }}>{dayNum}</div>
+                    {w.map(d => (
+                      <button key={d.id}
+                        onClick={() => { setWeek(d.wk); setActiveDay(d); setCalMode(false) }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', padding: '1px 0', fontSize: 8.5, fontWeight: 800, lineHeight: 1.25, textTransform: 'uppercase', letterSpacing: '0.02em', color: (d.track || 'exercise') === 'lifestyle' ? '#3E8E7E' : 'var(--orange-hot)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                        {d.day_label}
+                      </button>
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+            <p className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>
+              <span style={{ color: 'var(--orange-hot)', fontWeight: 800 }}>■</span> Training · <span style={{ color: '#3E8E7E', fontWeight: 800 }}>■</span> Lifestyle — tap a session to open it
+            </p>
+          </div>
+        )
+      })()}
+
+      {!calMode && activeDay && (activeDay.notes || activeDay.video_note || activeDay.warmup) && (
+        <div className="card">
+          {activeDay.notes && <p style={{ fontSize: 13.5, lineHeight: 1.5 }}>{activeDay.notes}</p>}
+          {activeDay.video_note && (loomEmbed(activeDay.video_note)
+            ? <iframe src={loomEmbed(activeDay.video_note)} style={{ width: '100%', height: 210, border: 'none', borderRadius: 8, marginTop: activeDay.notes ? 8 : 0 }} allowFullScreen title="Coach video note" />
+            : <a href={activeDay.video_note} target="_blank" rel="noreferrer" style={{ display: 'inline-block', fontSize: 13, fontWeight: 800, marginTop: activeDay.notes ? 6 : 0 }}>🎥 Watch coach's video note</a>)}
+          {activeDay.warmup && (
+            <div style={{ marginTop: (activeDay.notes || activeDay.video_note) ? 10 : 0, borderLeft: '3px solid var(--orange)', paddingLeft: 10 }}>
+              <span className="eyebrow" style={{ fontSize: 10 }}>Warmup</span>
+              <p style={{ fontSize: 13.5, marginTop: 3, lineHeight: 1.5 }}>
+                {activeDay.warmup}
+                {activeDay.warmup_video && <a href={activeDay.warmup_video} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ demo</a>}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!calMode && activeDay && chunkGroups(exercises).map((g, gi) => {
+        const color = GROUP_COLORS[((g.prefix.charCodeAt(0) || 65) - 65) % GROUP_COLORS.length]
+        const inner = g.items.map(ex => (
+        <div className="card" key={ex.id} style={g.grouped ? { border: 'none', borderRadius: 8 } : undefined}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+            <strong style={{ fontSize: 15 }}>{ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter}) </span>}{ex.name}</strong>
+            {ex.kind !== 'conditioning' && <span style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700 }}>{targetText(ex)}</span>}
+          </div>
+          {ex.kind === 'conditioning' && ex.description && (
+            <p style={{ fontSize: 13.5, margin: '4px 0 8px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{ex.description}</p>
+          )}
+          {ex.kind !== 'conditioning' && ex.progression_type === 'percent' && !maxes[(ex.based_on_lift || ex.name).toLowerCase()] && (
+            <p className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>No max on file for {ex.based_on_lift || ex.name} — ask your coach to set it.</p>
+          )}
+          {ex.notes && <p className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>{ex.notes}</p>}
+          {ex.video_url && (
+            <a href={ex.video_url} target="_blank" rel="noreferrer"
+              style={{ display: 'inline-block', fontSize: 12.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+              ▶ Watch demo
+            </a>
+          )}
+          {ex.kind === 'conditioning' && (
+            <input placeholder="Result (time, rounds, notes)" value={results[ex.id] || ''}
+              onChange={e => setResults(r => ({ ...r, [ex.id]: e.target.value }))} style={{ marginTop: 4 }} />
+          )}
+          {ex.kind !== 'conditioning' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+            {(log[ex.id] || []).map((s, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr', gap: 6, alignItems: 'center' }}>
+                <span className="muted" style={{ fontSize: 12, fontWeight: 800 }}>S{i + 1}</span>
+                <input inputMode="decimal" placeholder="lbs" value={s.weight} onChange={e => updateSet(ex.id, i, 'weight', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
+                <input inputMode="numeric" placeholder={ex.metric === 'time' ? 'secs' : ex.metric === 'distance' ? 'dist' : 'reps'} value={s.reps} onChange={e => updateSet(ex.id, i, 'reps', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
+                <input inputMode="numeric" placeholder={ex.progression_type === 'rpe' ? 'RPE' : 'RIR'} value={s.rir} onChange={e => updateSet(ex.id, i, 'rir', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
+              </div>
+            ))}
+          </div>
+          )}
+        </div>
+        ))
+        return g.grouped ? (
+          <div key={gi} style={{ border: `1px solid ${color}`, borderLeft: `4px solid ${color}`, borderRadius: 10, padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color, padding: '2px 2px 0' }}>
+              {g.items.length === 2 ? 'Superset' : 'Circuit'} {g.prefix} — alternate exercises each round
+            </span>
+            {inner}
+          </div>
+        ) : inner
+      })}
+
+      {!calMode && activeDay && activeDay.cooldown && (
+        <div className="card" style={{ borderLeft: '3px solid var(--orange)' }}>
+          <span className="eyebrow" style={{ fontSize: 10 }}>Cooldown</span>
+          <p style={{ fontSize: 13.5, marginTop: 3, lineHeight: 1.5 }}>
+            {activeDay.cooldown}
+            {activeDay.cooldown_video && <a href={activeDay.cooldown_video} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ demo</a>}
+          </p>
+        </div>
+      )}
+
+      {!calMode && activeDay && exercises.length > 0 && (
+        <button className="btn" onClick={saveWorkout}>{saved ? 'Workout saved ✓' : 'Save workout'}</button>
+      )}
+    </div>
+  )
+}

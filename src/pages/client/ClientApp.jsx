@@ -1,0 +1,30 @@
+import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import ClientHome from './ClientHome'
+import ClientTraining from './ClientTraining'
+import ClientNutrition from './ClientNutrition'
+import ClientMessages from './ClientMessages'
+import ClientCheckin from './ClientCheckin'
+
+export default function ClientApp() {
+  return (
+    <div className="client-shell">
+      <main className="client-main">
+        <Routes>
+          <Route index element={<ClientHome />} />
+          <Route path="training" element={<ClientTraining />} />
+          <Route path="nutrition" element={<ClientNutrition />} />
+          <Route path="messages" element={<ClientMessages />} />
+          <Route path="checkin" element={<ClientCheckin />} />
+          <Route path="*" element={<Navigate to="/app" replace />} />
+        </Routes>
+      </main>
+      <nav className="bottom-nav">
+        <NavLink to="/app" end><span className="ico">▪</span>Home</NavLink>
+        <NavLink to="/app/training"><span className="ico">▪</span>Train</NavLink>
+        <NavLink to="/app/nutrition"><span className="ico">▪</span>Eat</NavLink>
+        <NavLink to="/app/checkin"><span className="ico">▪</span>Check-in</NavLink>
+        <NavLink to="/app/messages"><span className="ico">▪</span>Coach</NavLink>
+      </nav>
+    </div>
+  )
+}
