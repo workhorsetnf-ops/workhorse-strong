@@ -5,6 +5,7 @@ import ClientNutrition from './ClientNutrition'
 import ClientMessages from './ClientMessages'
 import ClientCheckin from './ClientCheckin'
 import ClientProgress from './ClientProgress'
+import ClientFormChecks from './ClientFormChecks'
 
 export default function ClientApp() {
   return (
@@ -17,6 +18,7 @@ export default function ClientApp() {
           <Route path="messages" element={<ClientMessages />} />
           <Route path="checkin" element={<ClientCheckin />} />
           <Route path="progress" element={<ClientProgress />} />
+          <Route path="form-checks" element={<ClientFormChecks />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>
@@ -26,6 +28,7 @@ export default function ClientApp() {
         <NavLink to="/app/nutrition"><span className="ico">▪</span>Eat</NavLink>
         <NavLink to="/app/checkin"><span className="ico">▪</span>Check-in</NavLink>
         <NavLink to="/app/progress"><span className="ico">▪</span>Log</NavLink>
+        <NavLink to="/app/form-checks"><span className="ico">▪</span>Film</NavLink>
         <NavLink to="/app/messages"><span className="ico">▪</span>Coach</NavLink>
       </nav>
     </div>
