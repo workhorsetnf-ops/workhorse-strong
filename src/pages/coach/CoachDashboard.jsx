@@ -4,6 +4,7 @@ import CoachClients from './CoachClients'
 import CoachPrograms from './CoachPrograms'
 import CoachLibrary from './CoachLibrary'
 import CoachForms from './CoachForms'
+import CoachAlerts from './CoachAlerts'
 import CoachCheckins from './CoachCheckins'
 import CoachMessages from './CoachMessages'
 
@@ -17,6 +18,7 @@ export default function CoachDashboard() {
           <div className="wordmark" style={{ fontSize: 15 }}>Workhorse <span>Strong</span></div>
         </div>
         <NavLink to="/coach" end>Clients</NavLink>
+        <NavLink to="/coach/alerts">Alerts</NavLink>
         <NavLink to="/coach/programs">Programs</NavLink>
         <NavLink to="/coach/library">Library</NavLink>
         <NavLink to="/coach/forms">Forms</NavLink>
@@ -31,6 +33,7 @@ export default function CoachDashboard() {
           <Route path="programs" element={<CoachPrograms />} />
           <Route path="library" element={<CoachLibrary />} />
           <Route path="forms" element={<CoachForms />} />
+          <Route path="alerts" element={<CoachAlerts />} />
           <Route path="checkins" element={<CoachCheckins />} />
           <Route path="messages" element={<CoachMessages />} />
           <Route path="*" element={<Navigate to="/coach" replace />} />
