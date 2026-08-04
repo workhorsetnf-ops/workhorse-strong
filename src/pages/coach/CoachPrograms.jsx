@@ -345,19 +345,21 @@ export default function CoachPrograms() {
               <input placeholder="Video URL" value={edit.video_url} onChange={e => setEdit({ ...edit, video_url: e.target.value })} style={{ padding: '6px 8px', fontSize: 12 }} />
             </div>
             {edit.kind !== 'conditioning' && (
-              <table className="data" style={{ fontSize: 12 }}>
-                <thead><tr><th>Wk</th><th>Sets</th><th>{edit.metric === 'time' ? 'Time' : edit.metric === 'distance' ? 'Dist' : 'Reps'}</th><th>{targetLabel[edit.progression_type]}</th></tr></thead>
-                <tbody>
-                  {editWeeks.map((r, i) => (
-                    <tr key={i}>
-                      <td className="muted">{i + 1}</td>
-                      <td><input style={{ width: 44, padding: '4px 6px', fontSize: 12 }} value={r.sets} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, sets: e.target.value } : x))} /></td>
-                      <td><input style={{ width: 62, padding: '4px 6px', fontSize: 12 }} value={r.reps} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, reps: e.target.value } : x))} /></td>
-                      <td><input style={{ width: 52, padding: '4px 6px', fontSize: 12 }} value={r.target} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, target: e.target.value } : x))} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <table className="data" style={{ fontSize: 12, minWidth: 230 }}>
+                  <thead><tr><th>Wk</th><th>Sets</th><th>{edit.metric === 'time' ? 'Time' : edit.metric === 'distance' ? 'Dist' : 'Reps'}</th><th style={{ color: 'var(--orange-hot)' }}>{targetLabel[edit.progression_type]}</th></tr></thead>
+                  <tbody>
+                    {editWeeks.map((r, i) => (
+                      <tr key={i}>
+                        <td className="muted">{i + 1}</td>
+                        <td><input style={{ width: 40, padding: '4px 5px', fontSize: 12 }} value={r.sets} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, sets: e.target.value } : x))} /></td>
+                        <td><input style={{ width: 50, padding: '4px 5px', fontSize: 12 }} value={r.reps} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, reps: e.target.value } : x))} /></td>
+                        <td><input style={{ width: 46, padding: '4px 5px', fontSize: 12, borderColor: 'var(--orange)' }} value={r.target} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, target: e.target.value } : x))} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
             <div style={{ display: 'flex', gap: 6 }}>
               <button className="btn" style={{ padding: '7px 14px', fontSize: 12 }} onClick={() => saveEdit(d.id, ex.id)}>Update</button>
