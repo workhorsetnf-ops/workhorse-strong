@@ -137,7 +137,8 @@ export default function CoachPrograms() {
   async function addWorkout(blockId, dayNumber) {
     const label = prompt(track === 'lifestyle' ? 'Lifestyle card name:' : 'Workout name (e.g. Upper A):', track === 'lifestyle' ? 'Lifestyle' : 'Workout')
     if (!label) return
-    await supabase.from('program_days').insert({ block_id: blockId, day_label: label, day_number: dayNumber, position: (days[blockId]?.length || 0), track })
+    const { error } = await supabase.from('program_days').insert({ program_id: open, block_id: blockId, day_label: label, day_number: dayNumber, position: (days[blockId]?.length || 0), track })
+    if (error) { alert('Could not add workout: ' + error.message); return }
     loadDays(blockId)
   }
   async function moveWorkout(blockId, dayId, dayNumber) {
