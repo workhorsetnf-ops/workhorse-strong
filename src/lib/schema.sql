@@ -49,9 +49,18 @@ create table programs (
   created_at timestamptz default now()
 );
 
+create table program_blocks (
+  id uuid primary key default gen_random_uuid(),
+  program_id uuid not null references programs(id) on delete cascade,
+  name text not null default 'Block 1',
+  weeks int not null default 4,
+  position int not null default 0
+);
+
 create table program_days (
   id uuid primary key default gen_random_uuid(),
   program_id uuid not null references programs(id) on delete cascade,
+  block_id uuid references program_blocks(id) on delete cascade,
   day_label text not null,
   day_number int not null default 1 check (day_number between 1 and 7),
   track text not null default 'exercise' check (track in ('exercise','lifestyle')),
@@ -90,6 +99,7 @@ create table program_assignments (
   program_id uuid not null references programs(id) on delete cascade,
   client_id uuid not null references profiles(id) on delete cascade,
   current_week int not null default 1,
+  current_block_id uuid references program_blocks(id) on delete set null,
   start_date date default current_date,
   assigned_at timestamptz default now(),
   unique (client_id)
@@ -163,6 +173,7 @@ insert into storage.buckets (id, name, public) values ('checkin-photos','checkin
 -- ===== ROW LEVEL SECURITY =====
 alter table profiles enable row level security;
 alter table programs enable row level security;
+alter table program_blocks enable row level security;
 alter table program_days enable row level security;
 alter table program_exercises enable row level security;
 alter table program_assignments enable row level security;
@@ -184,6 +195,10 @@ create policy "update own profile" on profiles for update using (id = auth.uid()
 create policy "coach manages programs" on programs for all using (is_coach());
 create policy "client reads assigned program" on programs for select using (
   exists (select 1 from program_assignments a where a.program_id = programs.id and a.client_id = auth.uid())
+);
+create policy "coach manages blocks" on program_blocks for all using (is_coach());
+create policy "client reads assigned blocks" on program_blocks for select using (
+  exists (select 1 from program_assignments a where a.program_id = program_blocks.program_id and a.client_id = auth.uid())
 );
 create policy "coach manages days" on program_days for all using (is_coach());
 create policy "client reads assigned days" on program_days for select using (

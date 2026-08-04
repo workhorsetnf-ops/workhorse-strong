@@ -27,6 +27,8 @@ function chunkGroups(list) {
 export default function ClientTraining() {
   const { profile } = useAuth()
   const [program, setProgram] = useState(null)
+  const [allBlocks, setAllBlocks] = useState([])
+  const [block, setBlock] = useState(null)
   const [week, setWeek] = useState(1)
   const [startDate, setStartDate] = useState(null)
   const [calMode, setCalMode] = useState(false)
@@ -42,22 +44,29 @@ export default function ClientTraining() {
   useEffect(() => {
     if (!profile) return
     supabase.from('program_assignments')
-      .select('program_id, current_week, start_date, programs(id, name, notes, weeks)')
+      .select('program_id, current_week, current_block_id, start_date, programs(id, name, notes, weeks)')
       .eq('client_id', profile.id).maybeSingle()
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         if (!data) return
         setProgram(data.programs)
         setWeek(data.current_week || 1)
         setStartDate(data.start_date || null)
-        supabase.from('program_days').select('*')
-          .eq('program_id', data.program_id).order('day_number').order('position')
-          .then(({ data: d }) => setDays(d || []))
+        const { data: bs } = await supabase.from('program_blocks').select('*').eq('program_id', data.program_id).order('position')
+        setAllBlocks(bs || [])
+        const activeBlock = (bs || []).find(b => b.id === data.current_block_id) || (bs || [])[0]
+        setBlock(activeBlock || null)
+        if (activeBlock) {
+          const { data: d } = await supabase.from('program_days').select('*').eq('block_id', activeBlock.id).order('day_number').order('position')
+          setDays(d || [])
+        }
       })
     supabase.from('client_maxes').select('*').eq('client_id', profile.id)
       .then(({ data }) => {
         setMaxes(Object.fromEntries((data || []).map(m => [m.lift_name.toLowerCase(), m.max_weight])))
       })
   }, [profile])
+
+  const blockWeeks = block?.weeks || program?.weeks || 4
 
   function weekTarget(ex) {
     const wt = Array.isArray(ex.week_targets) ? ex.week_targets[week - 1] : null
@@ -130,7 +139,7 @@ export default function ClientTraining() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <header>
-        <div className="eyebrow">Training · Week {week} of {program.weeks || 4}{startDate ? '' : ''}</div>
+        <div className="eyebrow">Training · {block?.name || 'Block 1'} · Week {week} of {blockWeeks}</div>
         <h1 style={{ fontSize: 24, marginTop: 4 }}>{program.name}</h1>
         {program.notes && <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>{program.notes}</p>}
       </header>
@@ -160,15 +169,29 @@ export default function ClientTraining() {
         const sd = startDate ? new Date(startDate + 'T00:00:00') : null
         const today = new Date(); today.setHours(0, 0, 0, 0)
 
+        function resolveBlock(diff) {
+          const wkOverall = Math.floor(diff / 7) + 1
+          let cursor = 0
+          for (const b of allBlocks) {
+            if (wkOverall <= cursor + (b.weeks || 4)) return { blk: b, wkInBlock: wkOverall - cursor }
+            cursor += (b.weeks || 4)
+          }
+          return null
+        }
+        const dayCache = {}
         function workoutsOn(dayNum) {
-          if (!sd) return []
+          if (!sd || allBlocks.length === 0) return []
           const date = new Date(y, m, dayNum)
           const diff = Math.round((date - sd) / 864e5)
           if (diff < 0) return []
-          const wk = Math.floor(diff / 7) + 1
-          if (wk > (program.weeks || 4)) return []
+          const resolved = resolveBlock(diff)
+          if (!resolved) return []
           const dn = (diff % 7) + 1
-          return days.filter(d => d.day_number === dn).map(d => ({ ...d, wk }))
+          // only show markers for the currently loaded block's days (fast path); other blocks show a generic dot
+          if (resolved.blk.id === block?.id) {
+            return days.filter(d => d.day_number === dn).map(d => ({ ...d, wk: resolved.wkInBlock, blockId: resolved.blk.id }))
+          }
+          return [{ id: `ghost-${resolved.blk.id}-${dn}`, day_label: resolved.blk.name, track: 'exercise', wk: resolved.wkInBlock, blockId: resolved.blk.id, ghost: true }]
         }
 
         return (
@@ -192,7 +215,16 @@ export default function ClientTraining() {
                     <div style={{ fontSize: 10, fontWeight: 800, color: isToday ? 'var(--orange-hot)' : 'var(--muted)' }}>{dayNum}</div>
                     {w.map(d => (
                       <button key={d.id}
-                        onClick={() => { setWeek(d.wk); setActiveDay(d); setCalMode(false) }}
+                        onClick={async () => {
+                          if (d.blockId !== block?.id) {
+                            const nb = allBlocks.find(b => b.id === d.blockId)
+                            setBlock(nb)
+                            const { data: nd } = await supabase.from('program_days').select('*').eq('block_id', d.blockId).order('day_number').order('position')
+                            setDays(nd || [])
+                            if (d.ghost) { setWeek(d.wk); setCalMode(false); return }
+                          }
+                          setWeek(d.wk); setActiveDay(d); setCalMode(false)
+                        }}
                         style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', padding: '1px 0', fontSize: 8.5, fontWeight: 800, lineHeight: 1.25, textTransform: 'uppercase', letterSpacing: '0.02em', color: (d.track || 'exercise') === 'lifestyle' ? '#3E8E7E' : 'var(--orange-hot)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
                         {d.day_label}
                       </button>
