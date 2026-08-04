@@ -33,7 +33,10 @@ export default function ClientHome() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <div className="eyebrow">Workhorse Strong</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <img src="/icon-192.png" alt="" style={{ width: 24, height: 24, borderRadius: 5, objectFit: 'cover' }} />
+            <div className="eyebrow" style={{ margin: 0 }}>Workhorse Strong</div>
+          </div>
           <h1 style={{ fontSize: 26, marginTop: 4 }}>{profile?.full_name || 'Athlete'}</h1>
           <p className="muted" style={{ fontSize: 13, marginTop: 2, textTransform: 'capitalize' }}>
             Phase: {profile?.phase}

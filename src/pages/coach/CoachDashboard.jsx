@@ -12,7 +12,10 @@ export default function CoachDashboard() {
   return (
     <div className="coach-shell">
       <aside className="coach-side">
-        <div className="wordmark" style={{ padding: '0 14px 18px' }}>Workhorse <span>Strong</span></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px 18px' }}>
+          <img src="/icon-192.png" alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover' }} />
+          <div className="wordmark" style={{ fontSize: 15 }}>Workhorse <span>Strong</span></div>
+        </div>
         <NavLink to="/coach" end>Clients</NavLink>
         <NavLink to="/coach/programs">Programs</NavLink>
         <NavLink to="/coach/library">Library</NavLink>

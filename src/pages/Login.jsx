@@ -17,14 +17,9 @@ export default function Login() {
   return (
     <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 20 }}>
       <div style={{ width: '100%', maxWidth: 380 }}>
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{
-            display: 'inline-block', background: 'var(--orange)', padding: '6px 14px',
-            borderRadius: 4, fontWeight: 900, fontSize: 13, letterSpacing: '0.12em',
-            textTransform: 'uppercase', marginBottom: 14
-          }}>Workhorse</div>
-          <h1 style={{ fontSize: 32 }}>Strong</h1>
-          <p className="muted" style={{ marginTop: 6, fontSize: 14 }}>Clock in. Do the work.</p>
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <img src="/logo.png" alt="Workhorse Training & Nutrition" style={{ width: 168, height: 168, objectFit: 'contain', margin: '0 auto 6px' }} />
+          <p className="muted" style={{ marginTop: 2, fontSize: 14 }}>Clock in. Do the work.</p>
         </div>
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" />
