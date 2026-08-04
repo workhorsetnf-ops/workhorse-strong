@@ -62,6 +62,9 @@ export default function CoachAlerts() {
       if (lastCheckin) {
         const ago = daysAgo(lastCheckin.submitted_at)
         if (ago >= 10) results.push({ type: 'checkin', severity: ago >= 14 ? 'high' : 'med', client: c, text: `${nameOf(c.id)} hasn't submitted a check-in in ${ago} days.` })
+        else if (ago >= 6) results.push({ type: 'checkin-due', severity: 'due', client: c, text: `${nameOf(c.id)}'s check-in is due — last one ${ago} days ago (they'll see a reminder in their app).` })
+      } else {
+        results.push({ type: 'checkin-due', severity: 'due', client: c, text: `${nameOf(c.id)} hasn't submitted a first check-in yet.` })
       }
 
       // --- Weight milestone: 5lb increments off starting weight (from daily_logs) ---
@@ -84,7 +87,7 @@ export default function CoachAlerts() {
       }
     }
 
-    const order = { high: 0, med: 1, good: 2 }
+    const order = { high: 0, med: 1, due: 2, good: 3 }
     results.sort((x, y) => order[x.severity] - order[y.severity])
     setAlerts(results)
   }
@@ -94,10 +97,11 @@ export default function CoachAlerts() {
   const groups = {
     high: alerts?.filter(a => a.severity === 'high') || [],
     med: alerts?.filter(a => a.severity === 'med') || [],
+    due: alerts?.filter(a => a.severity === 'due') || [],
     good: alerts?.filter(a => a.severity === 'good') || [],
   }
 
-  const badge = { high: { c: 'var(--red)', l: 'Needs attention' }, med: { c: 'var(--orange-hot)', l: 'Heads up' }, good: { c: 'var(--green)', l: 'Wins' } }
+  const badge = { high: { c: 'var(--red)', l: 'Needs attention' }, med: { c: 'var(--orange-hot)', l: 'Heads up' }, due: { c: '#4A6FA5', l: 'Coming due' }, good: { c: 'var(--green)', l: 'Wins' } }
 
   return (
     <div>
@@ -110,7 +114,7 @@ export default function CoachAlerts() {
       {alerts === null && <div className="card muted">Checking your roster…</div>}
       {alerts?.length === 0 && <div className="card muted">Nothing flagged right now — roster looks on track.</div>}
 
-      {['high', 'med', 'good'].map(sev => groups[sev].length > 0 && (
+      {['high', 'med', 'due', 'good'].map(sev => groups[sev].length > 0 && (
         <div key={sev} style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: badge[sev].c, marginBottom: 8 }}>{badge[sev].l}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

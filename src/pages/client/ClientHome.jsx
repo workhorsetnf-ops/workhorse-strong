@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
@@ -6,6 +7,7 @@ export default function ClientHome() {
   const { profile, signOut } = useAuth()
   const [todayMacros, setTodayMacros] = useState({ p: 0, c: 0, f: 0 })
   const [weekWorkouts, setWeekWorkouts] = useState(0)
+  const [checkinDue, setCheckinDue] = useState(null) // { days, overdue }
 
   useEffect(() => {
     if (!profile) return
@@ -24,6 +26,13 @@ export default function ClientHome() {
       .then(({ data }) => {
         const days = new Set((data || []).map(l => l.logged_at.slice(0, 10)))
         setWeekWorkouts(days.size)
+      })
+    supabase.from('checkins').select('submitted_at').eq('client_id', profile.id)
+      .order('submitted_at', { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => {
+        if (!data) { setCheckinDue({ days: null, overdue: false }); return }
+        const days = Math.floor((Date.now() - new Date(data.submitted_at).getTime()) / 864e5)
+        setCheckinDue({ days, overdue: days >= 8 })
       })
   }, [profile])
 
@@ -44,6 +53,20 @@ export default function ClientHome() {
         </div>
         <button className="btn-ghost" onClick={signOut}>Sign out</button>
       </header>
+
+      {checkinDue && (checkinDue.days === null || checkinDue.days >= 6) && (
+        <Link to="/app/checkin" style={{ display: 'block', textDecoration: 'none' }}>
+          <div className="card" style={{ borderLeft: `3px solid ${checkinDue.overdue ? 'var(--red)' : 'var(--orange)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: checkinDue.overdue ? 'var(--red)' : 'var(--orange-hot)' }}>
+                {checkinDue.days === null ? 'Your first check-in is due' : checkinDue.overdue ? `Check-in overdue — last one ${checkinDue.days} days ago` : `Check-in due — last one ${checkinDue.days} days ago`}
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Tap to submit now</div>
+            </div>
+            <span style={{ fontSize: 20 }}>→</span>
+          </div>
+        </Link>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div className="card">
