@@ -11,6 +11,7 @@ create table profiles (
   carbs_g int default 0,
   fat_g int default 0,
   calories int default 0,
+  target_weight numeric,
   created_at timestamptz default now()
 );
 
@@ -305,3 +306,30 @@ create table lifestyle_library (
 );
 alter table lifestyle_library enable row level security;
 create policy "coach manages lifestyle library" on lifestyle_library for all using (is_coach());
+
+-- ===== DAILY LOGS (weight/steps) =====
+create table daily_logs (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references profiles(id) on delete cascade,
+  log_date date not null default current_date,
+  weight numeric,
+  steps int,
+  created_at timestamptz default now(),
+  unique (client_id, log_date)
+);
+alter table daily_logs enable row level security;
+create policy "client manages own daily logs" on daily_logs for all using (client_id = auth.uid());
+create policy "coach reads daily logs" on daily_logs for select using (is_coach());
+
+-- ===== BODY MEASUREMENTS =====
+create table body_measurements (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references profiles(id) on delete cascade,
+  log_date date not null default current_date,
+  waist numeric, chest numeric, arms numeric, thighs numeric, hips numeric, neck numeric,
+  created_at timestamptz default now(),
+  unique (client_id, log_date)
+);
+alter table body_measurements enable row level security;
+create policy "client manages own measurements" on body_measurements for all using (client_id = auth.uid());
+create policy "coach reads measurements" on body_measurements for select using (is_coach());

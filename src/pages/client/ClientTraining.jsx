@@ -39,6 +39,7 @@ export default function ClientTraining() {
   const [maxes, setMaxes] = useState({})
   const [log, setLog] = useState({})
   const [results, setResults] = useState({})
+  const [lastLogged, setLastLogged] = useState({})   // exerciseId -> {weight, reps, date}
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -102,6 +103,21 @@ export default function ClientTraining() {
         }
         setLog(init)
         setResults({})
+        // pull most recent prior logged set per exercise for a "last time" hint
+        const ids = (data || []).map(ex => ex.id)
+        if (ids.length) {
+          supabase.from('workout_logs').select('exercise_id, weight, reps, rir, logged_at')
+            .in('exercise_id', ids).order('logged_at', { ascending: false }).limit(200)
+            .then(({ data: logs }) => {
+              const seen = {}
+              for (const l of logs || []) {
+                if (!seen[l.exercise_id] && (l.weight || l.reps)) {
+                  seen[l.exercise_id] = { weight: l.weight, reps: l.reps, rir: l.rir, date: l.logged_at }
+                }
+              }
+              setLastLogged(seen)
+            })
+        } else setLastLogged({})
       })
   }, [activeDay, week])
 
@@ -266,6 +282,11 @@ export default function ClientTraining() {
             <strong style={{ fontSize: 15 }}>{ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter}) </span>}{ex.name}</strong>
             {ex.kind !== 'conditioning' && <span style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700 }}>{targetText(ex)}</span>}
           </div>
+          {ex.kind !== 'conditioning' && lastLogged[ex.id] && (
+            <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
+              Last time: {lastLogged[ex.id].weight ? `${lastLogged[ex.id].weight} × ` : ''}{lastLogged[ex.id].reps}{lastLogged[ex.id].rir ? ` @ ${lastLogged[ex.id].rir}` : ''}
+            </p>
+          )}
           {ex.kind === 'conditioning' && ex.description && (
             <p style={{ fontSize: 13.5, margin: '4px 0 8px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{ex.description}</p>
           )}

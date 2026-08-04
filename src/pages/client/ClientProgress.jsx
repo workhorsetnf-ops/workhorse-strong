@@ -13,6 +13,9 @@ export default function ClientProgress() {
   const [steps, setSteps] = useState('')
   const [saved, setSaved] = useState(false)
   const [range, setRange] = useState(30)
+  const [measurements, setMeasurements] = useState([])
+  const [mform, setMform] = useState({ waist: '', chest: '', arms: '', thighs: '', hips: '', neck: '' })
+  const [msaved, setMsaved] = useState(false)
 
   async function load() {
     const since = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10)
@@ -22,7 +25,26 @@ export default function ClientProgress() {
     const todays = (data || []).find(l => l.log_date === todayStr())
     if (todays) { setWeight(todays.weight ?? ''); setSteps(todays.steps ?? '') }
   }
-  useEffect(() => { if (profile) load() }, [profile])
+  async function loadMeasurements() {
+    const since = new Date(Date.now() - 180 * 864e5).toISOString().slice(0, 10)
+    const { data } = await supabase.from('body_measurements').select('*')
+      .eq('client_id', profile.id).gte('log_date', since).order('log_date')
+    setMeasurements(data || [])
+    const latest = (data || [])[data.length - 1]
+    if (latest && latest.log_date === todayStr()) {
+      setMform({ waist: latest.waist ?? '', chest: latest.chest ?? '', arms: latest.arms ?? '', thighs: latest.thighs ?? '', hips: latest.hips ?? '', neck: latest.neck ?? '' })
+    }
+  }
+  useEffect(() => { if (profile) { load(); loadMeasurements() } }, [profile])
+
+  async function saveMeasurements() {
+    if (!Object.values(mform).some(v => v !== '')) return
+    const row = { client_id: profile.id, log_date: todayStr() }
+    for (const k of ['waist','chest','arms','thighs','hips','neck']) row[k] = mform[k] === '' ? null : +mform[k]
+    await supabase.from('body_measurements').upsert(row, { onConflict: 'client_id,log_date' })
+    setMsaved(true); setTimeout(() => setMsaved(false), 2000)
+    loadMeasurements()
+  }
 
   async function save() {
     if (!weight && !steps) return
@@ -80,6 +102,30 @@ export default function ClientProgress() {
         {avgSteps && <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Average: {avgSteps.toLocaleString()}/day</div>}
         <Sparkline data={stepsData} color="#4A6FA5" unit=" steps" />
       </div>
+
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="eyebrow" style={{ fontSize: 10 }}>Body measurements (in)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+          {[['waist','Waist'],['chest','Chest'],['arms','Arms'],['thighs','Thighs'],['hips','Hips'],['neck','Neck']].map(([k,label]) => (
+            <div key={k}>
+              <label className="muted" style={{ fontSize: 11.5 }}>{label}</label>
+              <input inputMode="decimal" value={mform[k]} onChange={e => setMform({ ...mform, [k]: e.target.value })} />
+            </div>
+          ))}
+        </div>
+        <button className="btn" onClick={saveMeasurements}>{msaved ? 'Saved ✓' : 'Save measurements'}</button>
+      </div>
+
+      {measurements.length >= 2 && ['waist','chest','arms'].map(k => {
+        const data = measurements.filter(m => m[k] !== null).map(m => ({ label: fmt(m.log_date), value: m[k] }))
+        if (data.length < 2) return null
+        return (
+          <div className="card" key={k}>
+            <div className="eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>{k[0].toUpperCase() + k.slice(1)} trend</div>
+            <Sparkline data={data} color="#3E8E7E" unit={'"'} />
+          </div>
+        )
+      })}
     </div>
   )
 }
