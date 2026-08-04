@@ -144,6 +144,12 @@ export default function CoachPrograms() {
     await supabase.from('program_days').update({ day_number: +dayNumber }).eq('id', dayId)
     loadDays(blockId)
   }
+  async function renameWorkout(blockId, day) {
+    const label = prompt('Workout name:', day.day_label)
+    if (!label || !label.trim()) return
+    await supabase.from('program_days').update({ day_label: label.trim() }).eq('id', day.id)
+    loadDays(blockId)
+  }
   async function deleteWorkout(blockId, dayId) {
     if (!confirm('Delete this workout and its exercises?')) return
     await supabase.from('program_days').delete().eq('id', dayId)
@@ -476,7 +482,8 @@ export default function CoachPrograms() {
                                 return (
                                   <div key={d.id} style={{ background: 'var(--coal)', border: '1px solid var(--line)', borderRadius: 8, padding: 10 }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
-                                      <strong style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--orange-hot)' }}>{d.day_label}</strong>
+                                      <strong onClick={() => renameWorkout(activeBlock.id, d)} title="Click to rename"
+                                        style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--orange-hot)', cursor: 'pointer' }}>{d.day_label} <span style={{ fontSize: 10, opacity: 0.6 }}>✎</span></strong>
                                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                                         <select title="Move to day" style={{ width: 'auto', padding: '2px 6px', fontSize: 11 }} value={d.day_number} onChange={e => moveWorkout(activeBlock.id, d.id, e.target.value)}>
                                           {[1,2,3,4,5,6,7].map(n => <option key={n} value={n}>D{n}</option>)}
