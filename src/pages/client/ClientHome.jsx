@@ -79,7 +79,7 @@ export default function ClientHome() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
         <Link to="/app/roadmap" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ textAlign: 'center', padding: '16px 10px' }}>
             <div style={{ fontSize: 20, marginBottom: 4 }}>🗺️</div>
@@ -90,6 +90,12 @@ export default function ClientHome() {
           <div className="card" style={{ textAlign: 'center', padding: '16px 10px' }}>
             <div style={{ fontSize: 20, marginBottom: 4 }}>📄</div>
             <div style={{ fontSize: 12.5, fontWeight: 700 }}>Resources</div>
+          </div>
+        </Link>
+        <Link to="/app/community" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '16px 10px' }}>
+            <div style={{ fontSize: 20, marginBottom: 4 }}>👥</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700 }}>Community</div>
           </div>
         </Link>
       </div>

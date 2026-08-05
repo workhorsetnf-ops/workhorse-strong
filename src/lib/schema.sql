@@ -165,6 +165,8 @@ create table messages (
   sender_id uuid not null references profiles(id) on delete cascade,
   recipient_id uuid not null references profiles(id) on delete cascade,
   body text not null,
+  msg_type text not null default 'text' check (msg_type in ('text','audio')),
+  audio_path text,
   created_at timestamptz default now()
 );
 
@@ -369,3 +371,38 @@ create table client_phases (
 alter table client_phases enable row level security;
 create policy "coach manages phases" on client_phases for all using (is_coach());
 create policy "client reads own phases" on client_phases for select using (client_id = auth.uid());
+
+-- ===== COMMUNITY =====
+create table community_posts (
+  id uuid primary key default gen_random_uuid(),
+  author_id uuid not null references profiles(id) on delete cascade,
+  body text not null,
+  created_at timestamptz default now()
+);
+create table community_comments (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references community_posts(id) on delete cascade,
+  author_id uuid not null references profiles(id) on delete cascade,
+  body text not null,
+  created_at timestamptz default now()
+);
+create table community_likes (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references community_posts(id) on delete cascade,
+  author_id uuid not null references profiles(id) on delete cascade,
+  unique (post_id, author_id)
+);
+alter table community_posts enable row level security;
+alter table community_comments enable row level security;
+alter table community_likes enable row level security;
+create policy "everyone signed in reads posts" on community_posts for select using (auth.role() = 'authenticated');
+create policy "everyone signed in creates own posts" on community_posts for insert with check (author_id = auth.uid());
+create policy "author or coach deletes posts" on community_posts for delete using (author_id = auth.uid() or is_coach());
+create policy "everyone signed in reads comments" on community_comments for select using (auth.role() = 'authenticated');
+create policy "everyone signed in creates own comments" on community_comments for insert with check (author_id = auth.uid());
+create policy "author or coach deletes comments" on community_comments for delete using (author_id = auth.uid() or is_coach());
+create policy "everyone signed in reads likes" on community_likes for select using (auth.role() = 'authenticated');
+create policy "everyone signed in manages own likes" on community_likes for insert with check (author_id = auth.uid());
+create policy "everyone signed in removes own likes" on community_likes for delete using (author_id = auth.uid());
+alter publication supabase_realtime add table community_posts;
+alter publication supabase_realtime add table community_comments;

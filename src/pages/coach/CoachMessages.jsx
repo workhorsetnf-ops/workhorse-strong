@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import VoiceRecorder from '../../lib/VoiceRecorder'
 
 export default function CoachMessages() {
   const { profile } = useAuth()
@@ -8,6 +9,7 @@ export default function CoachMessages() {
   const [active, setActive] = useState(null)
   const [msgs, setMsgs] = useState([])
   const [text, setText] = useState('')
+  const [audioUrls, setAudioUrls] = useState({})
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -43,6 +45,17 @@ export default function CoachMessages() {
     await supabase.from('messages').insert({ sender_id: profile.id, recipient_id: active.id, body })
   }
 
+  async function sendVoice(path) {
+    if (!active) return
+    await supabase.from('messages').insert({ sender_id: profile.id, recipient_id: active.id, body: '🎙 Voice note', msg_type: 'audio', audio_path: path })
+  }
+
+  async function playAudio(m) {
+    if (audioUrls[m.id]) return
+    const { data } = await supabase.storage.from('voice-notes').createSignedUrl(m.audio_path, 3600)
+    if (data?.signedUrl) setAudioUrls(u => ({ ...u, [m.id]: data.signedUrl }))
+  }
+
   return (
     <div>
       <div className="eyebrow">Roster</div>
@@ -63,12 +76,19 @@ export default function CoachMessages() {
             : <>
                 <div className="chat-scroll" style={{ flex: 1, overflowY: 'auto', paddingBottom: 10 }}>
                   {msgs.map(m => (
-                    <div key={m.id} className={`bubble ${m.sender_id === profile.id ? 'me' : 'them'}`}>{m.body}</div>
+                    <div key={m.id} className={`bubble ${m.sender_id === profile.id ? 'me' : 'them'}`}>
+                      {m.msg_type === 'audio' ? (
+                        audioUrls[m.id]
+                          ? <audio src={audioUrls[m.id]} controls style={{ height: 34, maxWidth: 220 }} />
+                          : <button onClick={() => playAudio(m)} style={{ background: 'none', color: 'inherit', fontWeight: 700, fontSize: 13 }}>▶ Voice note</button>
+                      ) : m.body}
+                    </div>
                   ))}
                   <div ref={bottomRef} />
                 </div>
                 <div style={{ display: 'flex', gap: 8, paddingTop: 8 }}>
                   <input placeholder={`Message ${active.full_name}…`} value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} />
+                  <VoiceRecorder userId={profile.id} onSent={sendVoice} />
                   <button className="btn" onClick={send}>Send</button>
                 </div>
               </>}
