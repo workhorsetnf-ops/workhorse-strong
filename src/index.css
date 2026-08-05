@@ -24,9 +24,16 @@ body {
 }
 
 h1, h2, h3, .display {
-  font-weight: 900;
+  font-family: 'Bebas Neue', 'Montserrat', system-ui, sans-serif;
+  font-weight: 400;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
+}
+
+h1 { font-size: 2.1em; line-height: 1.02; }
+
+@media (max-width: 480px) {
+  h1 { font-size: 1.9em; }
 }
 
 button {
@@ -66,9 +73,11 @@ a { color: var(--orange-hot); text-decoration: none; }
   font-size: 14px;
   padding: 14px 22px;
   border-radius: 6px;
-  transition: background 0.15s;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 4px 14px rgba(191,87,0,0.18);
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
 }
-.btn:hover { background: var(--orange-hot); }
+.btn:hover { background: var(--orange-hot); box-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 6px 18px rgba(224,106,0,0.3); transform: translateY(-1px); }
+.btn:active { transform: translateY(0); box-shadow: 0 1px 0 rgba(0,0,0,0.35); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn-ghost {
   background: transparent;
@@ -86,14 +95,16 @@ a { color: var(--orange-hot); text-decoration: none; }
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 18px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 6px 18px rgba(0,0,0,0.25);
 }
 
 .eyebrow {
+  font-family: 'Bebas Neue', 'Montserrat', system-ui, sans-serif;
   color: var(--orange-hot);
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 400;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.2em;
 }
 
 .muted { color: var(--muted); }
@@ -190,12 +201,25 @@ a { color: var(--orange-hot); text-decoration: none; }
 }
 
 .wordmark {
-  font-weight: 900;
+  font-family: 'Bebas Neue', 'Montserrat', system-ui, sans-serif;
+  font-weight: 400;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 18px;
+  letter-spacing: 0.05em;
+  font-size: 22px;
 }
 .wordmark span { color: var(--orange-hot); }
+
+.glow-behind {
+  position: relative;
+}
+.glow-behind::before {
+  content: '';
+  position: absolute;
+  inset: -40px;
+  background: radial-gradient(circle, rgba(224,106,0,0.28) 0%, rgba(191,87,0,0.08) 45%, transparent 72%);
+  z-index: -1;
+  pointer-events: none;
+}
 
 /* chat */
 .chat-scroll { display: flex; flex-direction: column; gap: 8px; }
