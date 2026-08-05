@@ -42,7 +42,8 @@ export default function CoachHub() {
   }
 
   async function save() {
-    await supabase.from('client_hub').upsert({ id: 1, title: title.trim() || 'Client Hub', subtitle: subtitle.trim(), content_md: content, updated_at: new Date().toISOString() })
+    const { error } = await supabase.from('client_hub').upsert({ id: 1, title: title.trim() || 'Client Hub', subtitle: subtitle.trim(), content_md: content, updated_at: new Date().toISOString() })
+    if (error) { alert('Could not save: ' + error.message); return }
     setSaved(true); setTimeout(() => setSaved(false), 2000)
   }
 
