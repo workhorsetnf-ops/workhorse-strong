@@ -317,6 +317,7 @@ create table daily_logs (
   log_date date not null default current_date,
   weight numeric,
   steps int,
+  readiness int check (readiness between 1 and 5),
   created_at timestamptz default now(),
   unique (client_id, log_date)
 );
@@ -455,3 +456,16 @@ create policy "client writes own exercise comments" on exercise_comments for ins
     where ex.id = exercise_comments.exercise_id and a.client_id = auth.uid()
   )
 );
+
+-- ===== EXERCISE FLAGS (injury/pain) =====
+create table exercise_flags (
+  id uuid primary key default gen_random_uuid(),
+  exercise_id uuid not null references program_exercises(id) on delete cascade,
+  client_id uuid not null references profiles(id) on delete cascade,
+  note text default '',
+  resolved boolean not null default false,
+  created_at timestamptz default now()
+);
+alter table exercise_flags enable row level security;
+create policy "coach manages flags" on exercise_flags for all using (is_coach());
+create policy "client manages own flags" on exercise_flags for all using (client_id = auth.uid());

@@ -27,10 +27,11 @@ export default function CoachHome() {
   const [openTouchpoint, setOpenTouchpoint] = useState(null)
   const [ratings, setRatings] = useState({})
   const [healthPoints, setHealthPoints] = useState({})
+  const [flags, setFlags] = useState([])
 
   async function load() {
     setLoading(true)
-    const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }, { data: ratingsData }] = await Promise.all([
+    const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }, { data: ratingsData }, { data: flagsData }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, protein_g, calories, created_at').eq('role', 'client').order('full_name'),
       supabase.from('program_assignments').select('*'),
       supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text').order('logged_at', { ascending: false }).limit(600),
@@ -39,10 +40,12 @@ export default function CoachHome() {
       supabase.from('messages').select('sender_id, recipient_id, created_at'),
       supabase.from('meal_logs').select('client_id, protein_g, logged_on').order('logged_on', { ascending: false }).limit(600),
       supabase.from('client_ratings').select('*'),
+      supabase.from('exercise_flags').select('*, program_exercises(name)').eq('resolved', false).order('created_at', { ascending: false }),
     ])
     setClients(cl || [])
     const ratingsMap = Object.fromEntries((ratingsData || []).map(r => [r.client_id, r]))
     setRatings(ratingsMap)
+    setFlags(flagsData || [])
 
     const weekStart = startOfWeek()
     const contactedSet = new Set()
@@ -251,6 +254,25 @@ export default function CoachHome() {
         <button className={filter === 'lifestyle' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('lifestyle')}>Lifestyle due ({counts.lifestyle})</button>
         <button className={filter === 'checkin' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('checkin')}>Check-in due ({counts.checkin})</button>
       </div>
+
+      {view === 'attention' && flags.length > 0 && (
+        <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--red)' }}>
+          <strong style={{ fontSize: 14.5, color: 'var(--red)' }}>⚠️ Watch List ({flags.length})</strong>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+            {flags.map(f => (
+              <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, fontSize: 13 }}>
+                <div>
+                  <strong>{clients.find(c => c.id === f.client_id)?.full_name || 'Client'}</strong>
+                  <span className="muted"> — {f.program_exercises?.name || 'exercise'}: </span>
+                  {f.note}
+                </div>
+                <button className="btn-ghost" style={{ padding: '3px 9px', fontSize: 11, flexShrink: 0 }}
+                  onClick={async () => { await supabase.from('exercise_flags').update({ resolved: true }).eq('id', f.id); load() }}>Resolve</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 24 }}>
         {filtered.length === 0 && <div style={{ padding: 16 }} className="muted">Nobody flagged right now — roster's on track.</div>}

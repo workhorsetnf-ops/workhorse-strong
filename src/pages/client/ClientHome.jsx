@@ -9,6 +9,8 @@ export default function ClientHome() {
   const [weekWorkouts, setWeekWorkouts] = useState(0)
   const [checkinDue, setCheckinDue] = useState(null) // { days, overdue }
   const [streak, setStreak] = useState(0)
+  const [readiness, setReadiness] = useState(null)
+  const [readinessSaved, setReadinessSaved] = useState(false)
 
   useEffect(() => {
     if (!profile) return
@@ -39,6 +41,8 @@ export default function ClientHome() {
         }
         setStreak(count)
       })
+    supabase.from('daily_logs').select('readiness').eq('client_id', profile.id).eq('log_date', new Date().toISOString().slice(0,10)).maybeSingle()
+      .then(({ data }) => setReadiness(data?.readiness ?? null))
     supabase.from('checkins').select('submitted_at').eq('client_id', profile.id)
       .order('submitted_at', { ascending: false }).limit(1).maybeSingle()
       .then(({ data }) => {
@@ -47,6 +51,12 @@ export default function ClientHome() {
         setCheckinDue({ days, overdue: days >= 8 })
       })
   }, [profile])
+
+  async function saveReadiness(val) {
+    setReadiness(val)
+    await supabase.from('daily_logs').upsert({ client_id: profile.id, log_date: new Date().toISOString().slice(0,10), readiness: val }, { onConflict: 'client_id,log_date' })
+    setReadinessSaved(true); setTimeout(() => setReadinessSaved(false), 1500)
+  }
 
   const cals = todayMacros.p * 4 + todayMacros.c * 4 + todayMacros.f * 9
 
@@ -93,7 +103,30 @@ export default function ClientHome() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+      <div className="card">
+        <div className="eyebrow" style={{ fontSize: 10, marginBottom: 8 }}>How are you feeling today?</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[1,2,3,4,5].map(v => (
+            <button key={v} onClick={() => saveReadiness(v)}
+              style={{
+                flex: 1, padding: '10px 0', borderRadius: 8, fontSize: 15, fontWeight: 800,
+                background: readiness === v ? 'var(--orange)' : 'var(--steel)',
+                color: readiness === v ? '#fff' : 'var(--muted)',
+              }}>{v}</button>
+          ))}
+        </div>
+        <div className="muted" style={{ fontSize: 10.5, marginTop: 6, display: 'flex', justifyContent: 'space-between' }}>
+          <span>Rough</span><span>{readinessSaved ? 'Saved ✓' : 'Great'}</span>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+        <Link to="/app/recap" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '16px 8px' }}>
+            <div style={{ fontSize: 20, marginBottom: 4 }}>📊</div>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>My Month</div>
+          </div>
+        </Link>
         <Link to="/app/roadmap" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ textAlign: 'center', padding: '16px 10px' }}>
             <div style={{ fontSize: 20, marginBottom: 4 }}>🗺️</div>

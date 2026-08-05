@@ -26,6 +26,16 @@ function chunkGroups(list) {
   return out.map(g => ({ ...g, grouped: g.grouped && g.items.length > 1 }))
 }
 
+const BODYWEIGHT_SUBS = [
+  ['Squat / leg press', 'Bodyweight squats, Bulgarian split squats, walking lunges'],
+  ['Bench / chest press', 'Push-ups (feet elevated for more load), decline push-ups'],
+  ['Row / lat pulldown', 'Inverted rows (table/bar), towel rows, doorway rows'],
+  ['Overhead press', 'Pike push-ups, handstand hold/push-up progressions'],
+  ['Deadlift / hinge', 'Single-leg RDLs (bodyweight), glute bridges, hip thrusts'],
+  ['Core work', 'Planks, hollow holds, mountain climbers, leg raises'],
+  ['Conditioning', 'Bodyweight circuits, burpees, jump rope if available, hill sprints'],
+]
+
 export default function ClientTraining() {
   const { profile } = useAuth()
   const [program, setProgram] = useState(null)
@@ -46,6 +56,10 @@ export default function ClientTraining() {
   const [comments, setComments] = useState({})
   const [commentText, setCommentText] = useState('')
   const [commentCounts, setCommentCounts] = useState({})
+  const [flagging, setFlagging] = useState(null)
+  const [flagNote, setFlagNote] = useState('')
+  const [flaggedIds, setFlaggedIds] = useState(new Set())
+  const [awayMode, setAwayMode] = useState(false)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -132,6 +146,10 @@ export default function ClientTraining() {
               setCommentCounts(counts)
             })
         } else setCommentCounts({})
+        if (ids.length) {
+          supabase.from('exercise_flags').select('exercise_id').eq('client_id', profile.id).eq('resolved', false).in('exercise_id', ids)
+            .then(({ data }) => setFlaggedIds(new Set((data || []).map(f => f.exercise_id))))
+        }
       })
   }, [activeDay, week])
 
@@ -150,6 +168,13 @@ export default function ClientTraining() {
     const { data } = await supabase.from('exercise_comments').select('*').eq('exercise_id', exId).order('created_at')
     setComments(c => ({ ...c, [exId]: data || [] }))
     setCommentCounts(c => ({ ...c, [exId]: (c[exId] || 0) + 1 }))
+  }
+
+  async function submitFlag(exId) {
+    if (!flagNote.trim()) return
+    await supabase.from('exercise_flags').insert({ exercise_id: exId, client_id: profile.id, note: flagNote.trim() })
+    setFlagNote(''); setFlagging(null)
+    setFlaggedIds(f => new Set([...f, exId]))
   }
 
   function updateSet(exId, i, field, value) {
@@ -194,6 +219,8 @@ export default function ClientTraining() {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <button className={calMode ? 'btn' : 'btn-ghost'} style={{ padding: '10px 14px', fontSize: 13 }}
           onClick={() => setCalMode(!calMode)}>📅</button>
+        <button className={awayMode ? 'btn' : 'btn-ghost'} style={{ padding: '10px 14px', fontSize: 13 }}
+          onClick={() => setAwayMode(!awayMode)} title="Traveling / no equipment">✈️</button>
         {!calMode && days.filter(d => (d.track || 'exercise') === 'exercise').map(d => (
           <button key={d.id} className={activeDay?.id === d.id ? 'btn' : 'btn-ghost'}
             style={{ padding: '10px 16px', fontSize: 13 }}
@@ -206,7 +233,23 @@ export default function ClientTraining() {
         ))}
       </div>
 
-      {calMode && (() => {
+      {awayMode && (
+        <div className="card" style={{ borderLeft: '3px solid var(--orange)' }}>
+          <div className="eyebrow" style={{ fontSize: 10, marginBottom: 4 }}>Away from the gym</div>
+          <h2 style={{ fontSize: 17, marginBottom: 8 }}>Bodyweight substitutes</h2>
+          <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>No equipment where you're at? Sub in the closest movement pattern below, keep the same rep/RIR intent from your program, and log it as usual when you're back.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {BODYWEIGHT_SUBS.map(([label, subs]) => (
+              <div key={label}>
+                <strong style={{ fontSize: 13 }}>{label}</strong>
+                <p className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>{subs}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!awayMode && calMode && (() => {
         const { y, m } = calMonth
         const first = new Date(y, m, 1)
         const offset = (first.getDay() + 6) % 7 // Monday-first
@@ -294,7 +337,7 @@ export default function ClientTraining() {
         )
       })()}
 
-      {!calMode && activeDay && (activeDay.notes || activeDay.video_note || activeDay.warmup) && (
+      {!calMode && !awayMode && activeDay && (activeDay.notes || activeDay.video_note || activeDay.warmup) && (
         <div className="card">
           {activeDay.notes && <p style={{ fontSize: 13.5, lineHeight: 1.5 }}>{activeDay.notes}</p>}
           {activeDay.video_note && (loomEmbed(activeDay.video_note)
@@ -312,13 +355,16 @@ export default function ClientTraining() {
         </div>
       )}
 
-      {!calMode && activeDay && chunkGroups(exercises).map((g, gi) => {
+      {!calMode && !awayMode && activeDay && chunkGroups(exercises).map((g, gi) => {
         const color = GROUP_COLORS[((g.prefix.charCodeAt(0) || 65) - 65) % GROUP_COLORS.length]
         const inner = g.items.map(ex => (
         <div className="card" key={ex.id} style={g.grouped ? { border: 'none', borderRadius: 8 } : undefined}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
             <strong style={{ fontSize: 15 }}>{ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter}) </span>}{ex.name}</strong>
-            <button onClick={() => openExerciseComments(ex.id)} className="btn-ghost" style={{ padding: '3px 9px', fontSize: 11, marginLeft: 'auto' }}>
+            <button onClick={() => setFlagging(flagging === ex.id ? null : ex.id)} className="btn-ghost"
+              style={{ padding: '3px 9px', fontSize: 11, marginLeft: 'auto', color: flaggedIds.has(ex.id) ? 'var(--red)' : undefined, borderColor: flaggedIds.has(ex.id) ? 'var(--red)' : undefined }}
+              title="Flag pain or discomfort">⚠️</button>
+            <button onClick={() => openExerciseComments(ex.id)} className="btn-ghost" style={{ padding: '3px 9px', fontSize: 11 }}>
               💬 {commentCounts[ex.id] > 0 ? commentCounts[ex.id] : ''}
             </button>
             {ex.kind !== 'conditioning' && <span style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700 }}>{targetText(ex)}</span>}
@@ -327,6 +373,18 @@ export default function ClientTraining() {
             <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
               Last time: {lastLogged[ex.id].weight ? `${lastLogged[ex.id].weight} × ` : ''}{lastLogged[ex.id].reps}{lastLogged[ex.id].rir ? ` @ ${lastLogged[ex.id].rir}` : ''}
             </p>
+          )}
+          {flaggedIds.has(ex.id) && flagging !== ex.id && (
+            <p style={{ fontSize: 11.5, color: 'var(--red)', margin: '2px 0 0' }}>⚠️ Flagged for your coach — they'll follow up.</p>
+          )}
+          {flagging === ex.id && (
+            <div style={{ background: 'rgba(214,69,69,0.12)', border: '1px solid var(--red)', borderRadius: 8, padding: 10, margin: '6px 0' }}>
+              <span className="eyebrow" style={{ fontSize: 10, color: 'var(--red)' }}>What's bothering you?</span>
+              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <input placeholder="e.g. sharp pinch in left shoulder on the way up" value={flagNote} onChange={e => setFlagNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitFlag(ex.id)} style={{ padding: '6px 8px', fontSize: 12.5 }} />
+                <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12, borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => submitFlag(ex.id)}>Flag</button>
+              </div>
+            </div>
           )}
           {openComments === ex.id && (
             <div style={{ background: 'var(--steel)', borderRadius: 8, padding: 10, margin: '6px 0' }}>
@@ -419,7 +477,7 @@ export default function ClientTraining() {
         ) : inner
       })}
 
-      {!calMode && activeDay && activeDay.cooldown && (
+      {!calMode && !awayMode && activeDay && activeDay.cooldown && (
         <div className="card" style={{ borderLeft: '3px solid var(--orange)' }}>
           <span className="eyebrow" style={{ fontSize: 10 }}>Cooldown</span>
           <p style={{ fontSize: 13.5, marginTop: 3, lineHeight: 1.5 }}>
@@ -429,7 +487,7 @@ export default function ClientTraining() {
         </div>
       )}
 
-      {!calMode && activeDay && exercises.length > 0 && (
+      {!calMode && !awayMode && activeDay && exercises.length > 0 && (
         <button className="btn" onClick={saveWorkout}>{saved ? 'Workout saved ✓' : 'Save workout'}</button>
       )}
     </div>

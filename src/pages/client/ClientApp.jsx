@@ -10,6 +10,7 @@ import ClientLeaderboard from './ClientLeaderboard'
 import ClientResources from './ClientResources'
 import ClientRoadmap from './ClientRoadmap'
 import ClientCommunity from '../ClientCommunity'
+import ClientRecap from './ClientRecap'
 
 export default function ClientApp() {
   return (
@@ -27,6 +28,7 @@ export default function ClientApp() {
           <Route path="resources" element={<ClientResources />} />
           <Route path="roadmap" element={<ClientRoadmap />} />
           <Route path="community" element={<ClientCommunity />} />
+          <Route path="recap" element={<ClientRecap />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>
