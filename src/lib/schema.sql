@@ -418,3 +418,40 @@ create table client_ratings (
 );
 alter table client_ratings enable row level security;
 create policy "coach manages ratings" on client_ratings for all using (is_coach());
+
+-- ===== MESSAGE TEMPLATES =====
+create table message_templates (
+  id uuid primary key default gen_random_uuid(),
+  label text not null,
+  body text not null,
+  created_at timestamptz default now()
+);
+alter table message_templates enable row level security;
+create policy "coach manages templates" on message_templates for all using (is_coach());
+
+-- ===== EXERCISE COMMENT HISTORY =====
+create table exercise_comments (
+  id uuid primary key default gen_random_uuid(),
+  exercise_id uuid not null references program_exercises(id) on delete cascade,
+  author_id uuid not null references profiles(id) on delete cascade,
+  body text not null,
+  created_at timestamptz default now()
+);
+alter table exercise_comments enable row level security;
+create policy "coach manages exercise comments" on exercise_comments for all using (is_coach());
+create policy "client reads own exercise comments" on exercise_comments for select using (
+  exists (
+    select 1 from program_exercises ex
+    join program_days d on d.id = ex.day_id
+    join program_assignments a on a.program_id = d.program_id
+    where ex.id = exercise_comments.exercise_id and a.client_id = auth.uid()
+  )
+);
+create policy "client writes own exercise comments" on exercise_comments for insert with check (
+  author_id = auth.uid() and exists (
+    select 1 from program_exercises ex
+    join program_days d on d.id = ex.day_id
+    join program_assignments a on a.program_id = d.program_id
+    where ex.id = exercise_comments.exercise_id and a.client_id = auth.uid()
+  )
+);

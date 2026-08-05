@@ -50,6 +50,9 @@ export default function CoachPrograms() {
   const [selected, setSelected] = useState({})
   const [drag, setDrag] = useState({})
   const [dragOver, setDragOver] = useState({})
+  const [exComments, setExComments] = useState({})
+  const [exCommentText, setExCommentText] = useState('')
+  const [coachUserId, setCoachUserId] = useState(null)
 
   async function load() {
     const [{ data: p }, { data: c }, { data: a }] = await Promise.all([
@@ -61,6 +64,7 @@ export default function CoachPrograms() {
   }
   useEffect(() => {
     load()
+    supabase.auth.getUser().then(({ data }) => setCoachUserId(data?.user?.id || null))
     supabase.from('exercise_library').select('*').order('name').then(({ data }) => setLibrary(data || []))
     supabase.from('conditioning_library').select('*').order('name').then(({ data }) => setCondLib(data || []))
     supabase.from('lifestyle_library').select('*').order('name').then(({ data }) => setLifeLib(data || []))
@@ -190,9 +194,22 @@ export default function CoachPrograms() {
     loadDay(dayId)
   }
 
+  async function loadExComments(exId) {
+    const { data } = await supabase.from('exercise_comments').select('*').eq('exercise_id', exId).order('created_at')
+    setExComments(c => ({ ...c, [exId]: data || [] }))
+  }
+  async function sendExComment(exId) {
+    if (!exCommentText.trim() || !coachUserId) return
+    const body = exCommentText.trim()
+    setExCommentText('')
+    await supabase.from('exercise_comments').insert({ exercise_id: exId, author_id: coachUserId, body })
+    loadExComments(exId)
+  }
+
   function startEdit(block, ex) {
     if (expanded === ex.id) { setExpanded(null); return }
     setExpanded(ex.id)
+    loadExComments(ex.id)
     setEdit({
       letter: ex.letter || '', name: ex.name, video_url: ex.video_url || '', rest: ex.rest || '',
       metric: ex.metric || 'reps', progression_type: ex.progression_type || 'rir',
@@ -396,6 +413,21 @@ export default function CoachPrograms() {
                 </table>
               </div>
             )}
+            <div>
+              <span className="eyebrow" style={{ fontSize: 10 }}>Notes on this exercise (visible to client)</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 140, overflowY: 'auto', marginTop: 6 }}>
+                {(exComments[ex.id] || []).map(c => (
+                  <div key={c.id} style={{ fontSize: 12 }}>
+                    <strong>{c.author_id === coachUserId ? 'You' : 'Client'}: </strong>{c.body}
+                  </div>
+                ))}
+                {(exComments[ex.id] || []).length === 0 && <p className="muted" style={{ fontSize: 11.5 }}>No notes yet.</p>}
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <input placeholder="Cue, correction, or note for next time…" value={exCommentText} onChange={e => setExCommentText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendExComment(ex.id)} style={{ padding: '6px 8px', fontSize: 12 }} />
+                <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => sendExComment(ex.id)}>Add</button>
+              </div>
+            </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button className="btn" style={{ padding: '7px 14px', fontSize: 12 }} onClick={() => saveEdit(d.id, ex.id)}>Update</button>
               <button className="btn-ghost" style={{ padding: '7px 12px', fontSize: 12 }} onClick={() => setExpanded(null)}>Close</button>

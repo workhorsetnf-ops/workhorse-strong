@@ -42,6 +42,10 @@ export default function ClientTraining() {
   const [log, setLog] = useState({})
   const [results, setResults] = useState({})
   const [lastLogged, setLastLogged] = useState({})   // exerciseId -> {weight, reps, date}
+  const [openComments, setOpenComments] = useState(null)
+  const [comments, setComments] = useState({})
+  const [commentText, setCommentText] = useState('')
+  const [commentCounts, setCommentCounts] = useState({})
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -120,8 +124,33 @@ export default function ClientTraining() {
               setLastLogged(seen)
             })
         } else setLastLogged({})
+        if (ids.length) {
+          supabase.from('exercise_comments').select('exercise_id').in('exercise_id', ids)
+            .then(({ data }) => {
+              const counts = {}
+              for (const c of data || []) counts[c.exercise_id] = (counts[c.exercise_id] || 0) + 1
+              setCommentCounts(counts)
+            })
+        } else setCommentCounts({})
       })
   }, [activeDay, week])
+
+  async function openExerciseComments(exId) {
+    if (openComments === exId) { setOpenComments(null); return }
+    setOpenComments(exId)
+    const { data } = await supabase.from('exercise_comments').select('*').eq('exercise_id', exId).order('created_at')
+    setComments(c => ({ ...c, [exId]: data || [] }))
+  }
+
+  async function sendExerciseComment(exId) {
+    if (!commentText.trim()) return
+    const body = commentText.trim()
+    setCommentText('')
+    await supabase.from('exercise_comments').insert({ exercise_id: exId, author_id: profile.id, body })
+    const { data } = await supabase.from('exercise_comments').select('*').eq('exercise_id', exId).order('created_at')
+    setComments(c => ({ ...c, [exId]: data || [] }))
+    setCommentCounts(c => ({ ...c, [exId]: (c[exId] || 0) + 1 }))
+  }
 
   function updateSet(exId, i, field, value) {
     setLog(l => ({ ...l, [exId]: l[exId].map((s, j) => j === i ? { ...s, [field]: value } : s) }))
@@ -289,12 +318,32 @@ export default function ClientTraining() {
         <div className="card" key={ex.id} style={g.grouped ? { border: 'none', borderRadius: 8 } : undefined}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
             <strong style={{ fontSize: 15 }}>{ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter}) </span>}{ex.name}</strong>
+            <button onClick={() => openExerciseComments(ex.id)} className="btn-ghost" style={{ padding: '3px 9px', fontSize: 11, marginLeft: 'auto' }}>
+              💬 {commentCounts[ex.id] > 0 ? commentCounts[ex.id] : ''}
+            </button>
             {ex.kind !== 'conditioning' && <span style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700 }}>{targetText(ex)}</span>}
           </div>
           {ex.kind !== 'conditioning' && lastLogged[ex.id] && (
             <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
               Last time: {lastLogged[ex.id].weight ? `${lastLogged[ex.id].weight} × ` : ''}{lastLogged[ex.id].reps}{lastLogged[ex.id].rir ? ` @ ${lastLogged[ex.id].rir}` : ''}
             </p>
+          )}
+          {openComments === ex.id && (
+            <div style={{ background: 'var(--steel)', borderRadius: 8, padding: 10, margin: '6px 0' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
+                {(comments[ex.id] || []).map(c => (
+                  <div key={c.id} style={{ fontSize: 12.5 }}>
+                    <strong>{c.author_id === profile.id ? 'You' : 'Coach'}: </strong>{c.body}
+                    <span className="muted" style={{ fontSize: 10.5, marginLeft: 6 }}>{new Date(c.created_at).toLocaleDateString()}</span>
+                  </div>
+                ))}
+                {(comments[ex.id] || []).length === 0 && <p className="muted" style={{ fontSize: 12 }}>No notes on this exercise yet.</p>}
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                <input placeholder="Add a note or question…" value={commentText} onChange={e => setCommentText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendExerciseComment(ex.id)} style={{ padding: '6px 8px', fontSize: 12.5 }} />
+                <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => sendExerciseComment(ex.id)}>Send</button>
+              </div>
+            </div>
           )}
           {ex.kind === 'conditioning' && ex.description && (
             <p style={{ fontSize: 13.5, margin: '4px 0 8px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{ex.description}</p>
