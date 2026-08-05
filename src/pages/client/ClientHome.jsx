@@ -11,6 +11,9 @@ export default function ClientHome() {
   const [streak, setStreak] = useState(0)
   const [readiness, setReadiness] = useState(null)
   const [readinessSaved, setReadinessSaved] = useState(false)
+  const [milestonePrompt, setMilestonePrompt] = useState(null)
+  const [testimonialText, setTestimonialText] = useState('')
+  const [testimonialSent, setTestimonialSent] = useState(false)
 
   useEffect(() => {
     if (!profile) return
@@ -50,7 +53,43 @@ export default function ClientHome() {
         const days = Math.floor((Date.now() - new Date(data.submitted_at).getTime()) / 864e5)
         setCheckinDue({ days, overdue: days >= 8 })
       })
+    checkMilestones()
   }, [profile])
+
+  async function checkMilestones() {
+    const [{ data: daily }, { data: checkins }, { data: shown }] = await Promise.all([
+      supabase.from('daily_logs').select('weight, log_date').eq('client_id', profile.id).order('log_date'),
+      supabase.from('checkins').select('id').eq('client_id', profile.id),
+      supabase.from('milestone_prompts_shown').select('milestone_key').eq('client_id', profile.id),
+    ])
+    const shownKeys = new Set((shown || []).map(s => s.milestone_key))
+    const weighed = (daily || []).filter(d => d.weight)
+    let candidate = null
+    if (weighed.length >= 2) {
+      const change = Math.abs(weighed[weighed.length - 1].weight - weighed[0].weight)
+      if (change >= 10 && !shownKeys.has('weight-10')) candidate = { key: 'weight-10', label: `${Math.round(change)} lbs of progress` }
+    }
+    const checkinCount = (checkins || []).length
+    if (!candidate) {
+      for (const n of [12, 8, 4]) {
+        if (checkinCount >= n && !shownKeys.has(`checkins-${n}`)) { candidate = { key: `checkins-${n}`, label: `${n} check-ins strong` }; break }
+      }
+    }
+    if (candidate) setMilestonePrompt(candidate)
+  }
+
+  async function dismissMilestone() {
+    if (milestonePrompt) await supabase.from('milestone_prompts_shown').insert({ client_id: profile.id, milestone_key: milestonePrompt.key })
+    setMilestonePrompt(null)
+  }
+
+  async function sendTestimonial() {
+    if (!testimonialText.trim() || !milestonePrompt) return
+    await supabase.from('testimonials').insert({ client_id: profile.id, body: testimonialText.trim(), milestone_label: milestonePrompt.label })
+    await supabase.from('milestone_prompts_shown').insert({ client_id: profile.id, milestone_key: milestonePrompt.key })
+    setTestimonialSent(true)
+    setTimeout(() => { setMilestonePrompt(null); setTestimonialSent(false); setTestimonialText('') }, 1800)
+  }
 
   async function saveReadiness(val) {
     setReadiness(val)
@@ -77,6 +116,23 @@ export default function ClientHome() {
         </div>
         <button className="btn-ghost" onClick={signOut}>Sign out</button>
       </header>
+
+      {milestonePrompt && (
+        <div className="card glow-behind" style={{ textAlign: 'center' }}>
+          {!testimonialSent ? (
+            <>
+              <div style={{ fontSize: 26, marginBottom: 4 }}>🎉</div>
+              <strong style={{ fontSize: 15 }}>{milestonePrompt.label}!</strong>
+              <p className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>Mind sharing a quick shoutout? It genuinely helps.</p>
+              <textarea rows="2" placeholder="What's been working for you?" value={testimonialText} onChange={e => setTestimonialText(e.target.value)} style={{ marginTop: 8 }} />
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button className="btn" style={{ flex: 1 }} onClick={sendTestimonial} disabled={!testimonialText.trim()}>Share</button>
+                <button className="btn-ghost" style={{ flex: 1 }} onClick={dismissMilestone}>Not now</button>
+              </div>
+            </>
+          ) : <strong style={{ fontSize: 14, color: 'var(--green)' }}>Thank you! 🙌</strong>}
+        </div>
+      )}
 
       {checkinDue && (checkinDue.days === null || checkinDue.days >= 6) && (
         <Link to="/app/checkin" style={{ display: 'block', textDecoration: 'none' }}>
@@ -120,29 +176,35 @@ export default function ClientHome() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 8 }}>
         <Link to="/app/recap" style={{ textDecoration: 'none' }}>
-          <div className="card" style={{ textAlign: 'center', padding: '16px 8px' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
             <div style={{ fontSize: 20, marginBottom: 4 }}>📊</div>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>My Month</div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>My Month</div>
           </div>
         </Link>
         <Link to="/app/roadmap" style={{ textDecoration: 'none' }}>
-          <div className="card" style={{ textAlign: 'center', padding: '16px 10px' }}>
-            <div style={{ fontSize: 20, marginBottom: 4 }}>🗺️</div>
-            <div style={{ fontSize: 12.5, fontWeight: 700 }}>Your Roadmap</div>
+          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+            <div style={{ fontSize: 18, marginBottom: 4 }}>🗺️</div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Roadmap</div>
           </div>
         </Link>
         <Link to="/app/resources" style={{ textDecoration: 'none' }}>
-          <div className="card" style={{ textAlign: 'center', padding: '16px 10px' }}>
-            <div style={{ fontSize: 20, marginBottom: 4 }}>📄</div>
-            <div style={{ fontSize: 12.5, fontWeight: 700 }}>Resources</div>
+          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+            <div style={{ fontSize: 18, marginBottom: 4 }}>📄</div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Resources</div>
           </div>
         </Link>
         <Link to="/app/community" style={{ textDecoration: 'none' }}>
-          <div className="card" style={{ textAlign: 'center', padding: '16px 10px' }}>
-            <div style={{ fontSize: 20, marginBottom: 4 }}>👥</div>
-            <div style={{ fontSize: 12.5, fontWeight: 700 }}>Community</div>
+          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+            <div style={{ fontSize: 18, marginBottom: 4 }}>👥</div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Community</div>
+          </div>
+        </Link>
+        <Link to="/app/faq" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+            <div style={{ fontSize: 18, marginBottom: 4 }}>❓</div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>FAQ</div>
           </div>
         </Link>
       </div>

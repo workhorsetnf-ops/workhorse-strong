@@ -469,3 +469,41 @@ create table exercise_flags (
 alter table exercise_flags enable row level security;
 create policy "coach manages flags" on exercise_flags for all using (is_coach());
 create policy "client manages own flags" on exercise_flags for all using (client_id = auth.uid());
+
+-- ===== FAQ LIBRARY =====
+create table faq_items (
+  id uuid primary key default gen_random_uuid(),
+  question text not null,
+  answer text not null,
+  category text default '',
+  position int not null default 0,
+  created_at timestamptz default now()
+);
+alter table faq_items enable row level security;
+create policy "coach manages faq" on faq_items for all using (is_coach());
+create policy "clients read faq" on faq_items for select using (
+  exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'client')
+);
+
+-- ===== TESTIMONIALS =====
+create table testimonials (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references profiles(id) on delete cascade,
+  body text not null,
+  milestone_label text default '',
+  created_at timestamptz default now()
+);
+alter table testimonials enable row level security;
+create policy "coach reads testimonials" on testimonials for select using (is_coach());
+create policy "client submits own testimonial" on testimonials for insert with check (client_id = auth.uid());
+create policy "client reads own testimonials" on testimonials for select using (client_id = auth.uid());
+
+create table milestone_prompts_shown (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references profiles(id) on delete cascade,
+  milestone_key text not null,
+  shown_at timestamptz default now(),
+  unique (client_id, milestone_key)
+);
+alter table milestone_prompts_shown enable row level security;
+create policy "client manages own milestone flags" on milestone_prompts_shown for all using (client_id = auth.uid());

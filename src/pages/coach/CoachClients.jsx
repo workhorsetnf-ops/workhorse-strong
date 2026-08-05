@@ -265,6 +265,7 @@ export default function CoachClients() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
+                  <a href={`/coach/print/${c.id}`} target="_blank" rel="noreferrer" className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Print summary</a>
                   <button className="btn-ghost" onClick={() => togglePhotos(c.id)}>
                     {photosFor === c.id ? 'Hide photos' : 'Photos'}
                   </button>

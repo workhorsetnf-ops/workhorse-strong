@@ -11,6 +11,8 @@ import CoachChallenges from './CoachChallenges'
 import CoachResources from './CoachResources'
 import CoachRoadmap from './CoachRoadmap'
 import ClientCommunity from '../ClientCommunity'
+import CoachPrintSummary from './CoachPrintSummary'
+import CoachTestimonials from './CoachTestimonials'
 import CoachCheckins from './CoachCheckins'
 import CoachMessages from './CoachMessages'
 
@@ -36,6 +38,7 @@ export default function CoachDashboard() {
         <NavLink to="/coach/forms">Forms</NavLink>
         <NavLink to="/coach/checkins">Check-ins</NavLink>
         <NavLink to="/coach/messages">Messages</NavLink>
+        <NavLink to="/coach/testimonials">Testimonials</NavLink>
         <div style={{ flex: 1 }} />
         <button className="btn-ghost" onClick={signOut}>Sign out</button>
       </aside>
@@ -52,6 +55,8 @@ export default function CoachDashboard() {
           <Route path="resources" element={<CoachResources />} />
           <Route path="roadmap" element={<CoachRoadmap />} />
           <Route path="community" element={<ClientCommunity isCoach />} />
+          <Route path="print/:clientId" element={<CoachPrintSummary />} />
+          <Route path="testimonials" element={<CoachTestimonials />} />
           <Route path="checkins" element={<CoachCheckins />} />
           <Route path="messages" element={<CoachMessages />} />
           <Route path="*" element={<Navigate to="/coach" replace />} />
