@@ -176,7 +176,13 @@ export default function ClientHome() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        <Link to="/app/calendar" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+            <div style={{ fontSize: 18, marginBottom: 4 }}>📅</div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Calendar</div>
+          </div>
+        </Link>
         <Link to="/app/recap" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
             <div style={{ fontSize: 20, marginBottom: 4 }}>📊</div>
