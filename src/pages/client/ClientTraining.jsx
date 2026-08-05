@@ -221,30 +221,37 @@ export default function ClientTraining() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 4 }}>
               {['M','T','W','T','F','S','S'].map((d, i) => <div key={i} style={{ textAlign: 'center' }}>{d}</div>)}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, gridAutoRows: '64px' }}>
               {cells.map((dayNum, i) => {
                 if (dayNum === null) return <div key={i} />
                 const w = workoutsOn(dayNum)
                 const isToday = today.getTime() === new Date(y, m, dayNum).getTime()
+                const shown = w.slice(0, 2)
+                const extra = w.length - shown.length
                 return (
-                  <div key={i} style={{ background: 'var(--steel)', borderRadius: 5, minHeight: 58, padding: '3px 4px', border: isToday ? '1px solid var(--orange)' : '1px solid transparent' }}>
+                  <div key={i} style={{ background: 'var(--steel)', borderRadius: 5, height: 64, overflow: 'hidden', padding: '3px 4px', border: isToday ? '1px solid var(--orange)' : '1px solid transparent' }}>
                     <div style={{ fontSize: 10, fontWeight: 800, color: isToday ? 'var(--orange-hot)' : 'var(--muted)' }}>{dayNum}</div>
-                    {w.map(d => (
-                      <button key={d.id}
-                        onClick={async () => {
-                          if (d.blockId !== block?.id) {
-                            const nb = allBlocks.find(b => b.id === d.blockId)
-                            setBlock(nb)
-                            const { data: nd } = await supabase.from('program_days').select('*').eq('block_id', d.blockId).order('day_number').order('position')
-                            setDays(nd || [])
-                            if (d.ghost) { setWeek(d.wk); setCalMode(false); return }
-                          }
-                          setWeek(d.wk); setActiveDay(d); setCalMode(false)
-                        }}
-                        style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', padding: '1px 0', fontSize: 8.5, fontWeight: 800, lineHeight: 1.25, textTransform: 'uppercase', letterSpacing: '0.02em', color: (d.track || 'exercise') === 'lifestyle' ? '#3E8E7E' : 'var(--orange-hot)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                        {d.day_label}
-                      </button>
-                    ))}
+                    {shown.map(d => {
+                      const label = d.day_label.length > 14 ? d.day_label.slice(0, 13) + '…' : d.day_label
+                      return (
+                        <button key={d.id}
+                          onClick={async () => {
+                            if (d.blockId !== block?.id) {
+                              const nb = allBlocks.find(b => b.id === d.blockId)
+                              setBlock(nb)
+                              const { data: nd } = await supabase.from('program_days').select('*').eq('block_id', d.blockId).order('day_number').order('position')
+                              setDays(nd || [])
+                              if (d.ghost) { setWeek(d.wk); setCalMode(false); return }
+                            }
+                            setWeek(d.wk); setActiveDay(d); setCalMode(false)
+                          }}
+                          title={d.day_label}
+                          style={{ display: 'block', width: '100%', maxWidth: '100%', textAlign: 'left', background: 'none', padding: '1px 0', fontSize: 8.5, fontWeight: 800, lineHeight: 1.25, textTransform: 'uppercase', letterSpacing: '0.02em', color: (d.track || 'exercise') === 'lifestyle' ? '#3E8E7E' : 'var(--orange-hot)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                          {label}
+                        </button>
+                      )
+                    })}
+                    {extra > 0 && <div className="muted" style={{ fontSize: 8, marginTop: 1 }}>+{extra} more</div>}
                   </div>
                 )
               })}
