@@ -83,9 +83,26 @@ export default function ClientNutrition() {
     try {
       const targetUrl = 'https://search.openfoodfacts.org/search?page_size=10&langs=en&q=' + encodeURIComponent(foodQ.trim())
       // search-a-licious (OFF's beta search API) doesn't send browser CORS headers yet,
-      // so we route through a pass-through proxy that does — same data, just relayed.
-      const url = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(targetUrl)
-      const res = await fetch(url)
+      // so we route through a pass-through relay that does. Try a couple in case one is down.
+      const proxies = [
+        'https://api.allorigins.win/raw?url=',
+        'https://api.codetabs.com/v1/proxy?quest=',
+      ]
+      let res = null, lastErr = null
+      for (const proxy of proxies) {
+        try {
+          const attempt = await fetch(proxy + encodeURIComponent(targetUrl))
+          if (attempt.ok) { res = attempt; break }
+          lastErr = `HTTP ${attempt.status} from ${proxy}`
+        } catch (e) {
+          lastErr = `${e.message} from ${proxy}`
+        }
+      }
+      if (!res) {
+        setDebugInfo(`Both relay attempts failed. Last error: ${lastErr}`)
+        setSearching(false)
+        return
+      }
       const text = await res.text()
       let data
       try { data = JSON.parse(text) } catch {
