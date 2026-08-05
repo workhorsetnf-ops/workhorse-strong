@@ -81,7 +81,10 @@ export default function ClientNutrition() {
     if (!foodQ.trim()) return
     setSearching(true); setFoodResults([]); setSelFood(null); setDebugInfo('')
     try {
-      const url = 'https://search.openfoodfacts.org/search?page_size=10&langs=en&q=' + encodeURIComponent(foodQ.trim())
+      const targetUrl = 'https://search.openfoodfacts.org/search?page_size=10&langs=en&q=' + encodeURIComponent(foodQ.trim())
+      // search-a-licious (OFF's beta search API) doesn't send browser CORS headers yet,
+      // so we route through a pass-through proxy that does — same data, just relayed.
+      const url = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(targetUrl)
       const res = await fetch(url)
       const text = await res.text()
       let data
