@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { marked } from 'marked'
 import { supabase } from '../../lib/supabase'
 
@@ -8,6 +8,8 @@ export default function CoachHub() {
   const [content, setContent] = useState('')
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [uploadingImg, setUploadingImg] = useState(false)
+  const textareaRef = useRef(null)
 
   async function load() {
     const { data } = await supabase.from('client_hub').select('*').eq('id', 1).maybeSingle()
@@ -15,6 +17,29 @@ export default function CoachHub() {
     setLoading(false)
   }
   useEffect(() => { load() }, [])
+
+  function insertAtCursor(text) {
+    const ta = textareaRef.current
+    if (!ta) { setContent(c => c + '\n' + text); return }
+    const start = ta.selectionStart, end = ta.selectionEnd
+    setContent(c => c.slice(0, start) + text + c.slice(end))
+    setTimeout(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = start + text.length }, 0)
+  }
+
+  function insertToggle() {
+    insertAtCursor('\n<details>\n<summary>Question or heading goes here</summary>\n\nAnswer or hidden content goes here.\n\n</details>\n')
+  }
+
+  async function uploadImage(file) {
+    if (!file) return
+    setUploadingImg(true)
+    const path = `${Date.now()}-${file.name}`
+    const { error } = await supabase.storage.from('hub-images').upload(path, file)
+    if (error) { alert('Upload failed: ' + error.message); setUploadingImg(false); return }
+    const { data } = supabase.storage.from('hub-images').getPublicUrl(path)
+    insertAtCursor(`\n![${file.name}](${data.publicUrl})\n`)
+    setUploadingImg(false)
+  }
 
   async function save() {
     await supabase.from('client_hub').upsert({ id: 1, title: title.trim() || 'Client Hub', subtitle: subtitle.trim(), content_md: content, updated_at: new Date().toISOString() })
@@ -36,8 +61,16 @@ export default function CoachHub() {
           <span className="eyebrow" style={{ fontSize: 10 }}>Edit</span>
           <input placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
           <input placeholder="Subtitle" value={subtitle} onChange={e => setSubtitle(e.target.value)} />
-          <textarea rows="22" placeholder="## Getting Started&#10;&#10;Welcome! Here's how the first week works.&#10;&#10;1. **Onboarding call** — we cover your schedule, injuries, equipment&#10;2. **Program delivery** — I walk you through your macros and program&#10;3. **You start** — don't wait for Monday, start the next training day"
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }} onClick={insertToggle}>+ Collapsible section</button>
+            <label className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+              {uploadingImg ? 'Uploading…' : '+ Image / banner'}
+              <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingImg} onChange={e => uploadImage(e.target.files[0])} />
+            </label>
+          </div>
+          <textarea ref={textareaRef} rows="20" placeholder="## Getting Started&#10;&#10;Welcome! Here's how the first week works.&#10;&#10;1. **Onboarding call** — we cover your schedule, injuries, equipment&#10;2. **Program delivery** — I walk you through your macros and program&#10;3. **You start** — don't wait for Monday, start the next training day"
             value={content} onChange={e => setContent(e.target.value)} style={{ fontFamily: 'monospace', fontSize: 13, lineHeight: 1.5 }} />
+          <p className="muted" style={{ fontSize: 11.5 }}>Tip: click in the text where you want something inserted, then hit the buttons above.</p>
           <button className="btn" onClick={save}>{saved ? 'Saved ✓' : 'Save & publish'}</button>
         </div>
 
@@ -64,6 +97,13 @@ export default function CoachHub() {
         .hub-preview strong { color: #BF5700; }
         .hub-preview hr { border: none; border-top: 1px solid #ddd; margin: 18px 0; }
         .hub-preview code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; font-size: 12.5px; }
+        .hub-preview img { max-width: 100%; border-radius: 8px; margin: 10px 0; display: block; }
+        .hub-preview details { border: 1px solid #ddd; border-radius: 8px; padding: 10px 14px; margin: 10px 0; background: #fafafa; }
+        .hub-preview summary { cursor: pointer; font-weight: 700; color: #111; list-style: none; }
+        .hub-preview summary::-webkit-details-marker { display: none; }
+        .hub-preview summary::before { content: '▸'; color: #BF5700; margin-right: 8px; display: inline-block; }
+        .hub-preview details[open] summary::before { content: '▾'; }
+        .hub-preview details p:first-of-type { margin-top: 10px; }
       `}</style>
     </div>
   )

@@ -55,6 +55,13 @@ export default function ClientFAQ() {
         .hub-preview strong { color: #BF5700; }
         .hub-preview hr { border: none; border-top: 1px solid #ddd; margin: 18px 0; }
         .hub-preview code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+        .hub-preview img { max-width: 100%; border-radius: 8px; margin: 10px 0; display: block; }
+        .hub-preview details { border: 1px solid #ddd; border-radius: 8px; padding: 10px 14px; margin: 10px 0; background: #fafafa; }
+        .hub-preview summary { cursor: pointer; font-weight: 700; color: #111; list-style: none; }
+        .hub-preview summary::-webkit-details-marker { display: none; }
+        .hub-preview summary::before { content: '▸'; color: #BF5700; margin-right: 8px; display: inline-block; }
+        .hub-preview details[open] summary::before { content: '▾'; }
+        .hub-preview details p:first-of-type { margin-top: 10px; }
       `}</style>
     </div>
   )
