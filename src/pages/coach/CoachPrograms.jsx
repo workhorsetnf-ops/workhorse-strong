@@ -288,6 +288,34 @@ export default function CoachPrograms() {
     await supabase.from('program_assignments').update({ start_date: date || null }).eq('id', assignmentId)
     load()
   }
+  async function duplicateProgram(program) {
+    const newName = prompt('Name for the duplicate:', `${program.name} (Copy)`)
+    if (!newName) return
+    const { data: newProg } = await supabase.from('programs').insert({ name: newName.trim(), weeks: program.weeks }).select().single()
+    if (!newProg) return
+    const srcBlocks = await supabase.from('program_blocks').select('*').eq('program_id', program.id).order('position')
+    for (const b of srcBlocks.data || []) {
+      const { data: newBlock } = await supabase.from('program_blocks').insert({ program_id: newProg.id, name: b.name, weeks: b.weeks, position: b.position }).select().single()
+      if (!newBlock) continue
+      const srcDays = await supabase.from('program_days').select('*').eq('block_id', b.id).order('position')
+      for (const d of srcDays.data || []) {
+        const { data: newDay } = await supabase.from('program_days').insert({
+          program_id: newProg.id, block_id: newBlock.id, day_label: d.day_label, day_number: d.day_number,
+          track: d.track, position: d.position, notes: d.notes, video_note: d.video_note,
+          warmup: d.warmup, warmup_video: d.warmup_video, cooldown: d.cooldown, cooldown_video: d.cooldown_video,
+        }).select().single()
+        if (!newDay) continue
+        const srcEx = await supabase.from('program_exercises').select('*').eq('day_id', d.id).order('position')
+        for (const ex of srcEx.data || []) {
+          const { id, day_id, ...rest } = ex
+          await supabase.from('program_exercises').insert({ ...rest, day_id: newDay.id })
+        }
+      }
+    }
+    load()
+    alert(`"${newName}" created — find it at the top of your programs list.`)
+  }
+
   async function deleteProgram(id) {
     if (!confirm('Delete this program and all its blocks/workouts?')) return
     await supabase.from('programs').delete().eq('id', id)
@@ -408,6 +436,7 @@ export default function CoachPrograms() {
                     {clients.map(c => <option key={c.id} value={c.id}>{c.full_name || c.id.slice(0, 8)}</option>)}
                   </select>
                   <button className="btn-ghost" onClick={() => openProgram(p.id)}>{open === p.id ? 'Close' : 'Open builder'}</button>
+                  <button className="btn-ghost" onClick={() => duplicateProgram(p)}>Duplicate</button>
                   <button className="btn-ghost" style={{ color: 'var(--red)' }} onClick={() => deleteProgram(p.id)}>Delete</button>
                 </div>
               </div>

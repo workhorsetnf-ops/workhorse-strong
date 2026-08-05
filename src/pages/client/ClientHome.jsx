@@ -8,6 +8,7 @@ export default function ClientHome() {
   const [todayMacros, setTodayMacros] = useState({ p: 0, c: 0, f: 0 })
   const [weekWorkouts, setWeekWorkouts] = useState(0)
   const [checkinDue, setCheckinDue] = useState(null) // { days, overdue }
+  const [streak, setStreak] = useState(0)
 
   useEffect(() => {
     if (!profile) return
@@ -26,6 +27,17 @@ export default function ClientHome() {
       .then(({ data }) => {
         const days = new Set((data || []).map(l => l.logged_at.slice(0, 10)))
         setWeekWorkouts(days.size)
+      })
+    supabase.from('workout_logs').select('logged_at').eq('client_id', profile.id).order('logged_at', { ascending: false }).limit(60)
+      .then(({ data }) => {
+        const days = new Set((data || []).map(l => l.logged_at.slice(0,10)))
+        let count = 0
+        for (let back = 0; back < 60; back++) {
+          const d = new Date(); d.setDate(d.getDate() - back)
+          if (days.has(d.toISOString().slice(0,10))) count++
+          else if (back > 0) break // allow today to be unlogged yet without breaking streak
+        }
+        setStreak(count)
       })
     supabase.from('checkins').select('submitted_at').eq('client_id', profile.id)
       .order('submitted_at', { ascending: false }).limit(1).maybeSingle()
@@ -46,7 +58,9 @@ export default function ClientHome() {
             <img src="/icon-192.png" alt="" style={{ width: 24, height: 24, borderRadius: 5, objectFit: 'cover' }} />
             <div className="eyebrow" style={{ margin: 0 }}>Workhorse Strong</div>
           </div>
-          <h1 style={{ fontSize: 26, marginTop: 4 }}>{profile?.full_name || 'Athlete'}</h1>
+          <h1 style={{ fontSize: 26, marginTop: 4 }}>{profile?.full_name || 'Athlete'}
+            {streak >= 2 && <span style={{ fontSize: 14, marginLeft: 8, color: 'var(--orange-hot)', fontWeight: 800 }}>🔥 {streak}</span>}
+          </h1>
           <p className="muted" style={{ fontSize: 13, marginTop: 2, textTransform: 'capitalize' }}>
             Phase: {profile?.phase}
           </p>

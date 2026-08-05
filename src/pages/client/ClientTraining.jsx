@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import RestTimer from '../../lib/RestTimer'
+import PlateCalc from '../../lib/PlateCalc'
 
 function roundTo5(n) { return Math.round(n / 5) * 5 }
 
@@ -341,13 +343,19 @@ export default function ClientTraining() {
           {ex.kind !== 'conditioning' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
             {(log[ex.id] || []).map((s, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr', gap: 6, alignItems: 'center' }}>
-                <span className="muted" style={{ fontSize: 12, fontWeight: 800 }}>S{i + 1}</span>
-                <input inputMode="decimal" placeholder="lbs" value={s.weight} onChange={e => updateSet(ex.id, i, 'weight', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
-                <input inputMode="numeric" placeholder={ex.metric === 'time' ? 'secs' : ex.metric === 'distance' ? 'dist' : 'reps'} value={s.reps} onChange={e => updateSet(ex.id, i, 'reps', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
-                <input inputMode="numeric" placeholder={ex.progression_type === 'rpe' ? 'RPE' : 'RIR'} value={s.rir} onChange={e => updateSet(ex.id, i, 'rir', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
+              <div key={i}>
+                <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr auto', gap: 6, alignItems: 'center' }}>
+                  <span className="muted" style={{ fontSize: 12, fontWeight: 800 }}>S{i + 1}</span>
+                  <input inputMode="decimal" placeholder="lbs" value={s.weight} onChange={e => updateSet(ex.id, i, 'weight', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
+                  <input inputMode="numeric" placeholder={ex.metric === 'time' ? 'secs' : ex.metric === 'distance' ? 'dist' : 'reps'} value={s.reps} onChange={e => updateSet(ex.id, i, 'reps', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
+                  <input inputMode="numeric" placeholder={ex.progression_type === 'rpe' ? 'RPE' : 'RIR'} value={s.rir} onChange={e => updateSet(ex.id, i, 'rir', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
+                  <PlateCalc weight={s.weight} />
+                </div>
               </div>
             ))}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 2 }}>
+              <RestTimer restText={ex.rest} />
+            </div>
           </div>
           )}
         </div>

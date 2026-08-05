@@ -32,6 +32,7 @@ export default function CoachClients() {
   const [form, setForm] = useState({})
   const [maxes, setMaxes] = useState([])          // [{id?, lift_name, max_weight}]
   const [savedId, setSavedId] = useState(null)
+  const [rm, setRm] = useState({ lift: '', weight: '', reps: '' })
   const [photosFor, setPhotosFor] = useState(null)     // client id with timeline open
   const [timeline, setTimeline] = useState({})         // clientId -> rows
   const [calc, setCalc] = useState({ weightLbs: '', age: '', sex: 'male', hft: '', hin: '', bf: '', activity: 'working-talent', goal: 'cut' })
@@ -160,6 +161,29 @@ export default function CoachClients() {
                     </div>
                   ))}
                   {maxes.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No maxes on file. Lift names must match the "Based on lift" field in programs.</p>}
+
+                  <div style={{ background: 'var(--steel)', borderRadius: 8, padding: 10, marginTop: 10 }}>
+                    <span className="eyebrow" style={{ fontSize: 10 }}>1RM estimator (Epley formula)</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr auto', gap: 6, marginTop: 6 }}>
+                      <input placeholder="Lift name" value={rm.lift} onChange={e => setRm({ ...rm, lift: e.target.value })} style={{ padding: '6px 8px', fontSize: 12.5 }} />
+                      <input inputMode="decimal" placeholder="Weight lifted" value={rm.weight} onChange={e => setRm({ ...rm, weight: e.target.value })} style={{ padding: '6px 8px', fontSize: 12.5 }} />
+                      <input inputMode="numeric" placeholder="Reps (≤10)" value={rm.reps} onChange={e => setRm({ ...rm, reps: e.target.value })} style={{ padding: '6px 8px', fontSize: 12.5 }} />
+                      <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }}
+                        onClick={() => {
+                          const w = +rm.weight, r = +rm.reps
+                          if (!w || !r) return
+                          const est = Math.round(w * (1 + r / 30))
+                          if (!rm.lift.trim()) { alert(`Estimated 1RM: ${est} lbs`); return }
+                          setMaxes(m => {
+                            const idx = m.findIndex(x => x.lift_name.toLowerCase() === rm.lift.trim().toLowerCase())
+                            if (idx >= 0) return m.map((x,i) => i === idx ? { ...x, max_weight: est } : x)
+                            return [...m, { lift_name: rm.lift.trim(), max_weight: est }]
+                          })
+                          setRm({ lift: '', weight: '', reps: '' })
+                        }}>Estimate → fill above</button>
+                    </div>
+                    {(+rm.weight && +rm.reps) ? <p className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>≈ {Math.round(+rm.weight * (1 + (+rm.reps) / 30))} lbs — hit Save below to store it</p> : null}
+                  </div>
                 </div>
 
                 <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
