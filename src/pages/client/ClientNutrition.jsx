@@ -13,6 +13,7 @@ export default function ClientNutrition() {
   const [grams, setGrams] = useState('100')
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState('')
+  const [debugInfo, setDebugInfo] = useState('')
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const today = new Date().toISOString().slice(0, 10)
@@ -78,14 +79,22 @@ export default function ClientNutrition() {
 
   async function searchFood() {
     if (!foodQ.trim()) return
-    setSearching(true); setFoodResults([]); setSelFood(null)
+    setSearching(true); setFoodResults([]); setSelFood(null); setDebugInfo('')
     try {
-      // Open Food Facts retired the old /cgi/search.pl text-search endpoint;
-      // search-a-licious (their Elasticsearch-based replacement) is the current one.
-      const res = await fetch(
-        'https://search.openfoodfacts.org/search?page_size=10&langs=en&q=' + encodeURIComponent(foodQ.trim())
-      )
-      const data = await res.json()
+      const url = 'https://search.openfoodfacts.org/search?page_size=10&langs=en&q=' + encodeURIComponent(foodQ.trim())
+      const res = await fetch(url)
+      const text = await res.text()
+      let data
+      try { data = JSON.parse(text) } catch {
+        setDebugInfo(`Search failed — HTTP ${res.status}. Response wasn't JSON: ${text.slice(0, 150)}`)
+        setSearching(false)
+        return
+      }
+      if (!res.ok) {
+        setDebugInfo(`Search failed — HTTP ${res.status}. ${JSON.stringify(data).slice(0, 200)}`)
+        setSearching(false)
+        return
+      }
       const rawItems = data.hits || data.products || []
       const items = rawItems
         .map(raw => {
@@ -102,8 +111,11 @@ export default function ClientNutrition() {
         })
         .filter(it => it.name !== 'Unknown' && (it.p || it.c || it.f))
       setFoodResults(items)
-    } catch {
-      setFoodResults([])
+      if (items.length === 0) {
+        setDebugInfo(`Got a response but found 0 usable results. Raw item count: ${rawItems.length}. Sample: ${JSON.stringify(rawItems[0] || data).slice(0, 250)}`)
+      }
+    } catch (err) {
+      setDebugInfo(`Search request failed entirely: ${err.message}`)
     }
     setSearching(false)
   }
@@ -213,6 +225,11 @@ export default function ClientNutrition() {
         )}
         {foodResults.length === 0 && foodQ && !searching && !selFood && (
           <p className="muted" style={{ fontSize: 12.5 }}>No results yet — search, or log it manually below.</p>
+        )}
+        {debugInfo && (
+          <div style={{ background: 'rgba(214,69,69,0.12)', border: '1px solid var(--red)', borderRadius: 6, padding: 8, fontSize: 11, color: 'var(--red)', wordBreak: 'break-word' }}>
+            {debugInfo}
+          </div>
         )}
       </div>
 
