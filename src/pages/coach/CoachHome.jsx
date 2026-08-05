@@ -20,16 +20,19 @@ export default function CoachHome() {
   const [comment, setComment] = useState('')
   const [loading, setLoading] = useState(true)
   const [onboarding, setOnboarding] = useState({})
+  const [view, setView] = useState('attention') // 'attention' | 'insights'
+  const [insights, setInsights] = useState({})
 
   async function load() {
     setLoading(true)
-    const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }] = await Promise.all([
+    const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, protein_g, calories').eq('role', 'client').order('full_name'),
       supabase.from('program_assignments').select('*'),
-      supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text').order('logged_at', { ascending: false }).limit(400),
-      supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(200),
+      supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text').order('logged_at', { ascending: false }).limit(600),
+      supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(400),
       supabase.from('checkins').select('client_id, submitted_at, notes, weight').order('submitted_at', { ascending: false }).limit(100),
       supabase.from('messages').select('sender_id, recipient_id, created_at'),
+      supabase.from('meal_logs').select('client_id, protein_g, logged_on').order('logged_on', { ascending: false }).limit(600),
     ])
     setClients(cl || [])
 
@@ -66,6 +69,56 @@ export default function CoachHome() {
       onb[c.id] = { items, pct: Math.round(done / items.length * 100) }
     }
     setOnboarding(onb)
+
+    const ins = {}
+    const today = new Date()
+    for (const c of cl || []) {
+      const chips = []
+      const daily = (dailyLogs || []).filter(d => d.client_id === c.id)
+      const workouts = (workoutLogs || []).filter(w => w.client_id === c.id)
+      const meals = (mealLogs || []).filter(m => m.client_id === c.id)
+      const checkinsC = (checkins || []).filter(ci => ci.client_id === c.id)
+
+      // steps consistency (last 7 days)
+      const last7 = daily.filter(d => (today - new Date(d.log_date)) / 864e5 <= 7)
+      const stepsLogged = last7.filter(d => d.steps).length
+      if (stepsLogged >= 5) chips.push({ tone: 'good', text: 'Daily step counts have been very consistent' })
+      else if (last7.length > 0 && stepsLogged <= 1) chips.push({ tone: 'warn', text: "Steps haven't been logged much this week" })
+
+      // weight trend (7d vs prior)
+      const weighed = daily.filter(d => d.weight).sort((a,b) => new Date(a.log_date) - new Date(b.log_date))
+      if (weighed.length >= 2) {
+        const recent = weighed.filter(d => (today - new Date(d.log_date)) / 864e5 <= 7)
+        if (recent.length >= 2) {
+          const delta = recent[recent.length-1].weight - recent[0].weight
+          if (delta <= -1) chips.push({ tone: 'good', text: `Weight trending down ${Math.abs(delta).toFixed(1)} lbs this week` })
+          else if (delta >= 1) chips.push({ tone: 'neutral', text: `Weight trending up ${delta.toFixed(1)} lbs this week` })
+        }
+      }
+
+      // training consistency: this week vs last week (distinct days logged)
+      const daysInRange = (arr, from, to) => new Set(arr.filter(w => { const d = (today - new Date(w.logged_at)) / 864e5; return d >= from && d < to }).map(w => w.logged_at.slice(0,10))).size
+      const thisWk = daysInRange(workouts, 0, 7), lastWk = daysInRange(workouts, 7, 14)
+      if (thisWk >= 4) chips.push({ tone: 'good', text: 'Moving with great consistency this week!' })
+      else if (lastWk > 0 && thisWk < lastWk) chips.push({ tone: 'warn', text: `Training days dropped from ${lastWk} to ${thisWk} this week` })
+
+      // protein adherence (last 5 logged days vs target)
+      const target = c.protein_g
+      if (target > 0 && meals.length > 0) {
+        const byDay = {}
+        for (const m of meals) byDay[m.logged_on] = (byDay[m.logged_on] || 0) + (m.protein_g || 0)
+        const recentDays = Object.entries(byDay).sort((a,b) => new Date(b[0]) - new Date(a[0])).slice(0, 5)
+        const hitCount = recentDays.filter(([,p]) => p >= target * 0.9).length
+        if (recentDays.length >= 3 && hitCount === recentDays.length) chips.push({ tone: 'good', text: 'Protein target hit consistently lately' })
+        else if (recentDays.length >= 3 && hitCount === 0) chips.push({ tone: 'warn', text: 'Protein has been under target across recent logged days' })
+      }
+
+      // check-in streak
+      if (checkinsC.length >= 4) chips.push({ tone: 'good', text: `${checkinsC.length} check-ins submitted in a row` })
+
+      if (chips.length > 0) ins[c.id] = chips
+    }
+    setInsights(ins)
 
     buildFeed(feedTab, cl || [], workoutLogs || [], dailyLogs || [], checkins || [])
     setLoading(false)
@@ -125,8 +178,38 @@ export default function CoachHome() {
   return (
     <div>
       <div className="eyebrow">Home</div>
-      <h1 style={{ fontSize: 28, margin: '6px 0 16px' }}>Needs Attention</h1>
+      <div style={{ display: 'flex', gap: 20, alignItems: 'baseline', margin: '6px 0 16px' }}>
+        <h1 style={{ fontSize: 22, cursor: 'pointer', color: view === 'attention' ? 'var(--white)' : 'var(--muted)' }} onClick={() => setView('attention')}>Needs Attention</h1>
+        <h1 style={{ fontSize: 22, cursor: 'pointer', color: view === 'insights' ? 'var(--orange-hot)' : 'var(--muted)' }} onClick={() => setView('insights')}>Client Insights</h1>
+      </div>
 
+      {view === 'insights' && (
+        <div className="card" style={{ marginBottom: 24 }}>
+          <p className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>
+            Patterns spotted in what each client's actually logging — steps, weight, training days, protein, check-ins.
+            Note: this doesn't include heart-rate or recovery data (RHR/HRV) — that needs a wearable integration, which isn't part of the app.
+          </p>
+          {clients.filter(c => insights[c.id]?.length).length === 0 && <p className="muted" style={{ fontSize: 13.5 }}>Not enough logged data yet to spot patterns.</p>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {clients.filter(c => insights[c.id]?.length).map(c => (
+              <div key={c.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 130 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{initials(c.full_name)}</div>
+                  <strong style={{ fontSize: 13.5 }}>{c.full_name}</strong>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+                  {insights[c.id].map((chip, i) => {
+                    const colors = { good: { bg: 'rgba(76,175,109,0.15)', c: 'var(--green)' }, warn: { bg: 'rgba(191,87,0,0.18)', c: 'var(--orange-hot)' }, neutral: { bg: 'var(--steel)', c: 'var(--muted)' } }[chip.tone]
+                    return <span key={i} style={{ fontSize: 12, fontWeight: 600, padding: '4px 11px', borderRadius: 20, background: colors.bg, color: colors.c }}>{chip.text}</span>
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {view === 'attention' && <>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         <button className={filter === 'all' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('all')}>All</button>
         <button className={filter === 'exercise' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('exercise')}>Exercise due ({counts.exercise})</button>
@@ -197,6 +280,8 @@ export default function CoachHome() {
           ))}
         </div>
       </div>
+
+      </>}
 
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
