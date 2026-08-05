@@ -7,6 +7,8 @@ import ClientCheckin from './ClientCheckin'
 import ClientProgress from './ClientProgress'
 import ClientFormChecks from './ClientFormChecks'
 import ClientLeaderboard from './ClientLeaderboard'
+import ClientResources from './ClientResources'
+import ClientRoadmap from './ClientRoadmap'
 
 export default function ClientApp() {
   return (
@@ -21,6 +23,8 @@ export default function ClientApp() {
           <Route path="progress" element={<ClientProgress />} />
           <Route path="form-checks" element={<ClientFormChecks />} />
           <Route path="challenges" element={<ClientLeaderboard />} />
+          <Route path="resources" element={<ClientResources />} />
+          <Route path="roadmap" element={<ClientRoadmap />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>

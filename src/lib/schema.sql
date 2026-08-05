@@ -333,3 +333,39 @@ create table body_measurements (
 alter table body_measurements enable row level security;
 create policy "client manages own measurements" on body_measurements for all using (client_id = auth.uid());
 create policy "coach reads measurements" on body_measurements for select using (is_coach());
+
+-- ===== RESOURCE LIBRARY =====
+create table resources (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  category text default '',
+  description text default '',
+  file_path text not null,
+  created_at timestamptz default now()
+);
+alter table resources enable row level security;
+create policy "coach manages resources" on resources for all using (is_coach());
+create policy "clients read resources" on resources for select using (
+  exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'client')
+);
+create policy "coach uploads resource files" on storage.objects for insert
+  with check (bucket_id = 'resources' and public.is_coach());
+create policy "anyone signed in reads resource files" on storage.objects for select
+  using (bucket_id = 'resources' and auth.role() = 'authenticated');
+
+-- ===== YEARLY PHASE ROADMAP =====
+create table client_phases (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references profiles(id) on delete cascade,
+  name text not null,
+  phase_type text not null default 'build' check (phase_type in ('cut','build','recomp','maintain','peak')),
+  start_date date not null,
+  end_date date not null,
+  protein_g int, carbs_g int, fat_g int, calories int,
+  notes text default '',
+  position int not null default 0,
+  created_at timestamptz default now()
+);
+alter table client_phases enable row level security;
+create policy "coach manages phases" on client_phases for all using (is_coach());
+create policy "client reads own phases" on client_phases for select using (client_id = auth.uid());

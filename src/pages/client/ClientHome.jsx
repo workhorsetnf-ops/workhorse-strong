@@ -79,6 +79,21 @@ export default function ClientHome() {
         </div>
       </div>
 
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Link to="/app/roadmap" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '16px 10px' }}>
+            <div style={{ fontSize: 20, marginBottom: 4 }}>🗺️</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700 }}>Your Roadmap</div>
+          </div>
+        </Link>
+        <Link to="/app/resources" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '16px 10px' }}>
+            <div style={{ fontSize: 20, marginBottom: 4 }}>📄</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700 }}>Resources</div>
+          </div>
+        </Link>
+      </div>
+
       <div className="card">
         <div className="eyebrow" style={{ marginBottom: 12 }}>Today's macros</div>
         {[
