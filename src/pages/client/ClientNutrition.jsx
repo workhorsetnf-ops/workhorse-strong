@@ -101,18 +101,23 @@ export default function ClientNutrition() {
       const rawItems = data.hits || data.products || []
       const items = rawItems
         .map(raw => {
-          const pr = raw.document || raw._source || raw
-          const nutr = pr.nutriments || {}
-          return {
-            id: pr.code || pr.id,
-            name: pr.product_name || pr.product_name_en || 'Unknown',
-            brand: (pr.brands || '').split(',')[0],
-            p: +nutr.proteins_100g || 0,
-            c: +nutr.carbohydrates_100g || 0,
-            f: +nutr.fat_100g || 0,
+          try {
+            const pr = raw.document || raw._source || raw
+            const nutr = pr.nutriments || {}
+            const brandsField = pr.brands
+            return {
+              id: pr.code || pr.id,
+              name: pr.product_name || pr.product_name_en || 'Unknown',
+              brand: Array.isArray(brandsField) ? (brandsField[0] || '') : String(brandsField || '').split(',')[0],
+              p: +nutr.proteins_100g || 0,
+              c: +nutr.carbohydrates_100g || 0,
+              f: +nutr.fat_100g || 0,
+            }
+          } catch {
+            return null
           }
         })
-        .filter(it => it.name !== 'Unknown' && (it.p || it.c || it.f))
+        .filter(it => it && it.name !== 'Unknown' && (it.p || it.c || it.f))
       setFoodResults(items)
       if (items.length === 0) {
         setDebugInfo(`Got a response but found 0 usable results. Raw item count: ${rawItems.length}. Sample: ${JSON.stringify(rawItems[0] || data).slice(0, 250)}`)
