@@ -22,11 +22,14 @@ export default function CoachHome() {
   const [onboarding, setOnboarding] = useState({})
   const [view, setView] = useState('attention') // 'attention' | 'insights'
   const [insights, setInsights] = useState({})
+  const [lastContactMap, setLastContactMap] = useState({})
+  const [sessions, setSessions] = useState({})
+  const [openTouchpoint, setOpenTouchpoint] = useState(null)
 
   async function load() {
     setLoading(true)
     const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, protein_g, calories').eq('role', 'client').order('full_name'),
+      supabase.from('profiles').select('id, full_name, protein_g, calories, created_at').eq('role', 'client').order('full_name'),
       supabase.from('program_assignments').select('*'),
       supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text').order('logged_at', { ascending: false }).limit(600),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(400),
@@ -38,10 +41,21 @@ export default function CoachHome() {
 
     const weekStart = startOfWeek()
     const contactedSet = new Set()
+    const lastContact = {}
     for (const m of msgs || []) {
-      if (new Date(m.created_at) >= weekStart && cl?.some(c => c.id === m.recipient_id)) contactedSet.add(m.recipient_id)
+      if (!cl?.some(c => c.id === m.recipient_id)) continue
+      if (new Date(m.created_at) >= weekStart) contactedSet.add(m.recipient_id)
+      if (!lastContact[m.recipient_id] || new Date(m.created_at) > new Date(lastContact[m.recipient_id])) lastContact[m.recipient_id] = m.created_at
     }
     setContacted(contactedSet)
+    setLastContactMap(lastContact)
+
+    const sessionCounts = {}
+    for (const w of workoutLogs || []) {
+      const key = w.client_id
+      ;(sessionCounts[key] ||= new Set()).add(w.logged_at.slice(0,10))
+    }
+    setSessions(Object.fromEntries(Object.entries(sessionCounts).map(([k,v]) => [k, v.size])))
 
     const st = {}
     for (const c of cl || []) {
@@ -271,13 +285,52 @@ export default function CoachHome() {
           <strong style={{ fontSize: 15 }}>Touchpoints ({clients.length ? Math.round(contacted.size / clients.length * 100) : 0}%)</strong>
           <span className="muted" style={{ fontSize: 12.5 }}>{contacted.size} of {clients.length} clients contacted this week</span>
         </div>
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          {clients.map(c => (
-            <div key={c.id} style={{ textAlign: 'center' }}>
-              <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 800, border: contacted.has(c.id) ? '2px solid var(--green)' : '2px solid var(--line)' }}>{initials(c.full_name)}</div>
-              <div className="muted" style={{ fontSize: 10.5, marginTop: 4, maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name}</div>
-            </div>
-          ))}
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', position: 'relative' }}>
+          {clients.map(c => {
+            const s_ = statuses[c.id]
+            const lc = lastContactMap[c.id]
+            const daysSince = lc ? Math.floor((Date.now() - new Date(lc).getTime()) / 864e5) : null
+            const memberDays = c.created_at ? Math.floor((Date.now() - new Date(c.created_at).getTime()) / 864e5) : null
+            return (
+              <div key={c.id} style={{ textAlign: 'center', position: 'relative' }}>
+                <button onClick={() => setOpenTouchpoint(openTouchpoint === c.id ? null : c.id)}
+                  style={{ background: 'none', padding: 0, cursor: 'pointer' }}>
+                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 800, border: contacted.has(c.id) ? '2px solid var(--green)' : '2px solid var(--line)' }}>{initials(c.full_name)}</div>
+                </button>
+                <div className="muted" style={{ fontSize: 10.5, marginTop: 4, maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name}</div>
+                {daysSince !== null && daysSince >= 10 && (
+                  <div style={{ fontSize: 9.5, color: 'var(--red)', fontWeight: 700, marginTop: 1 }}>{daysSince}d silent</div>
+                )}
+
+                {openTouchpoint === c.id && (
+                  <div style={{
+                    position: 'absolute', top: 52, left: '50%', transform: 'translateX(-50%)', zIndex: 20,
+                    background: 'var(--coal)', border: '1px solid var(--orange)', borderRadius: 10, padding: 14,
+                    width: 220, textAlign: 'left', boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800 }}>{initials(c.full_name)}</div>
+                      <button onClick={() => setOpenTouchpoint(null)} style={{ background: 'none', color: 'var(--muted)', fontSize: 13 }}>✕</button>
+                    </div>
+                    <strong style={{ display: 'block', fontSize: 14.5, marginTop: 8 }}>{c.full_name}</strong>
+                    <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>{sessions[c.id] || 0} session{sessions[c.id] === 1 ? '' : 's'} logged</p>
+                    {memberDays !== null && <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>Client for {memberDays} day{memberDays === 1 ? '' : 's'}</p>}
+                    <p style={{ fontSize: 12, marginTop: 4, fontWeight: 700, color: daysSince === null ? 'var(--muted)' : daysSince >= 10 ? 'var(--red)' : daysSince >= 5 ? 'var(--orange-hot)' : 'var(--green)' }}>
+                      {daysSince === null ? 'Never messaged' : daysSince === 0 ? 'Messaged today' : `Last contact ${daysSince}d ago`}
+                    </p>
+                    {s_ && (s_.exercise || s_.lifestyle || s_.checkin) && (
+                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
+                        {s_.exercise && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(191,87,0,0.18)', color: 'var(--orange-hot)' }}>Exercise due</span>}
+                        {s_.lifestyle && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(62,142,126,0.18)', color: '#3E8E7E' }}>Lifestyle due</span>}
+                        {s_.checkin && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(124,92,191,0.18)', color: '#9B7FE0' }}>Check-in due</span>}
+                      </div>
+                    )}
+                    <Link to="/coach/messages" onClick={() => setOpenTouchpoint(null)} className="btn" style={{ display: 'block', textAlign: 'center', marginTop: 10, padding: '8px 0', fontSize: 12, textDecoration: 'none' }}>Message</Link>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 
