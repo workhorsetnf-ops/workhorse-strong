@@ -80,20 +80,26 @@ export default function ClientNutrition() {
     if (!foodQ.trim()) return
     setSearching(true); setFoodResults([]); setSelFood(null)
     try {
+      // Open Food Facts retired the old /cgi/search.pl text-search endpoint;
+      // search-a-licious (their Elasticsearch-based replacement) is the current one.
       const res = await fetch(
-        'https://world.openfoodfacts.org/cgi/search.pl?action=process&json=1&page_size=8' +
-        '&fields=code,product_name,brands,nutriments&search_simple=1&search_terms=' + encodeURIComponent(foodQ.trim())
+        'https://search.openfoodfacts.org/search?page_size=10&langs=en&q=' + encodeURIComponent(foodQ.trim())
       )
       const data = await res.json()
-      const items = (data.products || [])
-        .map(pr => ({
-          id: pr.code,
-          name: pr.product_name || 'Unknown',
-          brand: (pr.brands || '').split(',')[0],
-          p: +pr.nutriments?.proteins_100g || 0,
-          c: +pr.nutriments?.carbohydrates_100g || 0,
-          f: +pr.nutriments?.fat_100g || 0,
-        }))
+      const rawItems = data.hits || data.products || []
+      const items = rawItems
+        .map(raw => {
+          const pr = raw.document || raw._source || raw
+          const nutr = pr.nutriments || {}
+          return {
+            id: pr.code || pr.id,
+            name: pr.product_name || pr.product_name_en || 'Unknown',
+            brand: (pr.brands || '').split(',')[0],
+            p: +nutr.proteins_100g || 0,
+            c: +nutr.carbohydrates_100g || 0,
+            f: +nutr.fat_100g || 0,
+          }
+        })
         .filter(it => it.name !== 'Unknown' && (it.p || it.c || it.f))
       setFoodResults(items)
     } catch {
