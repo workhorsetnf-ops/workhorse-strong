@@ -45,8 +45,9 @@ export default function ClientMessages() {
   }
 
   async function sendVoice(path) {
-    if (!coachId) return
-    await supabase.from('messages').insert({ sender_id: profile.id, recipient_id: coachId, body: '🎙 Voice note', msg_type: 'audio', audio_path: path })
+    if (!coachId) { alert('No coach found to send to yet.'); return }
+    const { error } = await supabase.from('messages').insert({ sender_id: profile.id, recipient_id: coachId, body: '🎙 Voice note', msg_type: 'audio', audio_path: path })
+    if (error) alert('Could not send voice note: ' + error.message + '\n\nIf this mentions a missing column, the database update (migration14.sql) needs to be run in Supabase first.')
   }
 
   async function playAudio(m) {

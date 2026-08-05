@@ -23,8 +23,14 @@ export default function VoiceRecorder({ userId, onSent }) {
           setBusy(true)
           const path = `${userId}/${Date.now()}.webm`
           const { error } = await supabase.storage.from('voice-notes').upload(path, blob)
-          if (!error) onSent(path)
+          if (error) {
+            alert('Could not upload voice note: ' + error.message)
+          } else {
+            await onSent(path)
+          }
           setBusy(false)
+        } else {
+          alert('Recording was empty — try again and speak right after tapping record.')
         }
       }
       mediaRef.current = mr
