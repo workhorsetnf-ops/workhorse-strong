@@ -194,6 +194,7 @@ $$;
 
 create policy "read own profile" on profiles for select using (id = auth.uid() or is_coach());
 create policy "update own profile" on profiles for update using (id = auth.uid() or is_coach());
+create policy "clients can see the coach profile" on profiles for select using (role = 'coach');
 
 create policy "coach manages programs" on programs for all using (is_coach());
 create policy "client reads assigned program" on programs for select using (
@@ -406,3 +407,14 @@ create policy "everyone signed in manages own likes" on community_likes for inse
 create policy "everyone signed in removes own likes" on community_likes for delete using (author_id = auth.uid());
 alter publication supabase_realtime add table community_posts;
 alter publication supabase_realtime add table community_comments;
+
+-- ===== HEALTH POINTS (client_ratings) =====
+create table client_ratings (
+  client_id uuid primary key references profiles(id) on delete cascade,
+  retention text check (retention in ('red','yellow','green')),
+  mindset text check (mindset in ('red','yellow','green')),
+  notes text default '',
+  updated_at timestamptz default now()
+);
+alter table client_ratings enable row level security;
+create policy "coach manages ratings" on client_ratings for all using (is_coach());

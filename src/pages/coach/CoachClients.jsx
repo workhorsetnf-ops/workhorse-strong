@@ -33,6 +33,7 @@ export default function CoachClients() {
   const [maxes, setMaxes] = useState([])          // [{id?, lift_name, max_weight}]
   const [savedId, setSavedId] = useState(null)
   const [rm, setRm] = useState({ lift: '', weight: '', reps: '' })
+  const [rating, setRating] = useState({ retention: null, mindset: null, notes: '' })
   const [photosFor, setPhotosFor] = useState(null)     // client id with timeline open
   const [timeline, setTimeline] = useState({})         // clientId -> rows
   const [calc, setCalc] = useState({ weightLbs: '', age: '', sex: 'male', hft: '', hin: '', bf: '', activity: 'working-talent', goal: 'cut' })
@@ -61,6 +62,8 @@ export default function CoachClients() {
 
   async function startEdit(c) {
     setEditing(c.id)
+    const { data: r } = await supabase.from('client_ratings').select('*').eq('client_id', c.id).maybeSingle()
+    setRating({ retention: r?.retention || null, mindset: r?.mindset || null, notes: r?.notes || '' })
     setCalcResult(null)
     setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories })
     const { data } = await supabase.from('client_maxes').select('*').eq('client_id', c.id).order('lift_name')
@@ -82,6 +85,11 @@ export default function CoachClients() {
       await supabase.from('client_maxes').upsert({
         client_id: id, lift_name: m.lift_name.trim(), max_weight: +m.max_weight || 0
       }, { onConflict: 'client_id,lift_name' })
+    }
+    if (rating.retention || rating.mindset || rating.notes) {
+      await supabase.from('client_ratings').upsert({
+        client_id: id, retention: rating.retention, mindset: rating.mindset, notes: rating.notes,
+      }, { onConflict: 'client_id' })
     }
     setEditing(null); setSavedId(id); setTimeout(() => setSavedId(null), 2000)
     load()
@@ -220,6 +228,27 @@ export default function CoachClients() {
                     </div>
                   )}
                   {calcResult?.error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{calcResult.error}</div>}
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+                  <span className="eyebrow" style={{ fontSize: 10 }}>Health Points — your read (not auto-computed)</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+                    {[['retention', 'Retention — intent to continue'], ['mindset', 'Mindset — awareness of blocks']].map(([key, label]) => (
+                      <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 12.5, minWidth: 190 }}>{label}</span>
+                        {['red','yellow','green'].map(color => (
+                          <button key={color} onClick={() => setRating(r => ({ ...r, [key]: r[key] === color ? null : color }))}
+                            style={{
+                              width: 20, height: 20, borderRadius: '50%',
+                              background: color === 'red' ? '#D64545' : color === 'yellow' ? '#E0B23E' : '#4CAF6D',
+                              border: rating[key] === color ? '2px solid #fff' : '2px solid transparent',
+                              opacity: rating[key] && rating[key] !== color ? 0.35 : 1,
+                            }} title={color} />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  <textarea rows="2" placeholder="Notes on where they're at (optional)" value={rating.notes} onChange={e => setRating({ ...rating, notes: e.target.value })} style={{ marginTop: 8 }} />
                 </div>
 
                 <div style={{ display: 'flex', gap: 8 }}>

@@ -25,10 +25,12 @@ export default function CoachHome() {
   const [lastContactMap, setLastContactMap] = useState({})
   const [sessions, setSessions] = useState({})
   const [openTouchpoint, setOpenTouchpoint] = useState(null)
+  const [ratings, setRatings] = useState({})
+  const [healthPoints, setHealthPoints] = useState({})
 
   async function load() {
     setLoading(true)
-    const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }] = await Promise.all([
+    const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }, { data: ratingsData }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, protein_g, calories, created_at').eq('role', 'client').order('full_name'),
       supabase.from('program_assignments').select('*'),
       supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text').order('logged_at', { ascending: false }).limit(600),
@@ -36,8 +38,11 @@ export default function CoachHome() {
       supabase.from('checkins').select('client_id, submitted_at, notes, weight').order('submitted_at', { ascending: false }).limit(100),
       supabase.from('messages').select('sender_id, recipient_id, created_at'),
       supabase.from('meal_logs').select('client_id, protein_g, logged_on').order('logged_on', { ascending: false }).limit(600),
+      supabase.from('client_ratings').select('*'),
     ])
     setClients(cl || [])
+    const ratingsMap = Object.fromEntries((ratingsData || []).map(r => [r.client_id, r]))
+    setRatings(ratingsMap)
 
     const weekStart = startOfWeek()
     const contactedSet = new Set()
@@ -69,6 +74,22 @@ export default function CoachHome() {
       st[c.id] = { exercise: exerciseDue, lifestyle: lifestyleDue, checkin: checkinDue }
     }
     setStatuses(st)
+
+    const hp = {}
+    for (const c of cl || []) {
+      const lastCheckin = checkins?.find(ci => ci.client_id === c.id)
+      const daysSinceCheckin = lastCheckin ? daysAgo(lastCheckin.submitted_at) : 999
+      const checkinLight = daysSinceCheckin <= 6 ? 'green' : daysSinceCheckin <= 9 ? 'yellow' : 'red'
+
+      const s = st[c.id]
+      const programLight = s.exercise ? 'red' : s.lifestyle ? 'yellow' : 'green'
+
+      const r = ratingsMap[c.id] || {}
+      const lights = [checkinLight, programLight, r.retention, r.mindset].filter(Boolean)
+      const overall = lights.includes('red') ? 'red' : lights.includes('yellow') ? 'yellow' : 'green'
+      hp[c.id] = { overall, checkinLight, programLight, retention: r.retention, mindset: r.mindset }
+    }
+    setHealthPoints(hp)
 
     const onb = {}
     for (const c of cl || []) {
@@ -237,7 +258,12 @@ export default function CoachHome() {
           const s = statuses[c.id]
           return (
             <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: i < filtered.length - 1 ? '1px solid var(--line)' : 'none', flexWrap: 'wrap' }}>
-              <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{initials(c.full_name)}</div>
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800 }}>{initials(c.full_name)}</div>
+                {healthPoints[c.id] && (
+                  <span title={`Health Points: ${healthPoints[c.id].overall}`} style={{ position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: '50%', background: { red: '#D64545', yellow: '#E0B23E', green: '#4CAF6D' }[healthPoints[c.id].overall], border: '2px solid var(--coal)' }} />
+                )}
+              </div>
               <strong style={{ fontSize: 14, minWidth: 110 }}>{c.full_name || 'Client'}</strong>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {s.exercise && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(191,87,0,0.18)', color: 'var(--orange-hot)' }}>Exercise due</span>}
@@ -315,6 +341,12 @@ export default function CoachHome() {
                     <strong style={{ display: 'block', fontSize: 14.5, marginTop: 8 }}>{c.full_name}</strong>
                     <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>{sessions[c.id] || 0} session{sessions[c.id] === 1 ? '' : 's'} logged</p>
                     {memberDays !== null && <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>Client for {memberDays} day{memberDays === 1 ? '' : 's'}</p>}
+                    {healthPoints[c.id] && (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+                        <span style={{ width: 12, height: 12, borderRadius: '50%', background: { red: '#D64545', yellow: '#E0B23E', green: '#4CAF6D' }[healthPoints[c.id].overall], flexShrink: 0 }} />
+                        <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'capitalize' }}>{healthPoints[c.id].overall} overall</span>
+                      </div>
+                    )}
                     <p style={{ fontSize: 12, marginTop: 4, fontWeight: 700, color: daysSince === null ? 'var(--muted)' : daysSince >= 10 ? 'var(--red)' : daysSince >= 5 ? 'var(--orange-hot)' : 'var(--green)' }}>
                       {daysSince === null ? 'Never messaged' : daysSince === 0 ? 'Messaged today' : `Last contact ${daysSince}d ago`}
                     </p>
