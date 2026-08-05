@@ -1,5 +1,6 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import CoachHome from './CoachHome'
 import CoachClients from './CoachClients'
 import CoachPrograms from './CoachPrograms'
 import CoachLibrary from './CoachLibrary'
@@ -22,7 +23,8 @@ export default function CoachDashboard() {
           <img src="/icon-192.png" alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover' }} />
           <div className="wordmark" style={{ fontSize: 15 }}>Workhorse <span>Strong</span></div>
         </div>
-        <NavLink to="/coach" end>Clients</NavLink>
+        <NavLink to="/coach" end>Home</NavLink>
+        <NavLink to="/coach/clients">Clients</NavLink>
         <NavLink to="/coach/alerts">Alerts</NavLink>
         <NavLink to="/coach/form-checks">Form Checks</NavLink>
         <NavLink to="/coach/challenges">Challenges</NavLink>
@@ -39,7 +41,8 @@ export default function CoachDashboard() {
       </aside>
       <main className="coach-main">
         <Routes>
-          <Route index element={<CoachClients />} />
+          <Route index element={<CoachHome />} />
+          <Route path="clients" element={<CoachClients />} />
           <Route path="programs" element={<CoachPrograms />} />
           <Route path="library" element={<CoachLibrary />} />
           <Route path="forms" element={<CoachForms />} />
