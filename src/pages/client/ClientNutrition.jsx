@@ -81,28 +81,7 @@ export default function ClientNutrition() {
     if (!foodQ.trim()) return
     setSearching(true); setFoodResults([]); setSelFood(null); setDebugInfo('')
     try {
-      const targetUrl = 'https://search.openfoodfacts.org/search?page_size=10&langs=en&q=' + encodeURIComponent(foodQ.trim())
-      // search-a-licious (OFF's beta search API) doesn't send browser CORS headers yet,
-      // so we route through a pass-through relay that does. Try a couple in case one is down.
-      const proxies = [
-        'https://api.allorigins.win/raw?url=',
-        'https://api.codetabs.com/v1/proxy?quest=',
-      ]
-      let res = null, lastErr = null
-      for (const proxy of proxies) {
-        try {
-          const attempt = await fetch(proxy + encodeURIComponent(targetUrl))
-          if (attempt.ok) { res = attempt; break }
-          lastErr = `HTTP ${attempt.status} from ${proxy}`
-        } catch (e) {
-          lastErr = `${e.message} from ${proxy}`
-        }
-      }
-      if (!res) {
-        setDebugInfo(`Both relay attempts failed. Last error: ${lastErr}`)
-        setSearching(false)
-        return
-      }
+      const res = await fetch('/api/food-search?q=' + encodeURIComponent(foodQ.trim()))
       const text = await res.text()
       let data
       try { data = JSON.parse(text) } catch {
@@ -111,33 +90,13 @@ export default function ClientNutrition() {
         return
       }
       if (!res.ok) {
-        setDebugInfo(`Search failed — HTTP ${res.status}. ${JSON.stringify(data).slice(0, 200)}`)
+        setDebugInfo(`Search failed — HTTP ${res.status}. ${data.error || JSON.stringify(data).slice(0, 200)}`)
         setSearching(false)
         return
       }
-      const rawItems = data.hits || data.products || []
-      const items = rawItems
-        .map(raw => {
-          try {
-            const pr = raw.document || raw._source || raw
-            const nutr = pr.nutriments || {}
-            const brandsField = pr.brands
-            return {
-              id: pr.code || pr.id,
-              name: pr.product_name || pr.product_name_en || 'Unknown',
-              brand: Array.isArray(brandsField) ? (brandsField[0] || '') : String(brandsField || '').split(',')[0],
-              p: +nutr.proteins_100g || 0,
-              c: +nutr.carbohydrates_100g || 0,
-              f: +nutr.fat_100g || 0,
-            }
-          } catch {
-            return null
-          }
-        })
-        .filter(it => it && it.name !== 'Unknown' && (it.p || it.c || it.f))
-      setFoodResults(items)
-      if (items.length === 0) {
-        setDebugInfo(`Got a response but found 0 usable results. Raw item count: ${rawItems.length}. Sample: ${JSON.stringify(rawItems[0] || data).slice(0, 250)}`)
+      setFoodResults(data.items || [])
+      if ((data.items || []).length === 0) {
+        setDebugInfo('No matching products found for that search.')
       }
     } catch (err) {
       setDebugInfo(`Search request failed entirely: ${err.message}`)
