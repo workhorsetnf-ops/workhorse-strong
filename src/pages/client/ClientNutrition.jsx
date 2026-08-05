@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
@@ -11,6 +11,10 @@ export default function ClientNutrition() {
   const [searching, setSearching] = useState(false)
   const [selFood, setSelFood] = useState(null)
   const [grams, setGrams] = useState('100')
+  const [scanning, setScanning] = useState(false)
+  const [scanError, setScanError] = useState('')
+  const videoRef = useRef(null)
+  const streamRef = useRef(null)
   const today = new Date().toISOString().slice(0, 10)
 
   async function load() {
@@ -19,6 +23,58 @@ export default function ClientNutrition() {
     setMeals(data || [])
   }
   useEffect(() => { if (profile) load() }, [profile])
+
+  async function lookupBarcode(code) {
+    try {
+      const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`)
+      const data = await res.json()
+      if (data.status !== 1) { setScanError("Couldn't find that product — try searching by name instead."); return }
+      const pr = data.product
+      setSelFood({
+        id: code, name: pr.product_name || 'Scanned item', brand: (pr.brands || '').split(',')[0],
+        p: +pr.nutriments?.proteins_100g || 0, c: +pr.nutriments?.carbohydrates_100g || 0, f: +pr.nutriments?.fat_100g || 0,
+      })
+      setFoodResults([]); setFoodQ('')
+    } catch {
+      setScanError('Lookup failed — check your connection and try again.')
+    }
+  }
+
+  async function startScan() {
+    setScanError('')
+    if (!('BarcodeDetector' in window)) {
+      setScanError("Barcode scanning isn't supported in this browser yet — Safari/iPhone doesn't have it. Search by name instead, or try Chrome on Android.")
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      streamRef.current = stream
+      setScanning(true)
+      setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = stream }, 50)
+      const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] })
+      const tick = async () => {
+        if (!streamRef.current || !videoRef.current) return
+        try {
+          const codes = await detector.detect(videoRef.current)
+          if (codes.length > 0) {
+            stopScan()
+            lookupBarcode(codes[0].rawValue)
+            return
+          }
+        } catch {}
+        if (streamRef.current) requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    } catch {
+      setScanError('Could not access your camera — check browser permissions.')
+    }
+  }
+
+  function stopScan() {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    setScanning(false)
+  }
 
   async function searchFood() {
     if (!foodQ.trim()) return
@@ -111,6 +167,15 @@ export default function ClientNutrition() {
             {searching ? '…' : 'Search'}
           </button>
         </div>
+        {!scanning ? (
+          <button className="btn-ghost" onClick={startScan}>📷 Scan a barcode</button>
+        ) : (
+          <div>
+            <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', borderRadius: 8, maxHeight: 240, objectFit: 'cover' }} />
+            <button className="btn-ghost" style={{ marginTop: 6, width: '100%' }} onClick={stopScan}>Cancel scan</button>
+          </div>
+        )}
+        {scanError && <p style={{ color: 'var(--red)', fontSize: 12.5 }}>{scanError}</p>}
         {foodResults.length > 0 && !selFood && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {foodResults.map(it => (
