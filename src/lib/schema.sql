@@ -507,3 +507,22 @@ create table milestone_prompts_shown (
 );
 alter table milestone_prompts_shown enable row level security;
 create policy "client manages own milestone flags" on milestone_prompts_shown for all using (client_id = auth.uid());
+
+-- ===== CLIENT HUB (single markdown doc) =====
+create table client_hub (
+  id int primary key default 1,
+  title text not null default 'Client Hub',
+  subtitle text default '',
+  content_md text default '',
+  updated_at timestamptz default now(),
+  constraint single_row check (id = 1)
+);
+insert into client_hub (id, title, subtitle, content_md) values (
+  1, 'Client Hub', 'Everything you''ll ask in your first 30 days lives here.',
+  '## Welcome\n\nThis is your reference doc — read this before you DM me for something that might already be answered here.'
+);
+alter table client_hub enable row level security;
+create policy "coach manages hub" on client_hub for all using (is_coach());
+create policy "clients read hub" on client_hub for select using (
+  exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'client')
+);

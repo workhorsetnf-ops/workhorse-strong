@@ -210,7 +210,7 @@ export default function ClientHome() {
         <Link to="/app/faq" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
             <div style={{ fontSize: 18, marginBottom: 4 }}>❓</div>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>FAQ</div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Hub / FAQ</div>
           </div>
         </Link>
       </div>

@@ -13,6 +13,7 @@ import CoachRoadmap from './CoachRoadmap'
 import ClientCommunity from '../ClientCommunity'
 import CoachPrintSummary from './CoachPrintSummary'
 import CoachTestimonials from './CoachTestimonials'
+import CoachHub from './CoachHub'
 import CoachCheckins from './CoachCheckins'
 import CoachMessages from './CoachMessages'
 
@@ -31,6 +32,7 @@ export default function CoachDashboard() {
         <NavLink to="/coach/form-checks">Form Checks</NavLink>
         <NavLink to="/coach/challenges">Challenges</NavLink>
         <NavLink to="/coach/resources">Resources</NavLink>
+        <NavLink to="/coach/hub">Client Hub</NavLink>
         <NavLink to="/coach/roadmap">Roadmap</NavLink>
         <NavLink to="/coach/community">Community</NavLink>
         <NavLink to="/coach/programs">Programs</NavLink>
@@ -53,6 +55,7 @@ export default function CoachDashboard() {
           <Route path="form-checks" element={<CoachFormChecks />} />
           <Route path="challenges" element={<CoachChallenges />} />
           <Route path="resources" element={<CoachResources />} />
+          <Route path="hub" element={<CoachHub />} />
           <Route path="roadmap" element={<CoachRoadmap />} />
           <Route path="community" element={<ClientCommunity isCoach />} />
           <Route path="print/:clientId" element={<CoachPrintSummary />} />
