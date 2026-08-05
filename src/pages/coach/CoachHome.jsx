@@ -19,11 +19,12 @@ export default function CoachHome() {
   const [openItem, setOpenItem] = useState(null)
   const [comment, setComment] = useState('')
   const [loading, setLoading] = useState(true)
+  const [onboarding, setOnboarding] = useState({})
 
   async function load() {
     setLoading(true)
     const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name').eq('role', 'client').order('full_name'),
+      supabase.from('profiles').select('id, full_name, protein_g, calories').eq('role', 'client').order('full_name'),
       supabase.from('program_assignments').select('*'),
       supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text').order('logged_at', { ascending: false }).limit(400),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(200),
@@ -51,6 +52,20 @@ export default function CoachHome() {
       st[c.id] = { exercise: exerciseDue, lifestyle: lifestyleDue, checkin: checkinDue }
     }
     setStatuses(st)
+
+    const onb = {}
+    for (const c of cl || []) {
+      const items = [
+        { label: 'Program assigned', done: assigns?.some(a => a.client_id === c.id) },
+        { label: 'Start date set', done: !!assigns?.find(a => a.client_id === c.id)?.start_date },
+        { label: 'Macros set', done: (c.protein_g > 0 || c.calories > 0) },
+        { label: 'First workout logged', done: workoutLogs?.some(w => w.client_id === c.id) },
+        { label: 'First check-in submitted', done: checkins?.some(ci => ci.client_id === c.id) },
+      ]
+      const done = items.filter(i => i.done).length
+      onb[c.id] = { items, pct: Math.round(done / items.length * 100) }
+    }
+    setOnboarding(onb)
 
     buildFeed(feedTab, cl || [], workoutLogs || [], dailyLogs || [], checkins || [])
     setLoading(false)
@@ -137,6 +152,36 @@ export default function CoachHome() {
           )
         })}
       </div>
+
+      {(() => {
+        const newClients = clients.filter(c => onboarding[c.id] && onboarding[c.id].pct < 100).sort((a,b) => onboarding[a.id].pct - onboarding[b.id].pct)
+        if (newClients.length === 0) return null
+        return (
+          <div className="card" style={{ marginBottom: 24 }}>
+            <strong style={{ fontSize: 15 }}>New Client Checklist</strong>
+            <p className="muted" style={{ fontSize: 12.5, marginTop: 2, marginBottom: 12 }}>Fills itself in automatically as you set each client up.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {newClients.map(c => {
+                const o = onboarding[c.id]
+                return (
+                  <div key={c.id}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <strong style={{ fontSize: 13.5 }}>{c.full_name || 'Client'}</strong>
+                      <span className="muted" style={{ fontSize: 12 }}>{o.pct}%</span>
+                    </div>
+                    <div className="bar-track" style={{ marginBottom: 6 }}><div className="bar-fill" style={{ width: `${o.pct}%` }} /></div>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {o.items.map((it, i) => (
+                        <span key={i} style={{ fontSize: 11.5, color: it.done ? 'var(--green)' : 'var(--muted)' }}>{it.done ? '✓' : '○'} {it.label}</span>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
 
       <div className="card" style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
