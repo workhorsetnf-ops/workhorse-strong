@@ -32,6 +32,7 @@ export default function CoachClients() {
   const [form, setForm] = useState({})
   const [maxes, setMaxes] = useState([])          // [{id?, lift_name, max_weight}]
   const [savedId, setSavedId] = useState(null)
+  const [search, setSearch] = useState('')
   const [rm, setRm] = useState({ lift: '', weight: '', reps: '' })
   const [rating, setRating] = useState({ retention: null, mindset: null, notes: '' })
   const [photosFor, setPhotosFor] = useState(null)     // client id with timeline open
@@ -126,6 +127,10 @@ export default function CoachClients() {
     setMaxes(list => list.filter((_, j) => j !== i))
   }
 
+  const filteredClients = clients
+    .filter(c => ((c.full_name || '') + ' ' + (c.email || '')).toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => (a.full_name ? 1 : 0) - (b.full_name ? 1 : 0))
+
   return (
     <div>
       <div className="eyebrow">Roster</div>
@@ -134,10 +139,21 @@ export default function CoachClients() {
         To add a client: Supabase → Authentication → Users → Add user. They appear here after first sign-in.
       </p>
 
-      {clients.length === 0 && <div className="card muted">No clients yet.</div>}
+      {clients.some(c => !c.full_name) && (
+        <div className="card" style={{ borderLeft: '3px solid var(--orange)', marginBottom: 16 }}>
+          <strong style={{ fontSize: 13.5, color: 'var(--orange-hot)' }}>
+            {clients.filter(c => !c.full_name).length} client(s) still need a name set
+          </strong>
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>Match the email under each one to who you invited, then hit Edit to fill in their name.</p>
+        </div>
+      )}
+
+      <input placeholder="Search by name or email…" value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: 16 }} />
+
+      {filteredClients.length === 0 && <div className="card muted">{clients.length === 0 ? 'No clients yet.' : 'No matches.'}</div>}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {clients.map(c => (
+        {filteredClients.map(c => (
           <div className="card" key={c.id}>
             {editing === c.id ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -259,7 +275,8 @@ export default function CoachClients() {
             ) : (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                 <div>
-                  <strong style={{ fontSize: 16 }}>{c.full_name || '(no name yet)'}</strong>
+                  <strong style={{ fontSize: 16, color: c.full_name ? undefined : 'var(--orange-hot)' }}>{c.full_name || 'Needs a name'}</strong>
+                  {c.email && <div className="muted" style={{ fontSize: 12.5, marginTop: 1 }}>{c.email}</div>}
                   <div className="muted" style={{ fontSize: 13, marginTop: 3, textTransform: 'capitalize' }}>
                     {c.phase} · P {c.protein_g} / C {c.carbs_g} / F {c.fat_g} · {c.calories} kcal
                   </div>

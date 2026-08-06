@@ -6,6 +6,7 @@ create table profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   role text not null default 'client' check (role in ('coach','client')),
   full_name text not null default '',
+  email text,
   phase text default 'cut' check (phase in ('cut','build','recomp','maintain')),
   protein_g int default 0,
   carbs_g int default 0,
@@ -18,8 +19,8 @@ create table profiles (
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  insert into public.profiles (id, full_name)
-  values (new.id, coalesce(new.raw_user_meta_data->>'full_name',''));
+  insert into public.profiles (id, full_name, email)
+  values (new.id, coalesce(new.raw_user_meta_data->>'full_name',''), new.email);
   return new;
 end $$;
 
