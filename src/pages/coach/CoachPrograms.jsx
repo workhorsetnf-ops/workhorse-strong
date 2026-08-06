@@ -333,6 +333,13 @@ export default function CoachPrograms() {
     alert(`"${newName}" created — find it at the top of your programs list.`)
   }
 
+  async function renameProgram(program) {
+    const name = prompt('Program name:', program.name)
+    if (!name || !name.trim()) return
+    await supabase.from('programs').update({ name: name.trim() }).eq('id', program.id)
+    load()
+  }
+
   async function deleteProgram(id) {
     if (!confirm('Delete this program and all its blocks/workouts?')) return
     await supabase.from('programs').delete().eq('id', id)
@@ -458,7 +465,7 @@ export default function CoachPrograms() {
             <div className="card" key={p.id}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                 <div>
-                  <strong style={{ fontSize: 16 }}>{p.name}</strong>
+                  <strong onClick={() => renameProgram(p)} title="Click to rename" style={{ fontSize: 16, cursor: 'pointer' }}>{p.name} <span style={{ fontSize: 11, opacity: 0.6 }}>✎</span></strong>
                   <span className="muted" style={{ fontSize: 13, marginLeft: 8 }}>{p.weeks} total weeks</span>
                   <div className="muted" style={{ fontSize: 13, marginTop: 3 }}>{assigned.length ? `Assigned to ${assigned.length} client(s)` : 'Not assigned'}</div>
                 </div>
