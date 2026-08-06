@@ -19,9 +19,13 @@ export default function ClientFAQ() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {hub && (hub.content_md || hub.subtitle) && (
         <div className="card" style={{ background: '#fff', color: '#111' }}>
-          <div style={{ background: '#0A0A0A', borderRadius: 8, padding: '18px 20px', textAlign: 'center' }}>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: '0.04em' }}>{hub.title}</div>
-          </div>
+          {hub.banner_url ? (
+            <img src={hub.banner_url} alt={hub.title} style={{ width: '100%', borderRadius: 8, display: 'block' }} />
+          ) : (
+            <div style={{ background: '#0A0A0A', borderRadius: 8, padding: '18px 20px', textAlign: 'center' }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: '#fff', letterSpacing: '0.04em' }}>{hub.title}</div>
+            </div>
+          )}
           {hub.subtitle && <p style={{ marginTop: 12, color: '#555', fontSize: 14 }}>{hub.subtitle}</p>}
           <div className="hub-preview" style={{ marginTop: 14, fontSize: 14, lineHeight: 1.6 }}
             dangerouslySetInnerHTML={{ __html: marked.parse(hub.content_md || '') }} />

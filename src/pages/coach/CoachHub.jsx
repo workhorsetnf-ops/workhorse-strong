@@ -5,6 +5,8 @@ import { supabase } from '../../lib/supabase'
 export default function CoachHub() {
   const [title, setTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
+  const [bannerUrl, setBannerUrl] = useState('')
+  const [uploadingBanner, setUploadingBanner] = useState(false)
   const [content, setContent] = useState('')
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -13,7 +15,7 @@ export default function CoachHub() {
 
   async function load() {
     const { data } = await supabase.from('client_hub').select('*').eq('id', 1).maybeSingle()
-    if (data) { setTitle(data.title); setSubtitle(data.subtitle || ''); setContent(data.content_md || '') }
+    if (data) { setTitle(data.title); setSubtitle(data.subtitle || ''); setContent(data.content_md || ''); setBannerUrl(data.banner_url || '') }
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -42,9 +44,20 @@ export default function CoachHub() {
   }
 
   async function save() {
-    const { error } = await supabase.from('client_hub').upsert({ id: 1, title: title.trim() || 'Client Hub', subtitle: subtitle.trim(), content_md: content, updated_at: new Date().toISOString() })
+    const { error } = await supabase.from('client_hub').upsert({ id: 1, title: title.trim() || 'Client Hub', subtitle: subtitle.trim(), content_md: content, banner_url: bannerUrl || null, updated_at: new Date().toISOString() })
     if (error) { alert('Could not save: ' + error.message); return }
     setSaved(true); setTimeout(() => setSaved(false), 2000)
+  }
+
+  async function uploadBanner(file) {
+    if (!file) return
+    setUploadingBanner(true)
+    const path = `banner-${Date.now()}-${file.name}`
+    const { error } = await supabase.storage.from('hub-images').upload(path, file)
+    if (error) { alert('Upload failed: ' + error.message); setUploadingBanner(false); return }
+    const { data } = supabase.storage.from('hub-images').getPublicUrl(path)
+    setBannerUrl(data.publicUrl)
+    setUploadingBanner(false)
   }
 
   if (loading) return <div className="muted">Loading…</div>
@@ -60,8 +73,16 @@ export default function CoachHub() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <span className="eyebrow" style={{ fontSize: 10 }}>Edit</span>
-          <input placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
+          <input placeholder="Title (used if no banner image is set)" value={title} onChange={e => setTitle(e.target.value)} />
           <input placeholder="Subtitle" value={subtitle} onChange={e => setSubtitle(e.target.value)} />
+          <div>
+            <label className="btn-ghost" style={{ display: 'inline-block', cursor: 'pointer' }}>
+              {uploadingBanner ? 'Uploading…' : bannerUrl ? 'Replace banner image' : '+ Upload banner image'}
+              <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingBanner} onChange={e => uploadBanner(e.target.files[0])} />
+            </label>
+            {bannerUrl && <button className="btn-ghost" style={{ marginLeft: 8 }} onClick={() => setBannerUrl('')}>Remove banner</button>}
+            <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>If set, this image replaces the text banner up top — a wide graphic (like your Workhorse logo banner) works best.</p>
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }} onClick={insertToggle}>+ Collapsible section</button>
             <label className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
@@ -77,11 +98,15 @@ export default function CoachHub() {
 
         <div className="card" style={{ background: '#fff', color: '#111' }}>
           <span className="eyebrow" style={{ fontSize: 10, color: '#999' }}>Live preview</span>
-          <div style={{ background: '#0A0A0A', borderRadius: 8, padding: '18px 20px', marginTop: 10, textAlign: 'center' }}>
-            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: '0.04em' }}>
-              {title || 'Client Hub'}
+          {bannerUrl ? (
+            <img src={bannerUrl} alt={title} style={{ width: '100%', borderRadius: 8, marginTop: 10, display: 'block' }} />
+          ) : (
+            <div style={{ background: '#0A0A0A', borderRadius: 8, padding: '18px 20px', marginTop: 10, textAlign: 'center' }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: '#fff', letterSpacing: '0.04em' }}>
+                {title || 'Client Hub'}
+              </div>
             </div>
-          </div>
+          )}
           {subtitle && <p style={{ marginTop: 12, color: '#555', fontSize: 14 }}>{subtitle}</p>}
           <div className="hub-preview" style={{ marginTop: 14, fontSize: 14, lineHeight: 1.6 }}
             dangerouslySetInnerHTML={{ __html: marked.parse(content || '') }} />
