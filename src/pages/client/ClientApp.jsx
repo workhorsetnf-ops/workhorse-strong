@@ -1,4 +1,7 @@
-import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
+import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
 import ClientHome from './ClientHome'
 import ClientTraining from './ClientTraining'
 import ClientNutrition from './ClientNutrition'
@@ -14,7 +17,39 @@ import ClientRecap from './ClientRecap'
 import ClientFAQ from './ClientFAQ'
 import ClientCalendar from './ClientCalendar'
 
+function Dot() {
+  return <span style={{ position: 'absolute', top: 4, right: '28%', width: 8, height: 8, borderRadius: '50%', background: 'var(--red)', border: '1.5px solid var(--coal)' }} />
+}
+
 export default function ClientApp() {
+  const { profile } = useAuth()
+  const location = useLocation()
+  const [badges, setBadges] = useState({ messages: false, checkin: false, filmChecks: false })
+
+  async function refreshBadges() {
+    if (!profile) return
+    const [{ count: msgCount }, { data: lastCheckin }, { data: myForms }] = await Promise.all([
+      supabase.from('messages').select('id', { count: 'exact', head: true }).eq('recipient_id', profile.id).is('read_at', null),
+      supabase.from('checkins').select('submitted_at').eq('client_id', profile.id).order('submitted_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('form_checks').select('id').eq('client_id', profile.id),
+    ])
+    const checkinDue = !lastCheckin || (Date.now() - new Date(lastCheckin.submitted_at).getTime()) / 864e5 >= 6
+
+    let filmChecks = false
+    const formIds = (myForms || []).map(f => f.id)
+    if (formIds.length) {
+      const { count } = await supabase.from('form_check_comments').select('id', { count: 'exact', head: true })
+        .in('form_check_id', formIds).neq('sender_id', profile.id).is('read_at', null)
+      filmChecks = (count || 0) > 0
+    }
+
+    setBadges({ messages: (msgCount || 0) > 0, checkin: checkinDue, filmChecks })
+  }
+
+  useEffect(() => { refreshBadges() }, [profile])
+  // re-check whenever the client navigates — covers "just read it, badge should clear"
+  useEffect(() => { const t = setTimeout(refreshBadges, 400); return () => clearTimeout(t) }, [location.pathname])
+
   return (
     <div className="client-shell">
       <main className="client-main">
@@ -40,11 +75,11 @@ export default function ClientApp() {
         <NavLink to="/app" end><span className="ico">▪</span>Home</NavLink>
         <NavLink to="/app/training"><span className="ico">▪</span>Train</NavLink>
         <NavLink to="/app/nutrition"><span className="ico">▪</span>Eat</NavLink>
-        <NavLink to="/app/checkin"><span className="ico">▪</span>Check-in</NavLink>
+        <NavLink to="/app/checkin" style={{ position: 'relative' }}><span className="ico">▪</span>Check-in{badges.checkin && <Dot />}</NavLink>
         <NavLink to="/app/progress"><span className="ico">▪</span>Log</NavLink>
-        <NavLink to="/app/form-checks"><span className="ico">▪</span>Film</NavLink>
+        <NavLink to="/app/form-checks" style={{ position: 'relative' }}><span className="ico">▪</span>Film{badges.filmChecks && <Dot />}</NavLink>
         <NavLink to="/app/challenges"><span className="ico">▪</span>Rank</NavLink>
-        <NavLink to="/app/messages"><span className="ico">▪</span>Coach</NavLink>
+        <NavLink to="/app/messages" style={{ position: 'relative' }}><span className="ico">▪</span>Coach{badges.messages && <Dot />}</NavLink>
       </nav>
     </div>
   )

@@ -43,6 +43,9 @@ export default function ClientFormChecks() {
     }
     const { data: c } = await supabase.from('form_check_comments').select('*').eq('form_check_id', item.id).order('created_at')
     setComments(cm => ({ ...cm, [item.id]: c || [] }))
+    supabase.from('form_check_comments').update({ read_at: new Date().toISOString() })
+      .eq('form_check_id', item.id).neq('sender_id', profile.id).is('read_at', null)
+      .then(() => {})
     setTimeout(() => bottomRef.current?.scrollIntoView(), 100)
   }
 

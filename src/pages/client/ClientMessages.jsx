@@ -25,12 +25,18 @@ export default function ClientMessages() {
       .order('created_at')
       .then(({ data }) => setMsgs(data || []))
 
+    // mark any incoming unread messages as read now that this tab is open
+    supabase.from('messages').update({ read_at: new Date().toISOString() })
+      .eq('recipient_id', profile.id).eq('sender_id', coachId).is('read_at', null)
+      .then(() => {})
+
     const channel = supabase.channel('client-chat')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         const m = payload.new
         if ((m.sender_id === coachId && m.recipient_id === profile.id) ||
             (m.sender_id === profile.id && m.recipient_id === coachId)) {
           setMsgs(prev => prev.some(x => x.id === m.id) ? prev : [...prev, m])
+          if (m.sender_id === coachId) supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('id', m.id).then(() => {})
         }
       })
       .subscribe()

@@ -170,6 +170,7 @@ create table messages (
   audio_path text,
   file_path text,
   file_name text,
+  read_at timestamptz,
   created_at timestamptz default now()
 );
 
