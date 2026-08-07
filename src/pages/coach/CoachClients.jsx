@@ -61,6 +61,15 @@ export default function CoachClients() {
     }))
   }
 
+  async function resetPassword(c) {
+    const pw = prompt(`New temporary password for ${c.full_name || c.email || 'this client'}:\n\nGive it to them directly — they can sign in with it right away.`, '')
+    if (!pw) return
+    if (pw.length < 6) { alert('Password must be at least 6 characters.'); return }
+    const { error } = await supabase.rpc('admin_reset_password', { target_user_id: c.id, new_password: pw })
+    if (error) { alert('Could not reset password: ' + error.message); return }
+    alert(`Done — ${c.full_name || c.email || 'their'} password is now set. Give it to them along with your Vercel URL.`)
+  }
+
   async function startEdit(c) {
     setEditing(c.id)
     const { data: r } = await supabase.from('client_ratings').select('*').eq('client_id', c.id).maybeSingle()
@@ -281,8 +290,9 @@ export default function CoachClients() {
                     {c.phase} · P {c.protein_g} / C {c.carbs_g} / F {c.fat_g} · {c.calories} kcal
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <a href={`/coach/print/${c.id}`} target="_blank" rel="noreferrer" className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Print summary</a>
+                  <button className="btn-ghost" onClick={() => resetPassword(c)}>Reset password</button>
                   <button className="btn-ghost" onClick={() => togglePhotos(c.id)}>
                     {photosFor === c.id ? 'Hide photos' : 'Photos'}
                   </button>
