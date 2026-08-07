@@ -166,8 +166,10 @@ create table messages (
   sender_id uuid not null references profiles(id) on delete cascade,
   recipient_id uuid not null references profiles(id) on delete cascade,
   body text not null,
-  msg_type text not null default 'text' check (msg_type in ('text','audio')),
+  msg_type text not null default 'text' check (msg_type in ('text','audio','file')),
   audio_path text,
+  file_path text,
+  file_name text,
   created_at timestamptz default now()
 );
 
@@ -528,3 +530,10 @@ create policy "coach manages hub" on client_hub for all using (is_coach());
 create policy "clients read hub" on client_hub for select using (
   exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'client')
 );
+
+-- ===== MESSAGE FILE ATTACHMENTS =====
+insert into storage.buckets (id, name, public) values ('message-files', 'message-files', false);
+create policy "send own message files" on storage.objects for insert
+  with check (bucket_id = 'message-files' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "read message files if authenticated" on storage.objects for select
+  using (bucket_id = 'message-files' and auth.role() = 'authenticated');

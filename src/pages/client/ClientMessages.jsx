@@ -9,6 +9,8 @@ export default function ClientMessages() {
   const [msgs, setMsgs] = useState([])
   const [text, setText] = useState('')
   const [audioUrls, setAudioUrls] = useState({})
+  const [fileUrls, setFileUrls] = useState({})
+  const [attaching, setAttaching] = useState(false)
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -56,6 +58,23 @@ export default function ClientMessages() {
     if (data?.signedUrl) setAudioUrls(u => ({ ...u, [m.id]: data.signedUrl }))
   }
 
+  async function openFile(m) {
+    if (fileUrls[m.id]) { window.open(fileUrls[m.id], '_blank'); return }
+    const { data } = await supabase.storage.from('message-files').createSignedUrl(m.file_path, 3600)
+    if (data?.signedUrl) { setFileUrls(u => ({ ...u, [m.id]: data.signedUrl })); window.open(data.signedUrl, '_blank') }
+  }
+
+  async function sendFile(file) {
+    if (!file || !coachId) return
+    setAttaching(true)
+    const path = `${profile.id}/${Date.now()}-${file.name}`
+    const { error } = await supabase.storage.from('message-files').upload(path, file)
+    if (error) { alert('Could not attach file: ' + error.message); setAttaching(false); return }
+    const { error: msgErr } = await supabase.from('messages').insert({ sender_id: profile.id, recipient_id: coachId, body: `📎 ${file.name}`, msg_type: 'file', file_path: path, file_name: file.name })
+    if (msgErr) alert('Could not send: ' + msgErr.message)
+    setAttaching(false)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - 130px)' }}>
       <header style={{ marginBottom: 12 }}>
@@ -70,6 +89,8 @@ export default function ClientMessages() {
               audioUrls[m.id]
                 ? <audio src={audioUrls[m.id]} controls style={{ height: 34, maxWidth: 220 }} />
                 : <button onClick={() => playAudio(m)} style={{ background: 'none', color: 'inherit', fontWeight: 700, fontSize: 13 }}>▶ Voice note</button>
+            ) : m.msg_type === 'file' ? (
+              <button onClick={() => openFile(m)} style={{ background: 'none', color: 'inherit', fontWeight: 700, fontSize: 13, textAlign: 'left' }}>📎 {m.file_name || 'Attachment'}</button>
             ) : m.body}
           </div>
         ))}
@@ -78,6 +99,10 @@ export default function ClientMessages() {
       <div style={{ display: 'flex', gap: 8, paddingTop: 8 }}>
         <input placeholder="Message your coach…" value={text} onChange={e => setText(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && send()} />
+        <label className="btn-ghost" style={{ padding: '10px 14px', cursor: 'pointer' }} title="Attach a file">
+          {attaching ? '…' : '📎'}
+          <input type="file" style={{ display: 'none' }} disabled={attaching} onChange={e => sendFile(e.target.files[0])} />
+        </label>
         <VoiceRecorder userId={profile.id} onSent={sendVoice} />
         <button className="btn" style={{ padding: '12px 18px' }} onClick={send}>Send</button>
       </div>
