@@ -179,7 +179,7 @@ export default function CoachPrograms() {
       day_id: dayId, name: text, kind, description: desc,
       tracking_type: fromLib?.tracking_type || '',
       letter: nextFreeLetter(list),
-      video_url: fromLib?.video_url || '', notes: fromLib?.notes || '',
+      video_url: fromLib?.video_url || '', notes: fromLib?.notes || '', icon_url: fromLib?.icon_url || null,
       metric, rest: '', progression_type: 'rir', sets: 3, reps: defaultReps(metric), rir: '2',
       week_targets: Array.from({ length: weeks }, () => ({ sets: 3, reps: defaultReps(metric), target: '2' })),
       position: list.length,
@@ -214,6 +214,7 @@ export default function CoachPrograms() {
       letter: ex.letter || '', name: ex.name, video_url: ex.video_url || '', rest: ex.rest || '',
       metric: ex.metric || 'reps', progression_type: ex.progression_type || 'rir',
       based_on_lift: ex.based_on_lift || '', kind: ex.kind || 'exercise', description: ex.description || '',
+      icon_url: ex.icon_url || '',
     })
     const weeks = block.weeks || 4
     const wt = Array.isArray(ex.week_targets) ? ex.week_targets : []
@@ -222,12 +223,21 @@ export default function CoachPrograms() {
     })))
   }
 
+  async function uploadExerciseIcon(file) {
+    if (!file) return
+    const path = `${Date.now()}-${file.name}`
+    const { error } = await supabase.storage.from('exercise-icons').upload(path, file)
+    if (error) { alert('Upload failed: ' + error.message); return }
+    const { data } = supabase.storage.from('exercise-icons').getPublicUrl(path)
+    setEdit(e => ({ ...e, icon_url: data.publicUrl }))
+  }
+
   async function saveEdit(dayId, exId) {
     await supabase.from('program_exercises').update({
       letter: edit.letter.trim().toUpperCase(), name: edit.name.trim(), video_url: edit.video_url.trim(),
       rest: edit.rest.trim(), metric: edit.metric, progression_type: edit.progression_type,
       based_on_lift: edit.progression_type === 'percent' ? edit.based_on_lift.trim() : '',
-      description: edit.description || '',
+      description: edit.description || '', icon_url: edit.icon_url || null,
       sets: +editWeeks[0]?.sets || 3, reps: String(editWeeks[0]?.reps ?? ''),
       week_targets: editWeeks.map(r => ({ sets: +r.sets || 3, reps: String(r.reps), target: String(r.target) })),
     }).eq('id', exId)
@@ -367,6 +377,7 @@ export default function CoachPrograms() {
           {dragIdx !== null && <span title="Drag to reorder" style={{ color: 'var(--muted)', fontSize: 13, lineHeight: '17px', flexShrink: 0, userSelect: 'none' }}>⠿</span>}
           <input type="checkbox" checked={!!sel} onChange={() => toggleSelect(d.id, ex.id)}
             style={{ width: 15, height: 15, marginTop: 2, accentColor: 'var(--orange)', flexShrink: 0 }} title="Select to group" />
+          {ex.icon_url && <img src={ex.icon_url} alt="" style={{ width: 24, height: 24, borderRadius: 5, objectFit: 'cover', flexShrink: 0 }} />}
           <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => startEdit(block, ex)}>
             <div style={{ fontSize: 12.5, fontWeight: 700 }}>
               {ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter}) </span>}{ex.name}
@@ -379,6 +390,14 @@ export default function CoachPrograms() {
 
         {expanded === ex.id && edit && (
           <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {edit.icon_url && <img src={edit.icon_url} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover' }} />}
+              <label className="btn-ghost" style={{ padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
+                {edit.icon_url ? 'Replace icon' : '+ Icon'}
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => uploadExerciseIcon(e.target.files[0])} />
+              </label>
+              {edit.icon_url && <button className="btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => setEdit(e => ({ ...e, icon_url: '' }))}>Remove</button>}
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '55px 1fr', gap: 6 }}>
               <input value={edit.letter} title="Letter" onChange={e => setEdit({ ...edit, letter: e.target.value })} style={{ padding: '6px 8px', fontSize: 12 }} />
               <input value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} style={{ padding: '6px 8px', fontSize: 12 }} />

@@ -92,6 +92,7 @@ create table program_exercises (
   video_url text default '',
   based_on_lift text default '',
   week_targets jsonb default '[]',
+  icon_url text,
   notes text default '',
   position int not null default 0
 );
@@ -538,3 +539,10 @@ create policy "send own message files" on storage.objects for insert
   with check (bucket_id = 'message-files' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "read message files if authenticated" on storage.objects for select
   using (bucket_id = 'message-files' and auth.role() = 'authenticated');
+
+-- ===== EXERCISE ICONS =====
+insert into storage.buckets (id, name, public) values ('exercise-icons', 'exercise-icons', true);
+create policy "coach uploads exercise icons" on storage.objects for insert
+  with check (bucket_id = 'exercise-icons' and public.is_coach());
+create policy "anyone reads exercise icons" on storage.objects for select
+  using (bucket_id = 'exercise-icons');

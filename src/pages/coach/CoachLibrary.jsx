@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
-const EMPTY_EX = { name: '', category: '', metric: 'reps', video_url: '', notes: '' }
+const EMPTY_EX = { name: '', category: '', metric: 'reps', video_url: '', notes: '', icon_url: '' }
 const EMPTY_COND = { name: '', format: '', instructions: '', video_url: '' }
 const EMPTY_LIFE = { name: '', category: '', instructions: '', video_url: '', tracking_type: 'yesno', reminder_time: '' }
 const TRACK_LABEL = { count: 'Count', time: 'Time', yesno: 'Yes / No', scale: 'Quality 1–10' }
@@ -9,6 +9,7 @@ const TRACK_LABEL = { count: 'Count', time: 'Time', yesno: 'Yes / No', scale: 'Q
 export default function CoachLibrary() {
   const [tab, setTab] = useState('exercises')
   const [items, setItems] = useState([])
+  const [uploadingIcon, setUploadingIcon] = useState(false)
   const [cond, setCond] = useState([])
   const [life, setLife] = useState([])
   const [q, setQ] = useState('')
@@ -28,9 +29,20 @@ export default function CoachLibrary() {
   useEffect(() => { load() }, [])
 
   // ---- exercises ----
+  async function uploadIcon(file) {
+    if (!file) return
+    setUploadingIcon(true)
+    const path = `${Date.now()}-${file.name}`
+    const { error } = await supabase.storage.from('exercise-icons').upload(path, file)
+    if (error) { alert('Upload failed: ' + error.message); setUploadingIcon(false); return }
+    const { data } = supabase.storage.from('exercise-icons').getPublicUrl(path)
+    setForm(f => ({ ...f, icon_url: data.publicUrl }))
+    setUploadingIcon(false)
+  }
+
   async function saveEx() {
     if (!form.name.trim()) return
-    const row = { name: form.name.trim(), category: form.category.trim(), metric: form.metric, video_url: form.video_url.trim(), notes: form.notes.trim() }
+    const row = { name: form.name.trim(), category: form.category.trim(), metric: form.metric, video_url: form.video_url.trim(), notes: form.notes.trim(), icon_url: form.icon_url || null }
     if (editingId) await supabase.from('exercise_library').update(row).eq('id', editingId)
     else await supabase.from('exercise_library').insert(row)
     setForm(EMPTY_EX); setEditingId(null); load()
@@ -43,7 +55,7 @@ export default function CoachLibrary() {
   }
   function editEx(i) {
     setEditingId(i.id)
-    setForm({ name: i.name, category: i.category, metric: i.metric, video_url: i.video_url, notes: i.notes })
+    setForm({ name: i.name, category: i.category, metric: i.metric, video_url: i.video_url, notes: i.notes, icon_url: i.icon_url || '' })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -108,6 +120,14 @@ export default function CoachLibrary() {
         <>
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
             <span className="eyebrow" style={{ fontSize: 10 }}>{editingId ? 'Edit exercise' : 'Add exercise'}</span>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              {form.icon_url && <img src={form.icon_url} alt="" style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />}
+              <label className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+                {uploadingIcon ? 'Uploading…' : form.icon_url ? 'Replace icon' : '+ Icon'}
+                <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingIcon} onChange={e => uploadIcon(e.target.files[0])} />
+              </label>
+              {form.icon_url && <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => setForm(f => ({ ...f, icon_url: '' }))}>Remove</button>}
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 8 }}>
               <input placeholder="Exercise name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
               <input placeholder="Category (e.g. Chest)" list="lib-cats" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} />
@@ -129,10 +149,11 @@ export default function CoachLibrary() {
           <input placeholder="Search exercises…" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 14 }} />
 
           <table className="data">
-            <thead><tr><th>Exercise</th><th>Category</th><th>Metric</th><th>Video</th><th>Note</th><th></th></tr></thead>
+            <thead><tr><th></th><th>Exercise</th><th>Category</th><th>Metric</th><th>Video</th><th>Note</th><th></th></tr></thead>
             <tbody>
               {filteredEx.map(i => (
                 <tr key={i.id}>
+                  <td>{i.icon_url ? <img src={i.icon_url} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover' }} /> : null}</td>
                   <td style={{ fontWeight: 700 }}>{i.name}</td>
                   <td className="muted">{i.category || '—'}</td>
                   <td className="muted">{metricLabel[i.metric]}</td>
