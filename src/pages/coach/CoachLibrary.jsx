@@ -10,6 +10,7 @@ export default function CoachLibrary() {
   const [tab, setTab] = useState('exercises')
   const [items, setItems] = useState([])
   const [uploadingIcon, setUploadingIcon] = useState(false)
+  const [pushingId, setPushingId] = useState(null)
   const [cond, setCond] = useState([])
   const [life, setLife] = useState([])
   const [q, setQ] = useState('')
@@ -53,6 +54,19 @@ export default function CoachLibrary() {
     if (editingId === id) { setEditingId(null); setForm(EMPTY_EX) }
     load()
   }
+  async function pushIconEverywhere(item) {
+    if (!item.icon_url) { alert('This exercise has no icon set yet — add one first.'); return }
+    if (!confirm(`Apply this icon to every exercise named "${item.name}" across all your existing programs? This can't be undone in bulk (you'd need to remove them one by one).`)) return
+    setPushingId(item.id)
+    const { data, error } = await supabase.from('program_exercises')
+      .update({ icon_url: item.icon_url })
+      .ilike('name', item.name)
+      .select('id')
+    setPushingId(null)
+    if (error) { alert('Could not apply: ' + error.message); return }
+    alert(`Done — updated ${data?.length || 0} exercise(s) named "${item.name}" across your programs.`)
+  }
+
   function editEx(i) {
     setEditingId(i.id)
     setForm({ name: i.name, category: i.category, metric: i.metric, video_url: i.video_url, notes: i.notes, icon_url: i.icon_url || '' })
@@ -160,6 +174,7 @@ export default function CoachLibrary() {
                   <td>{i.video_url ? <a href={i.video_url} target="_blank" rel="noreferrer">▶ Link</a> : <span className="muted">—</span>}</td>
                   <td className="muted" style={{ maxWidth: 240 }}>{i.notes || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
+                    {i.icon_url && <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} disabled={pushingId === i.id} onClick={() => pushIconEverywhere(i)}>{pushingId === i.id ? 'Applying…' : 'Push icon'}</button>}
                     <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => editEx(i)}>Edit</button>
                     <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, color: 'var(--red)' }} onClick={() => removeEx(i.id)}>✕</button>
                   </td>
