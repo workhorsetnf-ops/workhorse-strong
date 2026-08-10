@@ -11,6 +11,8 @@ export default function ClientNutrition() {
   const [searching, setSearching] = useState(false)
   const [selFood, setSelFood] = useState(null)
   const [grams, setGrams] = useState('100')
+  const [source, setSource] = useState('')
+  const [loadingCommon, setLoadingCommon] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState('')
   const [debugInfo, setDebugInfo] = useState('')
@@ -77,11 +79,11 @@ export default function ClientNutrition() {
     setScanning(false)
   }
 
-  async function searchFood() {
-    if (!foodQ.trim()) return
-    setSearching(true); setFoodResults([]); setSelFood(null); setDebugInfo('')
+  async function runSearch(q) {
+    if (!q.trim()) { setFoodResults([]); return }
+    setSearching(true); setDebugInfo('')
     try {
-      const res = await fetch('/api/food-search?q=' + encodeURIComponent(foodQ.trim()))
+      const res = await fetch('/api/food-search?q=' + encodeURIComponent(q.trim()))
       const text = await res.text()
       let data
       try { data = JSON.parse(text) } catch {
@@ -95,21 +97,50 @@ export default function ClientNutrition() {
         return
       }
       setFoodResults(data.items || [])
-      if ((data.items || []).length === 0) {
-        setDebugInfo('No matching products found for that search.')
-      }
+      setSource(data.source || '')
+      if ((data.items || []).length === 0) setDebugInfo('No matching foods found for that search.')
     } catch (err) {
       setDebugInfo(`Search request failed entirely: ${err.message}`)
     }
     setSearching(false)
   }
 
+  useEffect(() => {
+    if (!foodQ.trim()) { setFoodResults([]); setDebugInfo(''); return }
+    const t = setTimeout(() => runSearch(foodQ), 400)
+    return () => clearTimeout(t)
+  }, [foodQ])
+
+  async function selectFood(item) {
+    if (item.per === 'lookup') {
+      setLoadingCommon(true)
+      try {
+        const res = await fetch('/api/food-nutrients?food=' + encodeURIComponent(item.name))
+        const data = await res.json()
+        if (!res.ok) { setDebugInfo(data.error || 'Could not look up that food.'); setLoadingCommon(false); return }
+        setSelFood({ ...item, p: data.p, c: data.c, f: data.f, per: 'serving', servingQty: data.servingQty, servingUnit: data.servingUnit })
+        setGrams('1')
+      } catch (err) {
+        setDebugInfo('Lookup failed: ' + err.message)
+      }
+      setLoadingCommon(false)
+    } else {
+      setSelFood(item)
+      setGrams(item.per === 'serving' ? '1' : '100')
+    }
+    setFoodResults([]); setFoodQ('')
+  }
+
   async function addFood() {
     if (!selFood || !+grams) return
-    const factor = +grams / 100
+    const isServing = selFood.per === 'serving'
+    const factor = isServing ? +grams : (+grams / 100)
+    const label = isServing
+      ? `${selFood.name}${selFood.brand ? ` (${selFood.brand})` : ''} — ${grams}× serving`
+      : `${selFood.name}${selFood.brand ? ` (${selFood.brand})` : ''} — ${grams}g`
     await supabase.from('meal_logs').insert({
       client_id: profile.id,
-      meal_name: `${selFood.name}${selFood.brand ? ` (${selFood.brand})` : ''} — ${+grams}g`,
+      meal_name: label,
       protein_g: Math.round(selFood.p * factor),
       carbs_g: Math.round(selFood.c * factor),
       fat_g: Math.round(selFood.f * factor),
@@ -162,12 +193,10 @@ export default function ClientNutrition() {
 
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div className="eyebrow">Search foods</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input placeholder="e.g. chicken breast, greek yogurt, Quest bar" value={foodQ}
-            onChange={e => setFoodQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchFood()} />
-          <button className="btn" style={{ padding: '12px 16px', whiteSpace: 'nowrap' }} onClick={searchFood} disabled={searching}>
-            {searching ? '…' : 'Search'}
-          </button>
+        <div style={{ position: 'relative' }}>
+          <input placeholder="Start typing — e.g. chicken breast, greek yogurt, Quest bar" value={foodQ}
+            onChange={e => { setFoodQ(e.target.value); setSelFood(null) }} />
+          {searching && <span className="muted" style={{ position: 'absolute', right: 10, top: 12, fontSize: 12 }}>Searching…</span>}
         </div>
         {!scanning ? (
           <button className="btn-ghost" onClick={startScan}>📷 Scan a barcode</button>
@@ -182,25 +211,55 @@ export default function ClientNutrition() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {foodResults.map(it => (
               <button key={it.id} className="btn-ghost" style={{ textAlign: 'left', fontSize: 13, padding: '8px 10px' }}
-                onClick={() => setSelFood(it)}>
+                onClick={() => selectFood(it)}>
                 <strong>{it.name}</strong>{it.brand ? ` · ${it.brand}` : ''}
                 <span className="muted" style={{ display: 'block', fontSize: 11.5, marginTop: 2 }}>
-                  per 100g: P {it.p.toFixed(0)} · C {it.c.toFixed(0)} · F {it.f.toFixed(0)}
+                  {it.per === 'lookup'
+                    ? 'Tap to look up macros'
+                    : it.per === 'serving'
+                      ? `per ${it.servingQty ? `${it.servingQty} ${it.servingUnit || 'serving'}` : 'serving'}: P ${Math.round(it.p)} · C ${Math.round(it.c)} · F ${Math.round(it.f)}`
+                      : `per 100g: P ${Math.round(it.p)} · C ${Math.round(it.c)} · F ${Math.round(it.f)}`}
                 </span>
               </button>
             ))}
           </div>
         )}
+        {loadingCommon && <p className="muted" style={{ fontSize: 12.5 }}>Looking up nutrients…</p>}
         {selFood && (
           <div style={{ background: 'var(--steel)', borderRadius: 8, padding: '10px 12px' }}>
             <div style={{ fontSize: 13.5, fontWeight: 700 }}>{selFood.name}{selFood.brand ? ` · ${selFood.brand}` : ''}</div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-              <input inputMode="numeric" style={{ width: 90 }} value={grams} onChange={e => setGrams(e.target.value)} />
-              <span className="muted" style={{ fontSize: 13 }}>grams</span>
-              <span style={{ fontSize: 13, fontWeight: 700, marginLeft: 'auto' }}>
-                P {Math.round(selFood.p * (+grams || 0) / 100)} · C {Math.round(selFood.c * (+grams || 0) / 100)} · F {Math.round(selFood.f * (+grams || 0) / 100)}
-              </span>
-            </div>
+            {selFood.per === 'serving' ? (
+              <>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+                  <span className="muted" style={{ fontSize: 13 }}>{selFood.servingQty ? `${selFood.servingQty} ${selFood.servingUnit || 'serving'}` : '1 serving'}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, marginLeft: 'auto' }}>
+                    P {Math.round(selFood.p)} · C {Math.round(selFood.c)} · F {Math.round(selFood.f)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {[0.5, 1, 1.5, 2].map(mult => (
+                    <button key={mult} className={grams === String(mult) ? 'btn' : 'btn-ghost'} style={{ padding: '6px 12px', fontSize: 12 }}
+                      onClick={() => setGrams(String(mult))}>{mult}×</button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+                  <input inputMode="numeric" style={{ width: 90 }} value={grams} onChange={e => setGrams(e.target.value)} />
+                  <span className="muted" style={{ fontSize: 13 }}>grams</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, marginLeft: 'auto' }}>
+                    P {Math.round(selFood.p * (+grams || 0) / 100)} · C {Math.round(selFood.c * (+grams || 0) / 100)} · F {Math.round(selFood.f * (+grams || 0) / 100)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {[50, 100, 150, 200].map(g => (
+                    <button key={g} className={grams === String(g) ? 'btn' : 'btn-ghost'} style={{ padding: '6px 12px', fontSize: 12 }}
+                      onClick={() => setGrams(String(g))}>{g}g</button>
+                  ))}
+                </div>
+              </>
+            )}
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button className="btn" style={{ padding: '8px 16px', fontSize: 12 }} onClick={addFood}>Add to log</button>
               <button className="btn-ghost" style={{ padding: '8px 14px', fontSize: 12 }} onClick={() => setSelFood(null)}>Back</button>
@@ -208,7 +267,7 @@ export default function ClientNutrition() {
           </div>
         )}
         {foodResults.length === 0 && foodQ && !searching && !selFood && (
-          <p className="muted" style={{ fontSize: 12.5 }}>No results yet — search, or log it manually below.</p>
+          <p className="muted" style={{ fontSize: 12.5 }}>No results yet — keep typing, or log it manually below.</p>
         )}
         {debugInfo && (
           <div style={{ background: 'rgba(214,69,69,0.12)', border: '1px solid var(--red)', borderRadius: 6, padding: 8, fontSize: 11, color: 'var(--red)', wordBreak: 'break-word' }}>
