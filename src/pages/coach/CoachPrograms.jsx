@@ -50,6 +50,8 @@ export default function CoachPrograms() {
   const [selected, setSelected] = useState({})
   const [drag, setDrag] = useState({})
   const [dragOver, setDragOver] = useState({})
+  const [dayDrag, setDayDrag] = useState(null)      // workout day being dragged: { dayId }
+  const [dayDragOverDn, setDayDragOverDn] = useState(null)  // which Day N column is being hovered
   const [exComments, setExComments] = useState({})
   const [exCommentText, setExCommentText] = useState('')
   const [coachUserId, setCoachUserId] = useState(null)
@@ -553,7 +555,15 @@ export default function CoachPrograms() {
                       <div style={{ overflowX: 'auto' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(215px, 1fr))', gap: 8, minWidth: 1520 }}>
                           {[1, 2, 3, 4, 5, 6, 7].map(dn => (
-                            <div key={dn} style={{ background: 'var(--steel)', borderRadius: 8, padding: 10, minHeight: 220, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div key={dn}
+                              onDragOver={e => { if (dayDrag) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDayDragOverDn(dn) } }}
+                              onDragLeave={() => setDayDragOverDn(dg => dg === dn ? null : dg)}
+                              onDrop={e => {
+                                e.preventDefault()
+                                if (dayDrag) { moveWorkout(activeBlock.id, dayDrag.dayId, dn) }
+                                setDayDrag(null); setDayDragOverDn(null)
+                              }}
+                              style={{ background: 'var(--steel)', borderRadius: 8, padding: 10, minHeight: 220, display: 'flex', flexDirection: 'column', gap: 8, outline: dayDragOverDn === dn ? '2px dashed var(--orange)' : 'none', outlineOffset: 2 }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span className="eyebrow" style={{ fontSize: 10 }}>Day {dn}</span>
                                 <button className="btn-ghost" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => addWorkout(activeBlock.id, dn)}>+ Add</button>
@@ -568,10 +578,17 @@ export default function CoachPrograms() {
                                 const condMatches = track === 'exercise' && qa.trim() ? condLib.filter(l => (l.name + ' ' + l.format + ' ' + l.instructions).toLowerCase().includes(qa.toLowerCase())).slice(0, 4) : []
                                 const lifeMatches = track === 'lifestyle' && qa.trim() ? lifeLib.filter(l => (l.name + ' ' + l.category + ' ' + l.instructions).toLowerCase().includes(qa.toLowerCase())).slice(0, 5) : []
                                 return (
-                                  <div key={d.id} style={{ background: 'var(--coal)', border: '1px solid var(--line)', borderRadius: 8, padding: 10 }}>
+                                  <div key={d.id}
+                                    draggable
+                                    onDragStart={e => { e.dataTransfer.setData('text/plain', d.id); e.dataTransfer.effectAllowed = 'move'; setDayDrag({ dayId: d.id }) }}
+                                    onDragEnd={() => { setDayDrag(null); setDayDragOverDn(null) }}
+                                    style={{ background: 'var(--coal)', border: '1px solid var(--line)', borderRadius: 8, padding: 10, cursor: 'grab' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
-                                      <strong onClick={() => renameWorkout(activeBlock.id, d)} title="Click to rename"
-                                        style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--orange-hot)', cursor: 'pointer' }}>{d.day_label} <span style={{ fontSize: 10, opacity: 0.6 }}>✎</span></strong>
+                                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                        <span title="Drag to move to another day" style={{ color: 'var(--muted)', fontSize: 13, userSelect: 'none' }}>⠿</span>
+                                        <strong onClick={() => renameWorkout(activeBlock.id, d)} title="Click to rename"
+                                          style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--orange-hot)', cursor: 'pointer' }}>{d.day_label} <span style={{ fontSize: 10, opacity: 0.6 }}>✎</span></strong>
+                                      </span>
                                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                                         <select title="Move to day" style={{ width: 'auto', padding: '2px 6px', fontSize: 11 }} value={d.day_number} onChange={e => moveWorkout(activeBlock.id, d.id, e.target.value)}>
                                           {[1,2,3,4,5,6,7].map(n => <option key={n} value={n}>D{n}</option>)}
