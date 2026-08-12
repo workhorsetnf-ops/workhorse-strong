@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
@@ -179,37 +180,37 @@ export default function ClientHome() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
         <Link to="/app/calendar" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
-            <div style={{ fontSize: 18, marginBottom: 4 }}>📅</div>
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><Calendar size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Calendar</div>
           </div>
         </Link>
         <Link to="/app/recap" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
-            <div style={{ fontSize: 20, marginBottom: 4 }}>📊</div>
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><LineChart size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
             <div style={{ fontSize: 11, fontWeight: 700 }}>My Month</div>
           </div>
         </Link>
         <Link to="/app/roadmap" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
-            <div style={{ fontSize: 18, marginBottom: 4 }}>🗺️</div>
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><MapPin size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Roadmap</div>
           </div>
         </Link>
         <Link to="/app/resources" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
-            <div style={{ fontSize: 18, marginBottom: 4 }}>📄</div>
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><FileText size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Resources</div>
           </div>
         </Link>
         <Link to="/app/community" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
-            <div style={{ fontSize: 18, marginBottom: 4 }}>👥</div>
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><Users2 size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Community</div>
           </div>
         </Link>
         <Link to="/app/faq" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
-            <div style={{ fontSize: 18, marginBottom: 4 }}>❓</div>
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><HelpCircle size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Hub / FAQ</div>
           </div>
         </Link>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
+import { Home, Dumbbell, Utensils, ClipboardCheck, LineChart, Video, Trophy, MessageCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import ClientHome from './ClientHome'
@@ -72,14 +73,14 @@ export default function ClientApp() {
         </Routes>
       </main>
       <nav className="bottom-nav">
-        <NavLink to="/app" end><span className="ico">▪</span>Home</NavLink>
-        <NavLink to="/app/training"><span className="ico">▪</span>Train</NavLink>
-        <NavLink to="/app/nutrition"><span className="ico">▪</span>Eat</NavLink>
-        <NavLink to="/app/checkin" style={{ position: 'relative' }}><span className="ico">▪</span>Check-in{badges.checkin && <Dot />}</NavLink>
-        <NavLink to="/app/progress"><span className="ico">▪</span>Log</NavLink>
-        <NavLink to="/app/form-checks" style={{ position: 'relative' }}><span className="ico">▪</span>Film{badges.filmChecks && <Dot />}</NavLink>
-        <NavLink to="/app/challenges"><span className="ico">▪</span>Rank</NavLink>
-        <NavLink to="/app/messages" style={{ position: 'relative' }}><span className="ico">▪</span>Coach{badges.messages && <Dot />}</NavLink>
+        <NavLink to="/app" end><span className="ico"><Home size={19} strokeWidth={2} /></span>Home</NavLink>
+        <NavLink to="/app/training"><span className="ico"><Dumbbell size={19} strokeWidth={2} /></span>Train</NavLink>
+        <NavLink to="/app/nutrition"><span className="ico"><Utensils size={19} strokeWidth={2} /></span>Eat</NavLink>
+        <NavLink to="/app/checkin" style={{ position: 'relative' }}><span className="ico"><ClipboardCheck size={19} strokeWidth={2} /></span>Check-in{badges.checkin && <Dot />}</NavLink>
+        <NavLink to="/app/progress"><span className="ico"><LineChart size={19} strokeWidth={2} /></span>Log</NavLink>
+        <NavLink to="/app/form-checks" style={{ position: 'relative' }}><span className="ico"><Video size={19} strokeWidth={2} /></span>Film{badges.filmChecks && <Dot />}</NavLink>
+        <NavLink to="/app/challenges"><span className="ico"><Trophy size={19} strokeWidth={2} /></span>Rank</NavLink>
+        <NavLink to="/app/messages" style={{ position: 'relative' }}><span className="ico"><MessageCircle size={19} strokeWidth={2} /></span>Coach{badges.messages && <Dot />}</NavLink>
       </nav>
     </div>
   )

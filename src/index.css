@@ -175,7 +175,7 @@ a { color: var(--orange-hot); text-decoration: none; }
   letter-spacing: 0.07em;
   transition: color 0.15s;
 }
-.bottom-nav a .ico { display: block; font-size: 21px; margin-bottom: 3px; }
+.bottom-nav a .ico { display: flex; justify-content: center; margin-bottom: 3px; }
 .bottom-nav a.active { color: var(--orange-hot); }
 
 /* ---- coach desktop shell ---- */
@@ -201,13 +201,14 @@ a { color: var(--orange-hot); text-decoration: none; }
   border-radius: 8px;
   border-left: 3px solid transparent;
   transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 11px;
 }
+.coach-side a svg { flex-shrink: 0; opacity: 0.85; }
 .coach-side a:hover { color: var(--white); }
-.coach-side a.active {
-  color: var(--white);
-  background: var(--steel);
-  border-left-color: var(--orange);
-}
+.coach-side a.active { color: var(--white); background: var(--steel); border-left-color: var(--orange); }
+.coach-side a.active svg { opacity: 1; color: var(--orange-hot); }
 .coach-main {
   flex: 1;
   padding: 34px;

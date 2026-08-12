@@ -1,4 +1,8 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import {
+  LayoutDashboard, Users, Bell, Video, Trophy, FileText, BookOpen, Map, Users2,
+  ClipboardList, Library, ListChecks, CalendarCheck, MessageCircle, Quote,
+} from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import CoachHome from './CoachHome'
 import CoachClients from './CoachClients'
@@ -26,21 +30,21 @@ export default function CoachDashboard() {
           <img src="/icon-192.png" alt="" style={{ width: 38, height: 38, borderRadius: 7, objectFit: 'cover' }} />
           <div className="wordmark" style={{ fontSize: 19 }}>Workhorse <span>Strong</span></div>
         </div>
-        <NavLink to="/coach" end>Home</NavLink>
-        <NavLink to="/coach/clients">Clients</NavLink>
-        <NavLink to="/coach/alerts">Alerts</NavLink>
-        <NavLink to="/coach/form-checks">Form Checks</NavLink>
-        <NavLink to="/coach/challenges">Challenges</NavLink>
-        <NavLink to="/coach/resources">Resources</NavLink>
-        <NavLink to="/coach/hub">Client Hub</NavLink>
-        <NavLink to="/coach/roadmap">Roadmap</NavLink>
-        <NavLink to="/coach/community">Community</NavLink>
-        <NavLink to="/coach/programs">Programs</NavLink>
-        <NavLink to="/coach/library">Library</NavLink>
-        <NavLink to="/coach/forms">Forms</NavLink>
-        <NavLink to="/coach/checkins">Check-ins</NavLink>
-        <NavLink to="/coach/messages">Messages</NavLink>
-        <NavLink to="/coach/testimonials">Testimonials</NavLink>
+        <NavLink to="/coach" end><LayoutDashboard size={17} strokeWidth={2} /><span>Home</span></NavLink>
+        <NavLink to="/coach/clients"><Users size={17} strokeWidth={2} /><span>Clients</span></NavLink>
+        <NavLink to="/coach/alerts"><Bell size={17} strokeWidth={2} /><span>Alerts</span></NavLink>
+        <NavLink to="/coach/form-checks"><Video size={17} strokeWidth={2} /><span>Form Checks</span></NavLink>
+        <NavLink to="/coach/challenges"><Trophy size={17} strokeWidth={2} /><span>Challenges</span></NavLink>
+        <NavLink to="/coach/resources"><FileText size={17} strokeWidth={2} /><span>Resources</span></NavLink>
+        <NavLink to="/coach/hub"><BookOpen size={17} strokeWidth={2} /><span>Client Hub</span></NavLink>
+        <NavLink to="/coach/roadmap"><Map size={17} strokeWidth={2} /><span>Roadmap</span></NavLink>
+        <NavLink to="/coach/community"><Users2 size={17} strokeWidth={2} /><span>Community</span></NavLink>
+        <NavLink to="/coach/programs"><ClipboardList size={17} strokeWidth={2} /><span>Programs</span></NavLink>
+        <NavLink to="/coach/library"><Library size={17} strokeWidth={2} /><span>Library</span></NavLink>
+        <NavLink to="/coach/forms"><ListChecks size={17} strokeWidth={2} /><span>Forms</span></NavLink>
+        <NavLink to="/coach/checkins"><CalendarCheck size={17} strokeWidth={2} /><span>Check-ins</span></NavLink>
+        <NavLink to="/coach/messages"><MessageCircle size={17} strokeWidth={2} /><span>Messages</span></NavLink>
+        <NavLink to="/coach/testimonials"><Quote size={17} strokeWidth={2} /><span>Testimonials</span></NavLink>
         <div style={{ flex: 1 }} />
         <button className="btn-ghost" onClick={signOut}>Sign out</button>
       </aside>
