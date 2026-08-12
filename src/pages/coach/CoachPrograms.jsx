@@ -525,12 +525,15 @@ export default function CoachPrograms() {
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
                     <span className="eyebrow" style={{ marginRight: 4 }}>Blocks</span>
                     {pBlocks.map(b => (
-                      <button key={b.id} className={openBlock === b.id ? 'btn' : 'btn-ghost'} style={{ padding: '6px 14px', fontSize: 13 }}
-                        onClick={() => openBlockView(b)}
-                        onDoubleClick={() => renameBlock(p.id, b)}
-                        title="Click to open, double-click to rename/resize">
-                        {b.name} <span className="muted" style={{ fontSize: 11 }}>({b.weeks}w)</span>
-                      </button>
+                      <span key={b.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                        <button className={openBlock === b.id ? 'btn' : 'btn-ghost'} style={{ padding: '6px 12px', fontSize: 13, borderRadius: '8px 0 0 8px' }}
+                          onClick={() => openBlockView(b)}>
+                          {b.name} <span className="muted" style={{ fontSize: 11 }}>({b.weeks}w)</span>
+                        </button>
+                        <button className={openBlock === b.id ? 'btn' : 'btn-ghost'} title="Rename or change week count"
+                          style={{ padding: '6px 9px', fontSize: 12, borderRadius: '0 8px 8px 0', borderLeft: openBlock === b.id ? '1px solid rgba(255,255,255,0.25)' : '1px solid var(--line)' }}
+                          onClick={() => renameBlock(p.id, b)}>✎</button>
+                      </span>
                     ))}
                     <button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => addBlock(p.id)}>+ Block</button>
                     {pBlocks.length > 1 && activeBlock && (
