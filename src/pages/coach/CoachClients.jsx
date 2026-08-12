@@ -32,6 +32,7 @@ export default function CoachClients() {
   const [form, setForm] = useState({})
   const [maxes, setMaxes] = useState([])          // [{id?, lift_name, max_weight}]
   const [savedId, setSavedId] = useState(null)
+  const [originalEmail, setOriginalEmail] = useState('')
   const [search, setSearch] = useState('')
   const [rm, setRm] = useState({ lift: '', weight: '', reps: '' })
   const [rating, setRating] = useState({ retention: null, mindset: null, notes: '' })
@@ -75,7 +76,8 @@ export default function CoachClients() {
     const { data: r } = await supabase.from('client_ratings').select('*').eq('client_id', c.id).maybeSingle()
     setRating({ retention: r?.retention || null, mindset: r?.mindset || null, notes: r?.notes || '' })
     setCalcResult(null)
-    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories })
+    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '' })
+    setOriginalEmail(c.email || '')
     const { data } = await supabase.from('client_maxes').select('*').eq('client_id', c.id).order('lift_name')
     setMaxes(data || [])
   }
@@ -85,6 +87,10 @@ export default function CoachClients() {
   }
 
   async function save(id) {
+    if (form.email.trim() && form.email.trim() !== originalEmail) {
+      const { error: emailErr } = await supabase.rpc('admin_update_email', { target_user_id: id, new_email: form.email.trim() })
+      if (emailErr) { alert('Could not update email: ' + emailErr.message); return }
+    }
     await supabase.from('profiles').update({
       full_name: form.full_name, phase: form.phase,
       protein_g: +form.protein_g || 0, carbs_g: +form.carbs_g || 0,
@@ -172,6 +178,10 @@ export default function CoachClients() {
                     <option value="cut">Cut</option><option value="build">Build</option>
                     <option value="recomp">Recomp</option><option value="maintain">Maintain</option>
                   </select>
+                </div>
+                <div>
+                  <label className="muted" style={{ fontSize: 11.5 }}>Email (also their login)</label>
+                  <input type="email" value={form.email} placeholder="client@email.com" onChange={e => setForm({ ...form, email: e.target.value })} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                   <input inputMode="numeric" value={form.protein_g} placeholder="Protein g" onChange={e => setForm({ ...form, protein_g: e.target.value })} />
