@@ -360,7 +360,7 @@ export default function ClientTraining() {
         const inner = g.items.map(ex => (
         <div className="card" key={ex.id} style={g.grouped ? { border: 'none', borderRadius: 8 } : undefined}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-            {ex.icon_url && <img src={ex.icon_url} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', marginRight: -4 }} />}
+            {ex.icon_url && <img className="thumb" src={ex.icon_url} alt="" style={{ width: 42, height: 42, borderRadius: 8, objectFit: 'cover', marginRight: -2 }} />}
             <strong style={{ fontSize: 15 }}>{ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter}) </span>}{ex.name}</strong>
             <button onClick={() => setFlagging(flagging === ex.id ? null : ex.id)} className="btn-ghost"
               style={{ padding: '3px 9px', fontSize: 11, marginLeft: 'auto', color: flaggedIds.has(ex.id) ? 'var(--red)' : undefined, borderColor: flaggedIds.has(ex.id) ? 'var(--red)' : undefined }}

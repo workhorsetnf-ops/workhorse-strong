@@ -319,7 +319,7 @@ export default function CoachClients() {
                 {timeline[c.id]?.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No progress photos yet.</p>}
                 {timeline[c.id]?.length > 0 && (
                   <div style={{ overflowX: 'auto' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '110px repeat(3, minmax(130px, 1fr))', gap: 8, minWidth: 560 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '110px repeat(3, minmax(170px, 1fr))', gap: 10, minWidth: 680 }}>
                       <div className="eyebrow" style={{ fontSize: 10, alignSelf: 'end' }}>Check-in</div>
                       {['Front', 'Side', 'Back'].map(l => <div key={l} className="eyebrow" style={{ fontSize: 10, alignSelf: 'end' }}>{l}</div>)}
                       {timeline[c.id].map((row, i) => (
@@ -333,7 +333,7 @@ export default function CoachClients() {
                     <div className="eyebrow" style={{ fontSize: 10, marginBottom: 6 }}>Unlabeled (older check-ins)</div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {timeline[c.id].flatMap(r => r.others).map((u, i) => (
-                        <a key={i} href={u} target="_blank" rel="noreferrer"><img src={u} alt="progress" style={{ height: 110, borderRadius: 6 }} /></a>
+                        <a key={i} href={u} target="_blank" rel="noreferrer"><img className="thumb" src={u} alt="progress" style={{ height: 150, borderRadius: 8 }} /></a>
                       ))}
                     </div>
                   </div>
@@ -359,7 +359,7 @@ function FragmentRow({ row }) {
       {['Front', 'Side', 'Back'].map(l => (
         <div key={l}>
           {row[l]
-            ? <a href={row[l]} target="_blank" rel="noreferrer"><img src={row[l]} alt={l} style={{ width: '100%', borderRadius: 6, display: 'block' }} /></a>
+            ? <a href={row[l]} target="_blank" rel="noreferrer"><img className="thumb" src={row[l]} alt={l} style={{ width: '100%', borderRadius: 8, display: 'block' }} /></a>
             : <div style={{ background: 'var(--steel)', borderRadius: 6, height: 60, display: 'grid', placeItems: 'center', color: 'var(--muted)', fontSize: 11 }}>—</div>}
         </div>
       ))}

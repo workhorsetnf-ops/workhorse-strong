@@ -379,7 +379,7 @@ export default function CoachPrograms() {
           {dragIdx !== null && <span title="Drag to reorder" style={{ color: 'var(--muted)', fontSize: 13, lineHeight: '17px', flexShrink: 0, userSelect: 'none' }}>⠿</span>}
           <input type="checkbox" checked={!!sel} onChange={() => toggleSelect(d.id, ex.id)}
             style={{ width: 15, height: 15, marginTop: 2, accentColor: 'var(--orange)', flexShrink: 0 }} title="Select to group" />
-          {ex.icon_url && <img src={ex.icon_url} alt="" style={{ width: 24, height: 24, borderRadius: 5, objectFit: 'cover', flexShrink: 0 }} />}
+          {ex.icon_url && <img className="thumb" src={ex.icon_url} alt="" style={{ width: 36, height: 36, borderRadius: 7, objectFit: 'cover', flexShrink: 0 }} />}
           <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => startEdit(block, ex)}>
             <div style={{ fontSize: 12.5, fontWeight: 700 }}>
               {ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter}) </span>}{ex.name}
