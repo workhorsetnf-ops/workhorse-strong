@@ -17,6 +17,7 @@ import CoachRoadmap from './CoachRoadmap'
 import ClientCommunity from '../ClientCommunity'
 import CoachPrintSummary from './CoachPrintSummary'
 import CoachTestimonials from './CoachTestimonials'
+import CoachClientLogs from './CoachClientLogs'
 import CoachHub from './CoachHub'
 import CoachCheckins from './CoachCheckins'
 import CoachMessages from './CoachMessages'
@@ -63,6 +64,7 @@ export default function CoachDashboard() {
           <Route path="roadmap" element={<CoachRoadmap />} />
           <Route path="community" element={<ClientCommunity isCoach />} />
           <Route path="print/:clientId" element={<CoachPrintSummary />} />
+          <Route path="logs/:clientId" element={<CoachClientLogs />} />
           <Route path="testimonials" element={<CoachTestimonials />} />
           <Route path="checkins" element={<CoachCheckins />} />
           <Route path="messages" element={<CoachMessages />} />

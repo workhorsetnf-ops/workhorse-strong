@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 
 // Workhorse starting-macros methodology: Mifflin-St Jeor + wrestler multipliers
@@ -301,6 +302,7 @@ export default function CoachClients() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <Link to={`/coach/logs/${c.id}`} className="btn" style={{ textDecoration: 'none', display: 'inline-block' }}>View Logs</Link>
                   <a href={`/coach/print/${c.id}`} target="_blank" rel="noreferrer" className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Print summary</a>
                   <button className="btn-ghost" onClick={() => resetPassword(c)}>Reset password</button>
                   <button className="btn-ghost" onClick={() => togglePhotos(c.id)}>
