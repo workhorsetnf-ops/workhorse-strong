@@ -77,7 +77,7 @@ export default function CoachClients() {
     const { data: r } = await supabase.from('client_ratings').select('*').eq('client_id', c.id).maybeSingle()
     setRating({ retention: r?.retention || null, mindset: r?.mindset || null, notes: r?.notes || '' })
     setCalcResult(null)
-    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '' })
+    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null })
     setOriginalEmail(c.email || '')
     const { data } = await supabase.from('client_maxes').select('*').eq('client_id', c.id).order('lift_name')
     setMaxes(data || [])
@@ -95,7 +95,8 @@ export default function CoachClients() {
     await supabase.from('profiles').update({
       full_name: form.full_name, phase: form.phase,
       protein_g: +form.protein_g || 0, carbs_g: +form.carbs_g || 0,
-      fat_g: +form.fat_g || 0, calories: +form.calories || 0
+      fat_g: +form.fat_g || 0, calories: +form.calories || 0,
+      checkin_day: form.checkin_day
     }).eq('id', id)
     for (const m of maxes) {
       if (!m.lift_name?.trim()) continue
@@ -183,6 +184,15 @@ export default function CoachClients() {
                 <div>
                   <label className="muted" style={{ fontSize: 11.5 }}>Email (also their login)</label>
                   <input type="email" value={form.email} placeholder="client@email.com" onChange={e => setForm({ ...form, email: e.target.value })} />
+                </div>
+                <div>
+                  <label className="muted" style={{ fontSize: 11.5 }}>Check-in day (their weekly reminder anchors to this)</label>
+                  <select value={form.checkin_day === null ? '' : form.checkin_day} onChange={e => setForm({ ...form, checkin_day: e.target.value === '' ? null : +e.target.value })}>
+                    <option value="">Not set — use rolling reminder</option>
+                    {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((d, i) => (
+                      <option key={i} value={i}>{d}</option>
+                    ))}
+                  </select>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                   <input inputMode="numeric" value={form.protein_g} placeholder="Protein g" onChange={e => setForm({ ...form, protein_g: e.target.value })} />

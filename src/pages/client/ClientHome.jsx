@@ -50,9 +50,30 @@ export default function ClientHome() {
     supabase.from('checkins').select('submitted_at').eq('client_id', profile.id)
       .order('submitted_at', { ascending: false }).limit(1).maybeSingle()
       .then(({ data }) => {
-        if (!data) { setCheckinDue({ days: null, overdue: false }); return }
-        const days = Math.floor((Date.now() - new Date(data.submitted_at).getTime()) / 864e5)
-        setCheckinDue({ days, overdue: days >= 8 })
+        const lastCheckin = data?.submitted_at ? new Date(data.submitted_at) : null
+
+        if (profile.checkin_day === null || profile.checkin_day === undefined) {
+          // no fixed day set — fall back to the old rolling reminder
+          if (!lastCheckin) { setCheckinDue({ due: true, days: null, overdue: false }); return }
+          const days = Math.floor((Date.now() - lastCheckin.getTime()) / 864e5)
+          setCheckinDue({ due: days >= 6, days, overdue: days >= 8 })
+          return
+        }
+
+        // fixed weekly day: find the most recent occurrence of that day (0=Mon..6=Sun),
+        // on or before today — the reminder only fires once we've reached that day
+        // for this cycle, and clears once they've submitted since it arrived.
+        const today = new Date(); today.setHours(0, 0, 0, 0)
+        const todayDow = (today.getDay() + 6) % 7
+        const diff = (todayDow - profile.checkin_day + 7) % 7
+        const dueDate = new Date(today); dueDate.setDate(today.getDate() - diff)
+
+        const satisfiedThisCycle = lastCheckin && lastCheckin >= dueDate
+        if (satisfiedThisCycle) { setCheckinDue({ due: false }); return }
+
+        const daysPastDue = Math.floor((today - dueDate) / 864e5)
+        const days = lastCheckin ? Math.floor((Date.now() - lastCheckin.getTime()) / 864e5) : null
+        setCheckinDue({ due: true, days, overdue: daysPastDue >= 2 })
       })
     checkMilestones()
   }, [profile])
@@ -135,7 +156,7 @@ export default function ClientHome() {
         </div>
       )}
 
-      {checkinDue && (checkinDue.days === null || checkinDue.days >= 6) && (
+      {checkinDue?.due && (
         <Link to="/app/checkin" style={{ display: 'block', textDecoration: 'none' }}>
           <div className="card" style={{ borderLeft: `3px solid ${checkinDue.overdue ? 'var(--red)' : 'var(--orange)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
