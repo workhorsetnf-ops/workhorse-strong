@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { CheckSquare, Square, Plus, Repeat, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 function startOfWeek(d = new Date()) {
@@ -18,6 +19,45 @@ export default function CoachHome() {
   const [feed, setFeed] = useState([])
   const [openItem, setOpenItem] = useState(null)
   const [comment, setComment] = useState('')
+  const [tasks, setTasks] = useState([])
+  const [taskCompletions, setTaskCompletions] = useState(new Set()) // task ids done today
+  const [showAddTask, setShowAddTask] = useState(false)
+  const [newTask, setNewTask] = useState({ title: '', recurring: false, due_date: '' })
+  const todayStr = new Date().toISOString().slice(0,10)
+
+  async function loadTasks() {
+    const [{ data: t }, { data: comp }] = await Promise.all([
+      supabase.from('coach_tasks').select('*').order('created_at'),
+      supabase.from('coach_task_completions').select('task_id').eq('completed_date', todayStr),
+    ])
+    setTasks(t || [])
+    setTaskCompletions(new Set((comp || []).map(c => c.task_id)))
+  }
+
+  async function addTask() {
+    if (!newTask.title.trim()) return
+    await supabase.from('coach_tasks').insert({
+      title: newTask.title.trim(), recurring: newTask.recurring,
+      due_date: newTask.recurring ? null : (newTask.due_date || null),
+    })
+    setNewTask({ title: '', recurring: false, due_date: '' }); setShowAddTask(false)
+    loadTasks()
+  }
+
+  async function toggleTask(task) {
+    const done = taskCompletions.has(task.id)
+    if (done) {
+      await supabase.from('coach_task_completions').delete().eq('task_id', task.id).eq('completed_date', todayStr)
+    } else {
+      await supabase.from('coach_task_completions').insert({ task_id: task.id, completed_date: todayStr })
+    }
+    loadTasks()
+  }
+
+  async function deleteTask(id) {
+    await supabase.from('coach_tasks').delete().eq('id', id)
+    loadTasks()
+  }
   const [loading, setLoading] = useState(true)
   const [onboarding, setOnboarding] = useState({})
   const [view, setView] = useState('attention') // 'attention' | 'insights'
@@ -188,7 +228,7 @@ export default function CoachHome() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(); loadTasks() }, [])
 
   async function sendComment(item) {
     if (!comment.trim()) return
@@ -213,8 +253,57 @@ export default function CoachHome() {
 
   if (loading) return <div className="muted">Loading your dashboard…</div>
 
+  const pendingTasks = tasks.filter(t => !taskCompletions.has(t.id) && (t.recurring || !t.due_date || t.due_date <= todayStr))
+  const doneTasks = tasks.filter(t => taskCompletions.has(t.id))
+
   return (
     <div>
+      <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--orange)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <strong style={{ fontSize: 15 }}>Today's Tasks</strong>
+          <button className="btn-ghost" style={{ padding: '5px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => setShowAddTask(s => !s)}>
+            <Plus size={13} /> Add
+          </button>
+        </div>
+
+        {showAddTask && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12, background: 'var(--steel)', borderRadius: 8, padding: 10 }}>
+            <input placeholder="e.g. Review Jake's check-in" value={newTask.title} onChange={e => setNewTask({ ...newTask, title: e.target.value })} onKeyDown={e => e.key === 'Enter' && addTask()} />
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                <input type="checkbox" checked={newTask.recurring} onChange={e => setNewTask({ ...newTask, recurring: e.target.checked })} style={{ width: 'auto' }} />
+                Repeats every day
+              </label>
+              {!newTask.recurring && (
+                <input type="date" value={newTask.due_date} onChange={e => setNewTask({ ...newTask, due_date: e.target.value })} style={{ width: 'auto' }} />
+              )}
+            </div>
+            <button className="btn" style={{ padding: '8px 16px', fontSize: 12, alignSelf: 'flex-start' }} onClick={addTask}>Add task</button>
+          </div>
+        )}
+
+        {pendingTasks.length === 0 && doneTasks.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Nothing on your list — add something you need to get done today.</p>}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {pendingTasks.map(t => (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button onClick={() => toggleTask(t)} style={{ background: 'none', display: 'flex', color: 'var(--muted)' }}><Square size={17} /></button>
+              <span style={{ fontSize: 14, flex: 1 }}>{t.title}</span>
+              {t.recurring && <Repeat size={13} className="muted" title="Repeats daily" />}
+              <button onClick={() => deleteTask(t.id)} style={{ background: 'none', color: 'var(--muted)' }}><Trash2 size={14} /></button>
+            </div>
+          ))}
+          {doneTasks.map(t => (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: 0.5 }}>
+              <button onClick={() => toggleTask(t)} style={{ background: 'none', display: 'flex', color: 'var(--green)' }}><CheckSquare size={17} /></button>
+              <span style={{ fontSize: 14, flex: 1, textDecoration: 'line-through' }}>{t.title}</span>
+              {t.recurring && <Repeat size={13} className="muted" title="Repeats daily" />}
+              <button onClick={() => deleteTask(t.id)} style={{ background: 'none', color: 'var(--muted)' }}><Trash2 size={14} /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="eyebrow">Home</div>
       <div style={{ display: 'flex', gap: 20, alignItems: 'baseline', margin: '6px 0 16px' }}>
         <h1 style={{ fontSize: 22, cursor: 'pointer', color: view === 'attention' ? 'var(--white)' : 'var(--muted)' }} onClick={() => setView('attention')}>Needs Attention</h1>

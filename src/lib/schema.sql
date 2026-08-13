@@ -547,3 +547,22 @@ create policy "coach uploads exercise icons" on storage.objects for insert
   with check (bucket_id = 'exercise-icons' and public.is_coach());
 create policy "anyone reads exercise icons" on storage.objects for select
   using (bucket_id = 'exercise-icons');
+
+-- ===== COACH DAILY TASKS =====
+create table coach_tasks (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  recurring boolean not null default false,
+  due_date date,
+  created_at timestamptz default now()
+);
+create table coach_task_completions (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references coach_tasks(id) on delete cascade,
+  completed_date date not null default current_date,
+  unique (task_id, completed_date)
+);
+alter table coach_tasks enable row level security;
+alter table coach_task_completions enable row level security;
+create policy "coach manages tasks" on coach_tasks for all using (is_coach());
+create policy "coach manages task completions" on coach_task_completions for all using (is_coach());
