@@ -8,6 +8,7 @@ create table profiles (
   full_name text not null default '',
   email text,
   phase text default 'cut' check (phase in ('cut','build','recomp','maintain')),
+  checkin_day int check (checkin_day between 0 and 6),
   protein_g int default 0,
   carbs_g int default 0,
   fat_g int default 0,
