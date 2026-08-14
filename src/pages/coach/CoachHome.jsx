@@ -10,6 +10,22 @@ function startOfWeek(d = new Date()) {
 }
 function daysAgo(dateStr) { return Math.floor((Date.now() - new Date(dateStr).getTime()) / 864e5) }
 
+function Ring({ pct, color, label }) {
+  const r = 30, c = 2 * Math.PI * r
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <svg width="72" height="72" viewBox="0 0 72 72">
+        <circle cx="36" cy="36" r={r} fill="none" stroke="var(--line)" strokeWidth="6" />
+        <circle cx="36" cy="36" r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={c - (Math.min(100, pct) / 100) * c}
+          transform="rotate(-90 36 36)" />
+        <text x="36" y="41" textAnchor="middle" fontSize="16" fontWeight="800" fill="var(--white)">{pct}%</text>
+      </svg>
+      <div className="muted" style={{ fontSize: 10.5, marginTop: 2 }}>{label}</div>
+    </div>
+  )
+}
+
 export default function CoachHome() {
   const [clients, setClients] = useState([])
   const [statuses, setStatuses] = useState({})     // clientId -> { exercise, lifestyle, checkin }
@@ -20,6 +36,8 @@ export default function CoachHome() {
   const [openItem, setOpenItem] = useState(null)
   const [comment, setComment] = useState('')
   const [moreMenu, setMoreMenu] = useState(null)
+  const [clientStats, setClientStats] = useState({})
+  const [expandedClient, setExpandedClient] = useState(null)
   const [tasks, setTasks] = useState([])
   const [taskCompletions, setTaskCompletions] = useState(new Set()) // task ids done today
   const [showAddTask, setShowAddTask] = useState(false)
@@ -125,6 +143,53 @@ export default function CoachHome() {
       st[c.id] = { exercise: exerciseDue, lifestyle: lifestyleDue, checkin: checkinDue, consult: consultDue, compliancePct }
     }
     setStatuses(st)
+
+    // per-client expanded-view stats: last-28-day compliance grid, totals, streak, 30d percentages
+    const cs = {}
+    for (const c of cl || []) {
+      const workoutDates = new Set((workoutLogs || []).filter(w => w.client_id === c.id).map(w => w.logged_at.slice(0, 10)))
+      const lifestyleDates = new Set((dailyLogs || []).filter(d => d.client_id === c.id).map(d => d.log_date))
+
+      const today = new Date(); today.setHours(0, 0, 0, 0)
+      // build a 4-week grid, Monday-first, ending on the current week
+      const gridStart = new Date(today)
+      const todayDow = (today.getDay() + 6) % 7
+      gridStart.setDate(today.getDate() - todayDow - 21) // back to the Monday, 3 weeks before this week
+      const grid = []
+      for (let week = 0; week < 4; week++) {
+        const row = []
+        for (let day = 0; day < 7; day++) {
+          const d = new Date(gridStart); d.setDate(gridStart.getDate() + week * 7 + day)
+          const iso = d.toISOString().slice(0, 10)
+          row.push({ date: iso, isToday: iso === today.toISOString().slice(0,10), isFuture: d > today, hit: workoutDates.has(iso) })
+        }
+        grid.push(row)
+      }
+
+      // streak: consecutive days (walking backward from today) with a logged workout
+      let streak = 0
+      for (let i = 0; i < 90; i++) {
+        const d = new Date(today); d.setDate(today.getDate() - i)
+        if (workoutDates.has(d.toISOString().slice(0, 10))) streak++
+        else break
+      }
+
+      const last7Hit = [...Array(7)].filter((_, i) => {
+        const d = new Date(today); d.setDate(today.getDate() - i)
+        return workoutDates.has(d.toISOString().slice(0, 10))
+      }).length
+
+      const last30Workouts = [...workoutDates].filter(iso => daysAgo(iso) <= 30).length
+      const last30Lifestyle = [...lifestyleDates].filter(iso => daysAgo(iso) <= 30).length
+
+      cs[c.id] = {
+        grid, totalWorkouts: workoutDates.size, bestStreak: streak, last7Hit,
+        exercisePct30: Math.round((last30Workouts / 30) * 100),
+        lifestylePct30: Math.round((last30Lifestyle / 30) * 100),
+        compliancePct30: Math.round((((last30Workouts / 30) + (last30Lifestyle / 30)) / 2) * 100),
+      }
+    }
+    setClientStats(cs)
 
     const hp = {}
     for (const c of cl || []) {
@@ -387,7 +452,7 @@ export default function CoachHome() {
                     <span title={`Health Points: ${healthPoints[c.id].overall}`} style={{ position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: '50%', background: { red: '#D64545', yellow: '#E0B23E', green: '#4CAF6D' }[healthPoints[c.id].overall], border: '2px solid var(--coal)' }} />
                   )}
                 </div>
-                <strong style={{ fontSize: 14, minWidth: 110 }}>{c.full_name || 'Client'}</strong>
+                <strong onClick={() => setExpandedClient(ec => ec === c.id ? null : c.id)} style={{ fontSize: 14, minWidth: 110, cursor: 'pointer' }}>{c.full_name || 'Client'}</strong>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {s.exercise && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(191,87,0,0.18)', color: 'var(--orange-hot)' }}>Exercise due</span>}
                   {s.lifestyle && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(62,142,126,0.18)', color: '#3E8E7E' }}>Lifestyle due</span>}
@@ -405,6 +470,47 @@ export default function CoachHome() {
                   {s.compliancePct}% exercise compliance
                 </span>
               )}
+              {expandedClient === c.id && clientStats[c.id] && (() => {
+                const cst = clientStats[c.id]
+                return (
+                  <div style={{ background: 'var(--steel)', borderRadius: 10, padding: 16, marginTop: 4 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{cst.last7Hit} of last 7 workouts hit</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 5, marginBottom: 6, fontSize: 10.5, fontWeight: 800, color: 'var(--muted)', textAlign: 'center' }}>
+                      {['M','T','W','T','F','S','S'].map((d, i) => <div key={i}>{d}</div>)}
+                    </div>
+                    {cst.grid.map((row, ri) => (
+                      <div key={ri} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 5, marginBottom: 5 }}>
+                        {row.map((day, di) => (
+                          <div key={di} title={day.date} style={{
+                            width: '100%', aspectRatio: '1', borderRadius: '50%', margin: '0 auto', maxWidth: 26,
+                            border: day.isToday ? '2px solid var(--orange)' : '1.5px solid var(--line)',
+                            background: day.hit ? 'var(--green)' : 'transparent',
+                          }} />
+                        ))}
+                      </div>
+                    ))}
+                    <p className="muted" style={{ fontSize: 10.5, marginTop: 4, marginBottom: 14 }}>Compliance (last 4 weeks) — filled means a workout was logged that day.</p>
+
+                    <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', gap: 24 }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <div className="stat-num" style={{ fontSize: 28 }}>{cst.totalWorkouts}</div>
+                          <div className="muted" style={{ fontSize: 10.5 }}>Total Workouts</div>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                          <div className="stat-num" style={{ fontSize: 28 }}>{cst.bestStreak}</div>
+                          <div className="muted" style={{ fontSize: 10.5 }}>Current Streak</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 14 }}>
+                        <Ring pct={cst.compliancePct30} color="#B49EE8" label="Compliance % (30d)" />
+                        <Ring pct={cst.exercisePct30} color="var(--orange-hot)" label="Exercise % (30d)" />
+                        <Ring pct={cst.lifestylePct30} color="#3E8E7E" label="Lifestyle % (30d)" />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
               {moreMenu === c.id && (
                 <div style={{ marginLeft: 44, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <a href={`/coach/print/${c.id}`} target="_blank" rel="noreferrer" className="btn-ghost" style={{ padding: '5px 11px', fontSize: 12, textDecoration: 'none' }}>Print summary</a>
