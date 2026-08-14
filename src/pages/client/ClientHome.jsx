@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle } from 'lucide-react'
+import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
@@ -11,6 +11,7 @@ export default function ClientHome() {
   const [checkinDue, setCheckinDue] = useState(null) // { days, overdue }
   const [streak, setStreak] = useState(0)
   const [readiness, setReadiness] = useState(null)
+  const [bookingUrl, setBookingUrl] = useState('')
   const [readinessSaved, setReadinessSaved] = useState(false)
   const [milestonePrompt, setMilestonePrompt] = useState(null)
   const [testimonialText, setTestimonialText] = useState('')
@@ -18,6 +19,8 @@ export default function ClientHome() {
 
   useEffect(() => {
     if (!profile) return
+    supabase.from('client_hub').select('booking_url').eq('id', 1).maybeSingle()
+      .then(({ data }) => setBookingUrl(data?.booking_url || ''))
     const today = new Date().toISOString().slice(0, 10)
     supabase.from('meal_logs').select('protein_g,carbs_g,fat_g')
       .eq('client_id', profile.id).eq('logged_on', today)
@@ -205,6 +208,14 @@ export default function ClientHome() {
             <div style={{ fontSize: 11, fontWeight: 700 }}>Calendar</div>
           </div>
         </Link>
+        {bookingUrl && (
+          <a href={bookingUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+            <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+              <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><PhoneCall size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Book a Call</div>
+            </div>
+          </a>
+        )}
         <Link to="/app/recap" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
             <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><LineChart size={19} strokeWidth={2} color="var(--orange-hot)" /></div>

@@ -521,6 +521,7 @@ create table client_hub (
   subtitle text default '',
   content_md text default '',
   banner_url text,
+  booking_url text,
   updated_at timestamptz default now(),
   constraint single_row check (id = 1)
 );
