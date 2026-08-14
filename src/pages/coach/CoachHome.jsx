@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckSquare, Square, Plus, Repeat, Trash2 } from 'lucide-react'
+import { CheckSquare, Square, Plus, Repeat, Trash2, MessageCircle, ClipboardList, MoreVertical } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 function startOfWeek(d = new Date()) {
@@ -19,6 +19,7 @@ export default function CoachHome() {
   const [feed, setFeed] = useState([])
   const [openItem, setOpenItem] = useState(null)
   const [comment, setComment] = useState('')
+  const [moreMenu, setMoreMenu] = useState(null)
   const [tasks, setTasks] = useState([])
   const [taskCompletions, setTaskCompletions] = useState(new Set()) // task ids done today
   const [showAddTask, setShowAddTask] = useState(false)
@@ -114,7 +115,14 @@ export default function CoachHome() {
       const lifestyleDue = !lastDaily || daysAgo(lastDaily.log_date) >= 2
       const lastCheckin = checkins?.find(ci => ci.client_id === c.id)
       const checkinDue = !lastCheckin || daysAgo(lastCheckin.submitted_at) >= 6
-      st[c.id] = { exercise: exerciseDue, lifestyle: lifestyleDue, checkin: checkinDue }
+      const consultDue = !lastContact[c.id] || daysAgo(lastContact[c.id]) >= 5
+
+      const last14Days = new Set(
+        (workoutLogs || []).filter(w => w.client_id === c.id && daysAgo(w.logged_at) <= 14).map(w => w.logged_at.slice(0, 10))
+      ).size
+      const compliancePct = hasAssignment ? Math.round((last14Days / 8) * 100) : null // ~4x/wk expected over 2 weeks
+
+      st[c.id] = { exercise: exerciseDue, lifestyle: lifestyleDue, checkin: checkinDue, consult: consultDue, compliancePct }
     }
     setStatuses(st)
 
@@ -241,11 +249,12 @@ export default function CoachHome() {
     exercise: clients.filter(c => statuses[c.id]?.exercise).length,
     lifestyle: clients.filter(c => statuses[c.id]?.lifestyle).length,
     checkin: clients.filter(c => statuses[c.id]?.checkin).length,
+    consult: clients.filter(c => statuses[c.id]?.consult).length,
   }
   const filtered = clients.filter(c => {
     const s = statuses[c.id]
     if (!s) return false
-    if (filter === 'all') return s.exercise || s.lifestyle || s.checkin
+    if (filter === 'all') return s.exercise || s.lifestyle || s.checkin || s.consult
     return s[filter]
   })
 
@@ -342,6 +351,7 @@ export default function CoachHome() {
         <button className={filter === 'exercise' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('exercise')}>Exercise due ({counts.exercise})</button>
         <button className={filter === 'lifestyle' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('lifestyle')}>Lifestyle due ({counts.lifestyle})</button>
         <button className={filter === 'checkin' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('checkin')}>Check-in due ({counts.checkin})</button>
+        <button className={filter === 'consult' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('consult')}>Consult due ({counts.consult})</button>
       </div>
 
       {view === 'attention' && flags.length > 0 && (
@@ -367,21 +377,40 @@ export default function CoachHome() {
         {filtered.length === 0 && <div style={{ padding: 16 }} className="muted">Nobody flagged right now — roster's on track.</div>}
         {filtered.map((c, i) => {
           const s = statuses[c.id]
+          const lowCompliance = s.compliancePct !== null && s.compliancePct < 50
           return (
-            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: i < filtered.length - 1 ? '1px solid var(--line)' : 'none', flexWrap: 'wrap' }}>
-              <div style={{ position: 'relative', flexShrink: 0 }}>
-                <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800 }}>{initials(c.full_name)}</div>
-                {healthPoints[c.id] && (
-                  <span title={`Health Points: ${healthPoints[c.id].overall}`} style={{ position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: '50%', background: { red: '#D64545', yellow: '#E0B23E', green: '#4CAF6D' }[healthPoints[c.id].overall], border: '2px solid var(--coal)' }} />
-                )}
+            <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 16px', borderBottom: i < filtered.length - 1 ? '1px solid var(--line)' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800 }}>{initials(c.full_name)}</div>
+                  {healthPoints[c.id] && (
+                    <span title={`Health Points: ${healthPoints[c.id].overall}`} style={{ position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: '50%', background: { red: '#D64545', yellow: '#E0B23E', green: '#4CAF6D' }[healthPoints[c.id].overall], border: '2px solid var(--coal)' }} />
+                  )}
+                </div>
+                <strong style={{ fontSize: 14, minWidth: 110 }}>{c.full_name || 'Client'}</strong>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {s.exercise && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(191,87,0,0.18)', color: 'var(--orange-hot)' }}>Exercise due</span>}
+                  {s.lifestyle && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(62,142,126,0.18)', color: '#3E8E7E' }}>Lifestyle due</span>}
+                  {s.checkin && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(124,92,191,0.18)', color: '#9B7FE0' }}>Check-in due</span>}
+                  {s.consult && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(124,92,191,0.28)', color: '#B49EE8' }}>Consult due</span>}
+                </div>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <Link to="/coach/messages" className="btn-ghost" style={{ padding: '6px 8px', display: 'flex' }} title="Message"><MessageCircle size={16} /></Link>
+                  <Link to={`/coach/logs/${c.id}`} className="btn-ghost" style={{ padding: '6px 8px', display: 'flex' }} title="View logs"><ClipboardList size={16} /></Link>
+                  <button className="btn-ghost" style={{ padding: '6px 8px', display: 'flex' }} title="More" onClick={() => setMoreMenu(m => m === c.id ? null : c.id)}><MoreVertical size={16} /></button>
+                </div>
               </div>
-              <strong style={{ fontSize: 14, minWidth: 110 }}>{c.full_name || 'Client'}</strong>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {s.exercise && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(191,87,0,0.18)', color: 'var(--orange-hot)' }}>Exercise due</span>}
-                {s.lifestyle && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(62,142,126,0.18)', color: '#3E8E7E' }}>Lifestyle due</span>}
-                {s.checkin && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(124,92,191,0.18)', color: '#9B7FE0' }}>Check-in due</span>}
-              </div>
-              <Link to="/coach/messages" style={{ marginLeft: 'auto', fontSize: 16 }} title="Message">💬</Link>
+              {lowCompliance && (
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(214,69,69,0.16)', color: 'var(--red)', alignSelf: 'flex-start', marginLeft: 44 }}>
+                  {s.compliancePct}% exercise compliance
+                </span>
+              )}
+              {moreMenu === c.id && (
+                <div style={{ marginLeft: 44, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <a href={`/coach/print/${c.id}`} target="_blank" rel="noreferrer" className="btn-ghost" style={{ padding: '5px 11px', fontSize: 12, textDecoration: 'none' }}>Print summary</a>
+                  <Link to="/coach/clients" className="btn-ghost" style={{ padding: '5px 11px', fontSize: 12, textDecoration: 'none' }}>Edit / manage</Link>
+                </div>
+              )}
             </div>
           )
         })}
