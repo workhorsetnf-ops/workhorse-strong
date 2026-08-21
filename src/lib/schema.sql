@@ -567,3 +567,77 @@ alter table coach_tasks enable row level security;
 alter table coach_task_completions enable row level security;
 create policy "coach manages tasks" on coach_tasks for all using (is_coach());
 create policy "coach manages task completions" on coach_task_completions for all using (is_coach());
+
+-- ===== PIPELINE / CRM (Update 73) =====
+create table lead_stages (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  position int not null default 0,
+  is_won boolean not null default false,
+  is_lost boolean not null default false,
+  created_at timestamptz default now()
+);
+insert into lead_stages (name, position, is_won, is_lost) values
+  ('New Lead', 1, false, false), ('Contacted', 2, false, false),
+  ('Qualified', 3, false, false), ('Call Booked', 4, false, false),
+  ('Call Completed', 5, false, false), ('Offer Made', 6, false, false),
+  ('Won', 7, true, false), ('Lost', 8, false, true);
+
+create table leads (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null default '',
+  email text,
+  phone text,
+  handle text,
+  source text default '',
+  stage_id uuid references lead_stages(id) on delete set null,
+  deal_size numeric,
+  call_date date,
+  notes text default '',
+  stage_changed_at timestamptz default now(),
+  last_touch_at timestamptz,
+  converted_profile_id uuid references profiles(id) on delete set null,
+  archived boolean not null default false,
+  created_at timestamptz default now()
+);
+create index leads_stage_idx on leads (stage_id);
+create index leads_archived_idx on leads (archived);
+
+create table lead_activity (
+  id uuid primary key default gen_random_uuid(),
+  lead_id uuid not null references leads(id) on delete cascade,
+  kind text not null default 'note'
+    check (kind in ('note','call','dm','email','stage_change')),
+  body text not null default '',
+  occurred_at timestamptz not null default now(),
+  created_at timestamptz default now()
+);
+create index lead_activity_lead_idx on lead_activity (lead_id, occurred_at desc);
+
+alter table lead_stages enable row level security;
+alter table leads enable row level security;
+alter table lead_activity enable row level security;
+create policy "coach manages lead stages" on lead_stages for all using (is_coach());
+create policy "coach manages leads" on leads for all using (is_coach());
+create policy "coach manages lead activity" on lead_activity for all using (is_coach());
+
+create or replace function public.log_lead_stage_change()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  old_name text;
+  new_name text;
+begin
+  if new.stage_id is distinct from old.stage_id then
+    new.stage_changed_at := now();
+    select name into old_name from lead_stages where id = old.stage_id;
+    select name into new_name from lead_stages where id = new.stage_id;
+    insert into lead_activity (lead_id, kind, body)
+    values (new.id, 'stage_change',
+            coalesce(old_name, 'No stage') || ' → ' || coalesce(new_name, 'No stage'));
+  end if;
+  return new;
+end $$;
+
+create trigger on_lead_stage_change
+  before update on leads
+  for each row execute function public.log_lead_stage_change();

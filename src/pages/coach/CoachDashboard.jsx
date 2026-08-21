@@ -1,7 +1,7 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Bell, Video, Trophy, FileText, BookOpen, Map, Users2,
-  ClipboardList, Library, ListChecks, CalendarCheck, MessageCircle, Quote,
+  ClipboardList, Library, ListChecks, CalendarCheck, MessageCircle, Quote, Target,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import CoachHome from './CoachHome'
@@ -21,6 +21,7 @@ import CoachClientLogs from './CoachClientLogs'
 import CoachHub from './CoachHub'
 import CoachCheckins from './CoachCheckins'
 import CoachMessages from './CoachMessages'
+import CoachPipeline from './CoachPipeline'
 
 export default function CoachDashboard() {
   const { signOut } = useAuth()
@@ -32,6 +33,7 @@ export default function CoachDashboard() {
           <div className="wordmark" style={{ fontSize: 19 }}>Workhorse <span>Strong</span></div>
         </div>
         <NavLink to="/coach" end><LayoutDashboard size={17} strokeWidth={2} /><span>Home</span></NavLink>
+        <NavLink to="/coach/pipeline"><Target size={17} strokeWidth={2} /><span>Pipeline</span></NavLink>
         <NavLink to="/coach/clients"><Users size={17} strokeWidth={2} /><span>Clients</span></NavLink>
         <NavLink to="/coach/alerts"><Bell size={17} strokeWidth={2} /><span>Alerts</span></NavLink>
         <NavLink to="/coach/form-checks"><Video size={17} strokeWidth={2} /><span>Form Checks</span></NavLink>
@@ -52,6 +54,7 @@ export default function CoachDashboard() {
       <main className="coach-main">
         <Routes>
           <Route index element={<CoachHome />} />
+          <Route path="pipeline" element={<CoachPipeline />} />
           <Route path="clients" element={<CoachClients />} />
           <Route path="programs" element={<CoachPrograms />} />
           <Route path="library" element={<CoachLibrary />} />
