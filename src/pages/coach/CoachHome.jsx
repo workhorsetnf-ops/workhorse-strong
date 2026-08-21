@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckSquare, Square, Plus, Repeat, Trash2, MessageCircle, ClipboardList, MoreVertical } from 'lucide-react'
+import { CheckSquare, Square, Plus, Repeat, Trash2, MessageCircle, ClipboardList, MoreVertical, Target } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 function startOfWeek(d = new Date()) {
@@ -42,7 +42,35 @@ export default function CoachHome() {
   const [taskCompletions, setTaskCompletions] = useState(new Set()) // task ids done today
   const [showAddTask, setShowAddTask] = useState(false)
   const [newTask, setNewTask] = useState({ title: '', recurring: false, due_date: '' })
+  const [pipeline, setPipeline] = useState(null)   // null until loaded; widget hides if empty
   const todayStr = new Date().toISOString().slice(0,10)
+
+  // Pipeline summary for the Home widget. Deliberately its own small query —
+  // the coach dashboard already loads plenty and leads are unrelated to clients.
+  async function loadPipeline() {
+    const [{ data: stagesData }, { data: leadsData }] = await Promise.all([
+      supabase.from('lead_stages').select('*').order('position'),
+      supabase.from('leads').select('id, stage_id, deal_size, archived, stage_changed_at'),
+    ])
+    const stages = stagesData || []
+    const leads = leadsData || []
+    const wonId = stages.find(s => s.is_won)?.id
+    const lostId = stages.find(s => s.is_lost)?.id
+    const open = leads.filter(l => !l.archived && l.stage_id !== wonId && l.stage_id !== lostId)
+    const now = new Date()
+    const wonThisMonth = leads.filter(l => {
+      if (l.stage_id !== wonId) return false
+      const d = new Date(l.stage_changed_at)
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+    })
+    setPipeline({
+      open: open.length,
+      value: open.reduce((s, l) => s + (Number(l.deal_size) || 0), 0),
+      cold: open.filter(l => daysAgo(l.stage_changed_at) >= 7).length,
+      won: wonThisMonth.length,
+      total: leads.length,
+    })
+  }
 
   async function loadTasks() {
     const [{ data: t }, { data: comp }] = await Promise.all([
@@ -301,7 +329,7 @@ export default function CoachHome() {
     }
   }
 
-  useEffect(() => { load(); loadTasks() }, [])
+  useEffect(() => { load(); loadTasks(); loadPipeline() }, [])
 
   async function sendComment(item) {
     if (!comment.trim()) return
@@ -377,6 +405,32 @@ export default function CoachHome() {
           ))}
         </div>
       </div>
+
+      {pipeline && pipeline.total > 0 && (
+        <Link to="/coach/pipeline" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--orange-hot)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <strong style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 7 }}>
+                <Target size={16} strokeWidth={2} /> Pipeline
+              </strong>
+              <span className="muted" style={{ fontSize: 12 }}>View board →</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 10 }}>
+              {[
+                { label: 'Open', value: pipeline.open },
+                { label: 'Value', value: '$' + pipeline.value.toLocaleString() },
+                { label: 'Won this month', value: pipeline.won, tone: pipeline.won > 0 ? 'var(--green)' : null },
+                { label: 'Going cold', value: pipeline.cold, tone: pipeline.cold > 0 ? 'var(--orange-hot)' : null },
+              ].map(s => (
+                <div key={s.label}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: s.tone || 'var(--white)' }}>{s.value}</div>
+                  <div className="muted" style={{ fontSize: 11 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Link>
+      )}
 
       <div className="eyebrow">Home</div>
       <div style={{ display: 'flex', gap: 20, alignItems: 'baseline', margin: '6px 0 16px' }}>

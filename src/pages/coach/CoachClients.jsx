@@ -41,10 +41,21 @@ export default function CoachClients() {
   const [timeline, setTimeline] = useState({})         // clientId -> rows
   const [calc, setCalc] = useState({ weightLbs: '', age: '', sex: 'male', hft: '', hin: '', bf: '', activity: 'working-talent', goal: 'cut' })
   const [calcResult, setCalcResult] = useState(null)
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [leadHistory, setLeadHistory] = useState({})   // profileId -> { lead, activity[] }
 
   async function load() {
     const { data } = await supabase.from('profiles').select('*').eq('role', 'client').order('full_name')
     setClients(data || [])
+    // Which of these came in through the pipeline, so their pre-sale history shows on the client.
+    // Ordered newest-first and first-write-wins, so a win-back lead doesn't hide the original.
+    const { data: converted } = await supabase.from('leads').select('*')
+      .not('converted_profile_id', 'is', null).order('created_at', { ascending: false })
+    const map = {}
+    for (const l of converted || []) {
+      if (!map[l.converted_profile_id]) map[l.converted_profile_id] = { lead: l, activity: [] }
+    }
+    setLeadHistory(map)
   }
   useEffect(() => { load() }, [])
 
@@ -77,8 +88,15 @@ export default function CoachClients() {
     const { data: r } = await supabase.from('client_ratings').select('*').eq('client_id', c.id).maybeSingle()
     setRating({ retention: r?.retention || null, mindset: r?.mindset || null, notes: r?.notes || '' })
     setCalcResult(null)
-    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null })
+    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null, status: c.status || 'active' })
     setOriginalEmail(c.email || '')
+    // Pull their pre-sale timeline in if they came through the pipeline.
+    const hist = leadHistory[c.id]
+    if (hist && hist.activity.length === 0) {
+      const { data: acts } = await supabase.from('lead_activity').select('*')
+        .eq('lead_id', hist.lead.id).order('occurred_at', { ascending: false })
+      setLeadHistory(h => ({ ...h, [c.id]: { ...hist, activity: acts || [] } }))
+    }
     const { data } = await supabase.from('client_maxes').select('*').eq('client_id', c.id).order('lift_name')
     setMaxes(data || [])
   }
@@ -92,11 +110,16 @@ export default function CoachClients() {
       const { error: emailErr } = await supabase.rpc('admin_update_email', { target_user_id: id, new_email: form.email.trim() })
       if (emailErr) { alert('Could not update email: ' + emailErr.message); return }
     }
+    const current = clients.find(c => c.id === id)
+    const statusChanged = (current?.status || 'active') !== form.status
     await supabase.from('profiles').update({
       full_name: form.full_name, phase: form.phase,
       protein_g: +form.protein_g || 0, carbs_g: +form.carbs_g || 0,
       fat_g: +form.fat_g || 0, calories: +form.calories || 0,
-      checkin_day: form.checkin_day
+      checkin_day: form.checkin_day,
+      status: form.status,
+      // Only restamp when the status genuinely moved, so "12d paused" stays honest.
+      ...(statusChanged ? { status_changed_at: new Date().toISOString() } : {}),
     }).eq('id', id)
     for (const m of maxes) {
       if (!m.lift_name?.trim()) continue
@@ -145,6 +168,7 @@ export default function CoachClients() {
   }
 
   const filteredClients = clients
+    .filter(c => statusFilter === 'all' ? true : (c.status || 'active') === statusFilter)
     .filter(c => ((c.full_name || '') + ' ' + (c.email || '')).toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => (a.full_name ? 1 : 0) - (b.full_name ? 1 : 0))
 
@@ -164,6 +188,23 @@ export default function CoachClients() {
           <p className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>Match the email under each one to who you invited, then hit Edit to fill in their name.</p>
         </div>
       )}
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        {[
+          { key: 'all', label: 'All' },
+          { key: 'active', label: 'Active' },
+          { key: 'paused', label: 'Paused' },
+          { key: 'exited', label: 'Exited' },
+        ].map(f => {
+          const n = f.key === 'all' ? clients.length : clients.filter(c => (c.status || 'active') === f.key).length
+          return (
+            <button key={f.key} className={statusFilter === f.key ? 'btn' : 'btn-ghost'}
+              style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setStatusFilter(f.key)}>
+              {f.label} ({n})
+            </button>
+          )
+        })}
+      </div>
 
       <input placeholder="Search by name or email…" value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: 16 }} />
 
@@ -185,14 +226,24 @@ export default function CoachClients() {
                   <label className="muted" style={{ fontSize: 11.5 }}>Email (also their login)</label>
                   <input type="email" value={form.email} placeholder="client@email.com" onChange={e => setForm({ ...form, email: e.target.value })} />
                 </div>
-                <div>
-                  <label className="muted" style={{ fontSize: 11.5 }}>Check-in day (their weekly reminder anchors to this)</label>
-                  <select value={form.checkin_day === null ? '' : form.checkin_day} onChange={e => setForm({ ...form, checkin_day: e.target.value === '' ? null : +e.target.value })}>
-                    <option value="">Not set — use rolling reminder</option>
-                    {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((d, i) => (
-                      <option key={i} value={i}>{d}</option>
-                    ))}
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label className="muted" style={{ fontSize: 11.5 }}>Status</label>
+                    <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+                      <option value="active">Active</option>
+                      <option value="paused">Paused</option>
+                      <option value="exited">Exited</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 11.5 }}>Check-in day (their weekly reminder anchors to this)</label>
+                    <select value={form.checkin_day === null ? '' : form.checkin_day} onChange={e => setForm({ ...form, checkin_day: e.target.value === '' ? null : +e.target.value })}>
+                      <option value="">Not set — use rolling reminder</option>
+                      {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((d, i) => (
+                        <option key={i} value={i}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                   <input inputMode="numeric" value={form.protein_g} placeholder="Protein g" onChange={e => setForm({ ...form, protein_g: e.target.value })} />
@@ -297,6 +348,29 @@ export default function CoachClients() {
                   <textarea rows="2" placeholder="Notes on where they're at (optional)" value={rating.notes} onChange={e => setRating({ ...rating, notes: e.target.value })} style={{ marginTop: 8 }} />
                 </div>
 
+                {leadHistory[c.id] && (
+                  <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+                    <span className="eyebrow" style={{ fontSize: 10 }}>Before they signed up</span>
+                    <div style={{ fontSize: 12.5, marginTop: 6 }}>
+                      {leadHistory[c.id].lead.source && <div className="muted">Came from: {leadHistory[c.id].lead.source}</div>}
+                      {leadHistory[c.id].lead.notes && <div style={{ marginTop: 4 }}>{leadHistory[c.id].lead.notes}</div>}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
+                      {leadHistory[c.id].activity.map(a => (
+                        <div key={a.id} style={{ fontSize: 12, display: 'flex', gap: 8 }}>
+                          <span className="muted" style={{ minWidth: 62, flexShrink: 0 }}>
+                            {new Date(a.occurred_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                          </span>
+                          <span style={{ color: a.kind === 'stage_change' ? 'var(--muted)' : undefined }}>{a.body}</span>
+                        </div>
+                      ))}
+                      {leadHistory[c.id].activity.length === 0 && (
+                        <div className="muted" style={{ fontSize: 12 }}>Nothing was logged before they converted.</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn" style={{ padding: '10px 18px', fontSize: 13 }} onClick={() => save(c.id)}>Save</button>
                   <button className="btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
@@ -306,6 +380,13 @@ export default function CoachClients() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                 <div>
                   <strong style={{ fontSize: 16, color: c.full_name ? undefined : 'var(--orange-hot)' }}>{c.full_name || 'Needs a name'}</strong>
+                  {c.status && c.status !== 'active' && (
+                    <span style={{
+                      fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5,
+                      marginLeft: 8, padding: '2px 8px', borderRadius: 20,
+                      background: 'var(--steel)', color: c.status === 'exited' ? 'var(--red)' : 'var(--orange-hot)',
+                    }}>{c.status}</span>
+                  )}
                   {c.email && <div className="muted" style={{ fontSize: 12.5, marginTop: 1 }}>{c.email}</div>}
                   <div className="muted" style={{ fontSize: 13, marginTop: 3, textTransform: 'capitalize' }}>
                     {c.phase} · P {c.protein_g} / C {c.carbs_g} / F {c.fat_g} · {c.calories} kcal

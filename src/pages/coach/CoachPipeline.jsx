@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import {
   LayoutGrid, List, Plus, X, Trash2, Pencil, Check, ArrowLeft, ArrowRight,
   Phone, MessageSquare, Mail, StickyNote, GitBranch, Archive, RotateCcw,
+  UserPlus, UserCheck, Undo2,
 } from 'lucide-react'
 
 const KIND_META = {
@@ -50,14 +51,19 @@ export default function CoachPipeline() {
   const [editStages, setEditStages] = useState(false)
   const [sort, setSort] = useState({ key: 'stage', dir: 'asc' })
   const [saving, setSaving] = useState(false)
+  const [profiles, setProfiles] = useState([])        // for showing who a lead converted into
+  const [converting, setConverting] = useState(false)
+  const [convertForm, setConvertForm] = useState(null) // null = closed
 
   async function load() {
-    const [{ data: st }, { data: ld }] = await Promise.all([
+    const [{ data: st }, { data: ld }, { data: pf }] = await Promise.all([
       supabase.from('lead_stages').select('*').order('position'),
       supabase.from('leads').select('*').order('created_at', { ascending: false }),
+      supabase.from('profiles').select('id, full_name, email, status, status_changed_at').eq('role', 'client').order('full_name'),
     ])
     setStages(st || [])
     setLeads(ld || [])
+    setProfiles(pf || [])
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -154,6 +160,68 @@ export default function CoachPipeline() {
 
   async function setArchived(leadId, val) {
     await supabase.from('leads').update({ archived: val }).eq('id', leadId)
+    load()
+  }
+
+  // ===== CONVERT TO CLIENT =====
+  // Creates the login via the coach-only admin_create_client function, then
+  // convert_lead links the two, moves the lead to Won and archives it.
+  // The lead row is deliberately kept, not deleted — that's how the pre-sale
+  // history stays attached to the client afterwards.
+  async function doConvert() {
+    const email = (convertForm.email || '').trim()
+    const pw = (convertForm.password || '').trim()
+    const name = (convertForm.full_name || '').trim()
+    if (!email) { alert('They need an email — it doubles as their login.'); return }
+    if (pw.length < 6) { alert('Password must be at least 6 characters.'); return }
+
+    setConverting(true)
+    const { data: newId, error } = await supabase.rpc('admin_create_client', {
+      new_email: email, new_password: pw, new_full_name: name,
+    })
+    if (error) {
+      setConverting(false)
+      alert('Could not create their login:\n\n' + error.message +
+            '\n\nNothing was changed. The lead is still on the board.')
+      return
+    }
+    const { error: linkErr } = await supabase.rpc('convert_lead', {
+      target_lead_id: selected, target_profile_id: newId,
+    })
+    setConverting(false)
+    if (linkErr) {
+      alert('Their login was created, but linking the lead failed:\n\n' + linkErr.message +
+            '\n\nThe account exists — find them under Clients. Just archive this lead by hand.')
+      load(); return
+    }
+    setConvertForm(null)
+    alert(`Done — ${name || email} is now a client.\n\nGive them this password directly: ${pw}\n\nThey sign in at your app URL with their email.`)
+    const { data } = await supabase.from('lead_activity').select('*')
+      .eq('lead_id', selected).order('occurred_at', { ascending: false })
+    setActivity(data || [])
+    load()
+  }
+
+  // ===== WIN-BACK =====
+  // Paused or exited clients get pulled back onto the board as a fresh lead.
+  async function winBack(profile) {
+    if (leads.some(l => l.converted_profile_id === profile.id && !l.archived)) {
+      alert(`${profile.full_name || 'They'} are already on the board.`); return
+    }
+    const firstStage = stages[0]
+    const { data, error } = await supabase.from('leads').insert({
+      full_name: profile.full_name || profile.email || 'Former client',
+      email: profile.email,
+      source: 'Win-back',
+      stage_id: firstStage?.id || null,
+      converted_profile_id: profile.id,   // they already have a login — never create a second one
+      notes: `Former client — status: ${profile.status}.`,
+    }).select().single()
+    if (error) { alert('Could not add them: ' + error.message); return }
+    await supabase.from('lead_activity').insert({
+      lead_id: data.id, kind: 'note',
+      body: `Pulled back into the pipeline from ${profile.status} client status.`,
+    })
     load()
   }
 
@@ -443,6 +511,41 @@ export default function CoachPipeline() {
         </div>
       )}
 
+      {/* ===== WIN-BACK ===== */}
+      {(() => {
+        const lapsed = profiles.filter(p => p.status === 'paused' || p.status === 'exited')
+        if (lapsed.length === 0) return null
+        return (
+          <div className="card" style={{ marginTop: 20, borderLeft: '3px solid var(--steel)' }}>
+            <div className="eyebrow" style={{ fontSize: 10 }}>Win-back</div>
+            <p className="muted" style={{ fontSize: 12.5, margin: '4px 0 12px' }}>
+              Clients who paused or left. Set someone's status in Clients → Edit and they show up here.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {lapsed.map(p => {
+                const onBoard = leads.some(l => l.converted_profile_id === p.id && !l.archived)
+                return (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <strong>{p.full_name || p.email || 'Unnamed'}</strong>
+                      <span className="muted" style={{ fontSize: 11.5 }}>
+                        {' · '}{p.status}
+                        {p.status_changed_at ? ` · ${daysSince(p.status_changed_at)}d` : ''}
+                      </span>
+                    </div>
+                    <button className="btn-ghost" style={{ padding: '5px 11px', fontSize: 12 }}
+                      disabled={onBoard} onClick={() => winBack(p)}>
+                      <Undo2 size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
+                      {onBoard ? 'On the board' : 'Add to pipeline'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ===== DETAIL DRAWER ===== */}
       {selectedLead && (
         <>
@@ -520,6 +623,51 @@ export default function CoachPipeline() {
                   <Trash2 size={14} style={{ verticalAlign: -2, marginRight: 4 }} />Delete
                 </button>
               </div>
+            </div>
+
+            {/* ===== CONVERT ===== */}
+            <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
+              {selectedLead.converted_profile_id ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                  <UserCheck size={16} style={{ color: 'var(--green)', flexShrink: 0 }} />
+                  <span>
+                    Converted to client
+                    {profiles.find(p => p.id === selectedLead.converted_profile_id)
+                      ? <> — <strong>{profiles.find(p => p.id === selectedLead.converted_profile_id).full_name || profiles.find(p => p.id === selectedLead.converted_profile_id).email}</strong></>
+                      : ' (that client account no longer exists)'}
+                  </span>
+                </div>
+              ) : convertForm ? (
+                <div>
+                  <div className="eyebrow" style={{ fontSize: 10, marginBottom: 8 }}>Create their login</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <input placeholder="Full name" value={convertForm.full_name}
+                      onChange={e => setConvertForm({ ...convertForm, full_name: e.target.value })} />
+                    <input type="email" placeholder="Email (this is their login)" value={convertForm.email}
+                      onChange={e => setConvertForm({ ...convertForm, email: e.target.value })} />
+                    <input placeholder="Temporary password (6+ characters)" value={convertForm.password}
+                      onChange={e => setConvertForm({ ...convertForm, password: e.target.value })} />
+                    <p className="muted" style={{ fontSize: 11.5, margin: 0 }}>
+                      No email gets sent. Give them the password yourself, and they can sign in straight away.
+                    </p>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn" onClick={doConvert} disabled={converting}>
+                        {converting ? 'Creating…' : 'Create client'}
+                      </button>
+                      <button className="btn-ghost" onClick={() => setConvertForm(null)}>Cancel</button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button className="btn" style={{ width: '100%' }}
+                  onClick={() => setConvertForm({
+                    full_name: selectedLead.full_name || '',
+                    email: selectedLead.email || '',
+                    password: '',
+                  })}>
+                  <UserPlus size={15} style={{ verticalAlign: -3, marginRight: 6 }} />Convert to client
+                </button>
+              )}
             </div>
 
             {/* ===== TIMELINE ===== */}

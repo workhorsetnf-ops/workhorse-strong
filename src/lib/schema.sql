@@ -641,3 +641,66 @@ end $$;
 create trigger on_lead_stage_change
   before update on leads
   for each row execute function public.log_lead_stage_change();
+
+-- ===== CLIENT STATUS + CONVERSION (Update 74) =====
+alter table profiles add column status text not null default 'active'
+  check (status in ('active','paused','exited'));
+alter table profiles add column status_changed_at timestamptz default now();
+
+create or replace function public.admin_create_client(
+  new_email text, new_password text, new_full_name text default ''
+) returns uuid language plpgsql security definer
+set search_path = public, auth, extensions as $$
+declare
+  new_id uuid := gen_random_uuid();
+  clean_email text := lower(trim(new_email));
+begin
+  if not public.is_coach() then raise exception 'Only the coach can create client accounts.'; end if;
+  if clean_email is null or clean_email = '' or clean_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+    then raise exception 'That does not look like a valid email address.'; end if;
+  if new_password is null or length(new_password) < 6
+    then raise exception 'Password must be at least 6 characters.'; end if;
+  if exists (select 1 from auth.users u where lower(u.email) = clean_email)
+    then raise exception 'An account already exists for %', clean_email; end if;
+
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+    confirmation_token, recovery_token, email_change_token_new, email_change,
+    phone_change, phone_change_token, email_change_token_current,
+    reauthentication_token, is_sso_user, is_anonymous
+  ) values (
+    '00000000-0000-0000-0000-000000000000', new_id, 'authenticated', 'authenticated',
+    clean_email, extensions.crypt(new_password, extensions.gen_salt('bf')), now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    jsonb_build_object('full_name', coalesce(new_full_name, '')), now(), now(),
+    '', '', '', '', '', '', '', '', false, false
+  );
+  -- GoTrue will not authenticate a password user with no identity row.
+  insert into auth.identities (provider_id, user_id, identity_data, provider,
+    last_sign_in_at, created_at, updated_at)
+  values (new_id::text, new_id,
+    jsonb_build_object('sub', new_id::text, 'email', clean_email,
+                       'email_verified', true, 'phone_verified', false),
+    'email', now(), now(), now());
+  return new_id;
+end $$;
+revoke all on function public.admin_create_client(text, text, text) from public;
+grant execute on function public.admin_create_client(text, text, text) to authenticated;
+
+create or replace function public.convert_lead(target_lead_id uuid, target_profile_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare won_stage uuid;
+begin
+  if not public.is_coach() then raise exception 'Only the coach can convert leads.'; end if;
+  select id into won_stage from lead_stages where is_won = true order by position limit 1;
+  update leads set converted_profile_id = target_profile_id, archived = true,
+                   stage_id = coalesce(won_stage, stage_id)
+   where id = target_lead_id;
+  insert into lead_activity (lead_id, kind, body)
+  values (target_lead_id, 'note', 'Converted to a client.');
+end $$;
+revoke all on function public.convert_lead(uuid, uuid) from public;
+grant execute on function public.convert_lead(uuid, uuid) to authenticated;
+
+create index leads_converted_idx on leads (converted_profile_id);
