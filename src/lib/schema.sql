@@ -728,3 +728,350 @@ begin
 end $$;
 revoke all on function public.complete_next_action(uuid, text) from public;
 grant execute on function public.complete_next_action(uuid, text) to authenticated;
+
+-- ===== CALL SCHEDULING (Update 76) =====
+
+-- Needed for the overlap-prevention constraint further down. Lets a GiST
+-- index mix a range type with a plain equality column.
+create extension if not exists btree_gist with schema extensions;
+
+-- ===== SETTINGS (single row, same pattern as client_hub) =====
+create table coach_call_settings (
+  id int primary key default 1 check (id = 1),
+  timezone text not null default 'America/New_York',
+  slot_minutes int not null default 30 check (slot_minutes between 10 and 240),
+  buffer_minutes int not null default 0 check (buffer_minutes between 0 and 120),
+  min_notice_hours int not null default 12 check (min_notice_hours between 0 and 336),
+  max_days_ahead int not null default 21 check (max_days_ahead between 1 and 120),
+  booking_enabled boolean not null default false,
+  video_base text not null default 'https://meet.jit.si/',
+  intro text default ''
+);
+
+insert into coach_call_settings (id) values (1) on conflict (id) do nothing;
+
+-- ===== WEEKLY AVAILABILITY =====
+-- Stored as local time-of-day in the coach's timezone, NOT as UTC. Storing
+-- UTC would silently shift every window by an hour at each DST changeover.
+-- weekday 0 = Monday, matching the checkin_day convention already in profiles.
+create table coach_availability (
+  id uuid primary key default gen_random_uuid(),
+  weekday int not null check (weekday between 0 and 6),
+  start_minute int not null check (start_minute between 0 and 1439),
+  end_minute int not null check (end_minute between 1 and 1440),
+  active boolean not null default true,
+  created_at timestamptz default now(),
+  constraint availability_sane_range check (end_minute > start_minute)
+);
+
+create index coach_availability_weekday_idx on coach_availability (weekday) where active;
+
+-- ===== BLACKOUTS (travel, match days, anything else) =====
+create table coach_blackouts (
+  id uuid primary key default gen_random_uuid(),
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  reason text default '',
+  created_at timestamptz default now(),
+  constraint blackout_sane_range check (ends_at > starts_at)
+);
+
+create index coach_blackouts_range_idx on coach_blackouts (starts_at, ends_at);
+
+-- ===== BOOKINGS =====
+create table bookings (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references profiles(id) on delete cascade,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  status text not null default 'booked' check (status in ('booked','cancelled','completed')),
+  video_url text default '',
+  client_note text default '',
+  coach_note text default '',
+  cancelled_by text check (cancelled_by in ('coach','client')),
+  cancelled_at timestamptz,
+  created_at timestamptz default now(),
+  constraint booking_sane_range check (ends_at > starts_at)
+);
+
+create index bookings_starts_idx on bookings (starts_at) where status = 'booked';
+create index bookings_client_idx on bookings (client_id, starts_at desc);
+
+-- THE IMPORTANT ONE. Two clients hitting "book" on the same slot at the same
+-- moment is a race no amount of app-side checking can close. This makes an
+-- overlapping live booking physically impossible to insert; the loser of the
+-- race gets an error and re-picks. Cancelled rows are excluded so a freed
+-- slot can be rebooked.
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'bookings_no_overlap') then
+    alter table bookings add constraint bookings_no_overlap
+      exclude using gist (tstzrange(starts_at, ends_at) with &&)
+      where (status = 'booked');
+  end if;
+end $$;
+
+-- ===== RLS =====
+alter table coach_call_settings enable row level security;
+alter table coach_availability  enable row level security;
+alter table coach_blackouts     enable row level security;
+alter table bookings            enable row level security;
+
+drop policy if exists "everyone reads call settings" on coach_call_settings;
+drop policy if exists "everyone reads availability" on coach_availability;
+drop policy if exists "everyone reads blackouts" on coach_blackouts;
+drop policy if exists "clients read own bookings" on bookings;
+
+-- Clients need to READ availability to see open slots, but never write it.
+create policy "coach manages call settings"  on coach_call_settings for all    using (is_coach());
+create policy "everyone reads call settings" on coach_call_settings for select using (auth.uid() is not null);
+create policy "coach manages availability"   on coach_availability  for all    using (is_coach());
+create policy "everyone reads availability"  on coach_availability  for select using (auth.uid() is not null);
+create policy "coach manages blackouts"      on coach_blackouts     for all    using (is_coach());
+create policy "everyone reads blackouts"     on coach_blackouts     for select using (auth.uid() is not null);
+
+create policy "coach manages bookings"       on bookings for all    using (is_coach());
+create policy "clients read own bookings"    on bookings for select using (client_id = auth.uid());
+-- Clients may only change their OWN row, and booking_guard below stops them
+-- editing anything except cancelling it.
+create policy "clients cancel own bookings"  on bookings for update using (client_id = auth.uid());
+
+-- ===== GUARD: clients can cancel, not reschedule themselves into a slot =====
+create or replace function public.booking_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if public.is_coach() then
+    return new;
+  end if;
+  -- Non-coach: the only permitted transition is booked -> cancelled.
+  if new.starts_at is distinct from old.starts_at
+     or new.ends_at is distinct from old.ends_at
+     or new.client_id is distinct from old.client_id
+     or new.coach_note is distinct from old.coach_note
+     or (new.status is distinct from old.status and new.status <> 'cancelled') then
+    raise exception 'You can cancel this call, but not change it. Book a new time instead.';
+  end if;
+  if new.status = 'cancelled' and old.status <> 'cancelled' then
+    new.cancelled_by := 'client';
+    new.cancelled_at := now();
+  end if;
+  return new;
+end $$;
+
+create trigger on_booking_update
+  before update on bookings
+  for each row execute function public.booking_guard();
+
+-- ===== SLOT VALIDATION =====
+-- True when the given window sits inside a live availability window for that
+-- weekday, in the coach's own timezone, and isn't blacked out or taken.
+create or replace function public.slot_is_open(
+  slot_start timestamptz,
+  slot_end timestamptz
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  tz text;
+  buffer_min int;
+  local_start timestamp;
+  local_end timestamp;
+  dow int;
+  start_min int;
+  end_min int;
+begin
+  select timezone, buffer_minutes into tz, buffer_min from coach_call_settings where id = 1;
+  tz := coalesce(tz, 'America/New_York');
+  buffer_min := coalesce(buffer_min, 0);
+
+  -- Convert to wall-clock time in the coach's zone before comparing to the
+  -- weekly rules, which are themselves stored as local time-of-day.
+  local_start := slot_start at time zone tz;
+  local_end   := slot_end   at time zone tz;
+
+  -- isodow gives 1=Monday..7=Sunday; our weekday column is 0=Monday..6=Sunday.
+  dow := extract(isodow from local_start)::int - 1;
+  start_min := extract(hour from local_start)::int * 60 + extract(minute from local_start)::int;
+  end_min   := extract(hour from local_end)::int * 60 + extract(minute from local_end)::int;
+
+  -- A window that crosses local midnight can't sit inside a single day's rule.
+  if local_end::date <> local_start::date then
+    return false;
+  end if;
+
+  if not exists (
+    select 1 from coach_availability a
+    where a.active
+      and a.weekday = dow
+      and a.start_minute <= start_min
+      and a.end_minute   >= end_min
+  ) then
+    return false;
+  end if;
+
+  if exists (
+    select 1 from coach_blackouts b
+    where b.starts_at < slot_end and b.ends_at > slot_start
+  ) then
+    return false;
+  end if;
+
+  -- Buffer is applied around existing bookings, not around this one, so a
+  -- 15-minute buffer keeps back-to-back calls off each other.
+  if exists (
+    select 1 from bookings bk
+    where bk.status = 'booked'
+      and bk.starts_at - make_interval(mins => buffer_min) < slot_end
+      and bk.ends_at   + make_interval(mins => buffer_min) > slot_start
+  ) then
+    return false;
+  end if;
+
+  return true;
+end $$;
+
+-- ===== BOOK =====
+-- Callable by a client for themselves, or by the coach for anyone.
+create or replace function public.book_call(
+  slot_start timestamptz,
+  note text default '',
+  target_client_id uuid default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  cfg coach_call_settings%rowtype;
+  who uuid;
+  slot_end timestamptz;
+  new_id uuid := gen_random_uuid();
+  room text;
+begin
+  select * into cfg from coach_call_settings where id = 1;
+  if cfg is null then
+    raise exception 'Call settings are not set up yet.';
+  end if;
+
+  who := coalesce(target_client_id, auth.uid());
+  if who is null then
+    raise exception 'You must be signed in to book a call.';
+  end if;
+  if target_client_id is not null and target_client_id <> auth.uid() and not public.is_coach() then
+    raise exception 'You can only book calls for yourself.';
+  end if;
+  if not public.is_coach() and not cfg.booking_enabled then
+    raise exception 'Booking is closed right now.';
+  end if;
+
+  slot_end := slot_start + make_interval(mins => cfg.slot_minutes);
+
+  -- The coach can drop a call anywhere; clients play by the rules.
+  if not public.is_coach() then
+    if slot_start < now() + make_interval(hours => cfg.min_notice_hours) then
+      raise exception 'That is too soon — calls need at least % hours notice.', cfg.min_notice_hours;
+    end if;
+    if slot_start > now() + make_interval(days => cfg.max_days_ahead) then
+      raise exception 'That is further ahead than bookings are open for.';
+    end if;
+    if not public.slot_is_open(slot_start, slot_end) then
+      raise exception 'That time is not available any more. Pick another slot.';
+    end if;
+  end if;
+
+  -- Unguessable room name: anyone with the URL can walk into a Jitsi room,
+  -- so the id must not be derivable from the booking time or the client.
+  room := 'workhorse-' || encode(extensions.gen_random_bytes(9), 'hex');
+
+  insert into bookings (id, client_id, starts_at, ends_at, client_note, video_url)
+  values (new_id, who, slot_start, slot_end, coalesce(note, ''),
+          rtrim(cfg.video_base, '/') || '/' || room);
+
+  return new_id;
+exception
+  when exclusion_violation then
+    -- Lost the race against a simultaneous booking for the same slot.
+    raise exception 'Someone just took that slot. Pick another time.';
+end $$;
+
+revoke all on function public.book_call(timestamptz, text, uuid) from public;
+grant execute on function public.book_call(timestamptz, text, uuid) to authenticated;
+grant execute on function public.slot_is_open(timestamptz, timestamptz) to authenticated;
+
+-- ===== CANCEL =====
+create or replace function public.cancel_booking(booking_id uuid, reason text default '')
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  owner uuid;
+begin
+  select client_id into owner from bookings where id = booking_id;
+  if owner is null then
+    raise exception 'That booking no longer exists.';
+  end if;
+  if not public.is_coach() and owner <> auth.uid() then
+    raise exception 'That is not your booking.';
+  end if;
+
+  update bookings
+     set status = 'cancelled',
+         cancelled_by = case when public.is_coach() then 'coach' else 'client' end,
+         cancelled_at = now(),
+         coach_note = case
+           when public.is_coach() and coalesce(reason,'') <> ''
+           then trim(both from coalesce(coach_note,'') || ' ' || reason)
+           else coach_note end
+   where id = booking_id;
+end $$;
+
+revoke all on function public.cancel_booking(uuid, text) from public;
+grant execute on function public.cancel_booking(uuid, text) to authenticated;
+
+-- ===== BLACKOUT HELPER =====
+-- Takes plain dates and resolves them to real instants using the coach's
+-- timezone, server-side. Doing this in the browser would use whatever zone
+-- the laptop is in — wrong the moment he blacks out travel days from a hotel
+-- in a different zone. end_date is inclusive: Sep 3-7 blocks all of the 7th.
+create or replace function public.add_blackout(
+  start_date date,
+  end_date date,
+  reason text default ''
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  tz text;
+  new_id uuid := gen_random_uuid();
+begin
+  if not public.is_coach() then
+    raise exception 'Only the coach can set blackout dates.';
+  end if;
+  if end_date < start_date then
+    raise exception 'The end date is before the start date.';
+  end if;
+
+  select timezone into tz from coach_call_settings where id = 1;
+  tz := coalesce(tz, 'America/New_York');
+
+  insert into coach_blackouts (id, starts_at, ends_at, reason)
+  values (
+    new_id,
+    (start_date::timestamp) at time zone tz,
+    ((end_date + 1)::timestamp) at time zone tz,
+    coalesce(reason, '')
+  );
+  return new_id;
+end $$;
+
+revoke all on function public.add_blackout(date, date, text) from public;
+grant execute on function public.add_blackout(date, date, text) to authenticated;
