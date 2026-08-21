@@ -935,71 +935,6 @@ end $$;
 
 -- ===== BOOK =====
 -- Callable by a client for themselves, or by the coach for anyone.
-create or replace function public.book_call(
-  slot_start timestamptz,
-  note text default '',
-  target_client_id uuid default null
-)
-returns uuid
-language plpgsql
-security definer
-set search_path = public, extensions
-as $$
-declare
-  cfg coach_call_settings%rowtype;
-  who uuid;
-  slot_end timestamptz;
-  new_id uuid := gen_random_uuid();
-  room text;
-begin
-  select * into cfg from coach_call_settings where id = 1;
-  if cfg is null then
-    raise exception 'Call settings are not set up yet.';
-  end if;
-
-  who := coalesce(target_client_id, auth.uid());
-  if who is null then
-    raise exception 'You must be signed in to book a call.';
-  end if;
-  if target_client_id is not null and target_client_id <> auth.uid() and not public.is_coach() then
-    raise exception 'You can only book calls for yourself.';
-  end if;
-  if not public.is_coach() and not cfg.booking_enabled then
-    raise exception 'Booking is closed right now.';
-  end if;
-
-  slot_end := slot_start + make_interval(mins => cfg.slot_minutes);
-
-  -- The coach can drop a call anywhere; clients play by the rules.
-  if not public.is_coach() then
-    if slot_start < now() + make_interval(hours => cfg.min_notice_hours) then
-      raise exception 'That is too soon — calls need at least % hours notice.', cfg.min_notice_hours;
-    end if;
-    if slot_start > now() + make_interval(days => cfg.max_days_ahead) then
-      raise exception 'That is further ahead than bookings are open for.';
-    end if;
-    if not public.slot_is_open(slot_start, slot_end) then
-      raise exception 'That time is not available any more. Pick another slot.';
-    end if;
-  end if;
-
-  -- Unguessable room name: anyone with the URL can walk into a Jitsi room,
-  -- so the id must not be derivable from the booking time or the client.
-  room := 'workhorse-' || encode(extensions.gen_random_bytes(9), 'hex');
-
-  insert into bookings (id, client_id, starts_at, ends_at, client_note, video_url)
-  values (new_id, who, slot_start, slot_end, coalesce(note, ''),
-          rtrim(cfg.video_base, '/') || '/' || room);
-
-  return new_id;
-exception
-  when exclusion_violation then
-    -- Lost the race against a simultaneous booking for the same slot.
-    raise exception 'Someone just took that slot. Pick another time.';
-end $$;
-
-revoke all on function public.book_call(timestamptz, text, uuid) from public;
-grant execute on function public.book_call(timestamptz, text, uuid) to authenticated;
 grant execute on function public.slot_is_open(timestamptz, timestamptz) to authenticated;
 
 -- ===== CANCEL =====
@@ -1075,3 +1010,124 @@ end $$;
 
 revoke all on function public.add_blackout(date, date, text) from public;
 grant execute on function public.add_blackout(date, date, text) to authenticated;
+
+-- ===== CALL TYPES (Update 77) =====
+
+-- Editable in the app rather than fixed in a CHECK constraint, so changing
+-- your offer never needs another migration.
+create table call_types (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  duration_minutes int not null default 30 check (duration_minutes between 5 and 240),
+  description text default '',
+  position int not null default 0,
+  active boolean not null default true,
+  created_at timestamptz default now()
+);
+
+-- Placeholders only — rename these in Calls → Call types to match what you
+-- actually run. Seeded only when the table is empty.
+insert into call_types (name, duration_minutes, description, position)
+select * from (values
+  ('Quick check-in',   15, 'Short catch-up between check-ins.', 1),
+  ('Coaching call',    30, 'Standard one-to-one.',              2),
+  ('Deep dive review', 60, 'Full program and nutrition review.',3)
+) as seed(name, duration_minutes, description, position)
+where not exists (select 1 from call_types);
+
+alter table bookings add column call_type_id uuid references call_types(id) on delete set null;
+create index bookings_call_type_idx on bookings (call_type_id);
+
+alter table call_types enable row level security;
+drop policy if exists "everyone reads call types" on call_types;
+create policy "coach manages call types"  on call_types for all    using (is_coach());
+-- Clients need to read these to pick one when booking.
+create policy "everyone reads call types" on call_types for select using (auth.uid() is not null);
+
+-- Supabase's default privileges normally cover new tables, but stating it
+-- outright means this doesn't depend on that default still being in place.
+grant select, insert, update, delete on call_types to authenticated;
+
+-- ===== BOOK, NOW TYPE-AWARE =====
+-- Dropped rather than replaced: the argument list is changing, and leaving the
+-- old 3-arg version in place would make the RPC call ambiguous.
+
+create or replace function public.book_call(
+  slot_start timestamptz,
+  note text default '',
+  target_client_id uuid default null,
+  target_call_type_id uuid default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  cfg coach_call_settings%rowtype;
+  ct call_types%rowtype;
+  who uuid;
+  mins int;
+  slot_end timestamptz;
+  new_id uuid := gen_random_uuid();
+  room text;
+begin
+  select * into cfg from coach_call_settings where id = 1;
+  if cfg is null then
+    raise exception 'Call settings are not set up yet.';
+  end if;
+
+  who := coalesce(target_client_id, auth.uid());
+  if who is null then
+    raise exception 'You must be signed in to book a call.';
+  end if;
+  if target_client_id is not null and target_client_id <> auth.uid() and not public.is_coach() then
+    raise exception 'You can only book calls for yourself.';
+  end if;
+  if not public.is_coach() and not cfg.booking_enabled then
+    raise exception 'Booking is closed right now.';
+  end if;
+
+  -- Length comes from the chosen type; the global setting is only a fallback
+  -- for bookings made without one.
+  if target_call_type_id is not null then
+    select * into ct from call_types where id = target_call_type_id;
+    if ct is null then
+      raise exception 'That call type no longer exists.';
+    end if;
+    if not ct.active and not public.is_coach() then
+      raise exception 'That call type is not available to book.';
+    end if;
+    mins := ct.duration_minutes;
+  else
+    mins := cfg.slot_minutes;
+  end if;
+
+  slot_end := slot_start + make_interval(mins => mins);
+
+  if not public.is_coach() then
+    if slot_start < now() + make_interval(hours => cfg.min_notice_hours) then
+      raise exception 'That is too soon — calls need at least % hours notice.', cfg.min_notice_hours;
+    end if;
+    if slot_start > now() + make_interval(days => cfg.max_days_ahead) then
+      raise exception 'That is further ahead than bookings are open for.';
+    end if;
+    if not public.slot_is_open(slot_start, slot_end) then
+      raise exception 'That time is not available any more. Pick another slot.';
+    end if;
+  end if;
+
+  room := 'workhorse-' || encode(extensions.gen_random_bytes(9), 'hex');
+
+  insert into bookings (id, client_id, starts_at, ends_at, client_note, video_url, call_type_id)
+  values (new_id, who, slot_start, slot_end, coalesce(note, ''),
+          rtrim(cfg.video_base, '/') || '/' || room, target_call_type_id);
+
+  return new_id;
+exception
+  when exclusion_violation then
+    raise exception 'Someone just took that slot. Pick another time.';
+end $$;
+
+revoke all on function public.book_call(timestamptz, text, uuid, uuid) from public;
+grant execute on function public.book_call(timestamptz, text, uuid, uuid) to authenticated;

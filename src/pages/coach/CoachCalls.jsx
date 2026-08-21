@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import {
   Video, Plus, Trash2, Calendar, Clock, Plane, Settings, X, ExternalLink, Copy,
+  Tag, ArrowUp, ArrowDown,
 } from 'lucide-react'
 
 const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
@@ -49,6 +50,8 @@ export default function CoachCalls() {
   const [avail, setAvail] = useState([])
   const [blackouts, setBlackouts] = useState([])
   const [bookings, setBookings] = useState([])
+  const [types, setTypes] = useState([])
+  const [newType, setNewType] = useState({ name: '', duration_minutes: '30', description: '' })
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [savedMsg, setSavedMsg] = useState('')
@@ -59,13 +62,15 @@ export default function CoachCalls() {
   const [tab, setTab] = useState('upcoming')
 
   async function load() {
-    const [{ data: s }, { data: a }, { data: b }, { data: bk }, { data: cl }] = await Promise.all([
+    const [{ data: s }, { data: a }, { data: b }, { data: bk }, { data: cl }, { data: ct }] = await Promise.all([
       supabase.from('coach_call_settings').select('*').eq('id', 1).maybeSingle(),
       supabase.from('coach_availability').select('*').order('weekday').order('start_minute'),
       supabase.from('coach_blackouts').select('*').order('starts_at'),
       supabase.from('bookings').select('*').order('starts_at', { ascending: false }),
       supabase.from('profiles').select('id, full_name, email, status').eq('role', 'client').order('full_name'),
+      supabase.from('call_types').select('*').order('position'),
     ])
+    setTypes(ct || [])
     setSettings(s || null)
     setAvail(a || [])
     setBlackouts(b || [])
@@ -123,6 +128,49 @@ export default function CoachCalls() {
     load()
   }
 
+  // ===== CALL TYPES =====
+  async function addType() {
+    const name = newType.name.trim()
+    if (!name) { alert('Give the call type a name.'); return }
+    const mins = Math.min(240, Math.max(5, +newType.duration_minutes || 30))
+    const pos = Math.max(0, ...types.map(t => t.position)) + 1
+    const { error } = await supabase.from('call_types').insert({
+      name, duration_minutes: mins, description: newType.description || '', position: pos,
+    })
+    if (error) { alert('Could not add that: ' + error.message); return }
+    setNewType({ name: '', duration_minutes: '30', description: '' })
+    load()
+  }
+
+  async function patchType(id, patch) {
+    setTypes(ts => ts.map(t => t.id === id ? { ...t, ...patch } : t))
+    const { error } = await supabase.from('call_types').update(patch).eq('id', id)
+    if (error) { alert('Could not save: ' + error.message); load(); return }
+    flash('Saved')
+  }
+
+  async function moveType(t, dir) {
+    const i = types.findIndex(x => x.id === t.id)
+    const j = i + dir
+    if (j < 0 || j >= types.length) return
+    const other = types[j]
+    await Promise.all([
+      supabase.from('call_types').update({ position: other.position }).eq('id', t.id),
+      supabase.from('call_types').update({ position: t.position }).eq('id', other.id),
+    ])
+    load()
+  }
+
+  async function removeType(t) {
+    const used = bookings.filter(b => b.call_type_id === t.id).length
+    const warning = used > 0
+      ? `\n\n${used} past booking${used === 1 ? '' : 's'} used this type. They'll be kept, just no longer labelled.`
+      : ''
+    if (!confirm(`Delete "${t.name}"?${warning}\n\nTo stop clients booking it without losing it, switch it off instead.`)) return
+    await supabase.from('call_types').delete().eq('id', t.id)
+    load()
+  }
+
   async function cancel(b) {
     const who = clients.find(c => c.id === b.client_id)?.full_name || 'this client'
     if (!confirm(`Cancel the call with ${who} on ${fmtDateTime(b.starts_at, tz)}?`)) return
@@ -149,6 +197,7 @@ export default function CoachCalls() {
     const iso = new Date(bookFor.datetime).toISOString()
     const { error } = await supabase.rpc('book_call', {
       slot_start: iso, note: bookFor.note || '', target_client_id: bookFor.client_id,
+      target_call_type_id: bookFor.call_type_id || null,
     })
     if (error) { alert('Could not book that: ' + error.message); return }
     setBookFor(null)
@@ -183,7 +232,7 @@ export default function CoachCalls() {
           <Settings size={14} style={{ verticalAlign: -2, marginRight: 5 }} />Settings
         </button>
         <button className="btn" style={{ padding: '7px 14px', fontSize: 13 }}
-          onClick={() => setBookFor({ client_id: '', datetime: '', note: '' })}>
+          onClick={() => setBookFor({ client_id: '', datetime: '', note: '', call_type_id: '' })}>
           <Plus size={14} style={{ verticalAlign: -2, marginRight: 5 }} />Book for a client
         </button>
       </div>
@@ -216,7 +265,7 @@ export default function CoachCalls() {
               </select>
             </div>
             <div>
-              <label className="muted" style={{ fontSize: 11.5 }}>Call length (minutes)</label>
+              <label className="muted" style={{ fontSize: 11.5 }}>Fallback length (minutes) — only used when no call type is picked</label>
               <input inputMode="numeric" value={settings.slot_minutes}
                 onChange={e => setSettings({ ...settings, slot_minutes: e.target.value })}
                 onBlur={e => saveSettings({ slot_minutes: Math.min(240, Math.max(10, +e.target.value || 30)) })} />
@@ -265,6 +314,11 @@ export default function CoachCalls() {
               <option value="">Pick a client…</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.full_name || c.email}</option>)}
             </select>
+            <select value={bookFor.call_type_id}
+              onChange={e => setBookFor({ ...bookFor, call_type_id: e.target.value })}>
+              <option value="">Default ({settings.slot_minutes} min)</option>
+              {types.map(t => <option key={t.id} value={t.id}>{t.name} · {t.duration_minutes} min</option>)}
+            </select>
             <input type="datetime-local" value={bookFor.datetime}
               onChange={e => setBookFor({ ...bookFor, datetime: e.target.value })} />
             <input placeholder="What it's about (optional)" value={bookFor.note}
@@ -276,6 +330,65 @@ export default function CoachCalls() {
           <button className="btn" style={{ marginTop: 8 }} onClick={bookForClient}>Book it</button>
         </div>
       )}
+
+      {/* ===== CALL TYPES ===== */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <span className="eyebrow" style={{ fontSize: 10 }}>
+          <Tag size={11} style={{ verticalAlign: -1, marginRight: 4 }} />Call types
+        </span>
+        <p className="muted" style={{ fontSize: 12, margin: '4px 0 10px' }}>
+          Each type has its own length. Switch one off to keep its history without letting clients book it.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {types.length === 0 && <span className="muted" style={{ fontSize: 12.5 }}>No call types yet.</span>}
+          {types.map((t, i) => (
+            <div key={t.id} style={{
+              background: 'var(--steel)', borderRadius: 8, padding: 10,
+              opacity: t.active ? 1 : 0.5,
+            }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input value={t.name} style={{ flex: 1, minWidth: 130 }}
+                  onChange={e => setTypes(ts => ts.map(x => x.id === t.id ? { ...x, name: e.target.value } : x))}
+                  onBlur={e => { if (e.target.value.trim() && e.target.value !== t.name) patchType(t.id, { name: e.target.value.trim() }) }} />
+                <input inputMode="numeric" style={{ maxWidth: 70 }} value={t.duration_minutes}
+                  onChange={e => setTypes(ts => ts.map(x => x.id === t.id ? { ...x, duration_minutes: e.target.value } : x))}
+                  onBlur={e => {
+                    const v = Math.min(240, Math.max(5, +e.target.value || 30))
+                    patchType(t.id, { duration_minutes: v })
+                  }} />
+                <span className="muted" style={{ fontSize: 12 }}>min</span>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
+                  <input type="checkbox" checked={t.active} style={{ width: 'auto' }}
+                    onChange={e => patchType(t.id, { active: e.target.checked })} />
+                  On
+                </label>
+                <button className="btn-ghost" style={{ padding: 3 }} title="Move up"
+                  disabled={i === 0} onClick={() => moveType(t, -1)}><ArrowUp size={13} /></button>
+                <button className="btn-ghost" style={{ padding: 3 }} title="Move down"
+                  disabled={i === types.length - 1} onClick={() => moveType(t, 1)}><ArrowDown size={13} /></button>
+                <button className="btn-ghost" style={{ padding: 3, color: 'var(--red)' }} title="Delete"
+                  onClick={() => removeType(t)}><Trash2 size={13} /></button>
+              </div>
+              <input placeholder="What this call is for — clients see this" style={{ marginTop: 6, fontSize: 12.5 }}
+                value={t.description || ''}
+                onChange={e => setTypes(ts => ts.map(x => x.id === t.id ? { ...x, description: e.target.value } : x))}
+                onBlur={e => { if (e.target.value !== (t.description || '')) patchType(t.id, { description: e.target.value }) }} />
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input placeholder="New call type" style={{ maxWidth: 200 }} value={newType.name}
+            onChange={e => setNewType({ ...newType, name: e.target.value })} />
+          <input inputMode="numeric" placeholder="30" style={{ maxWidth: 70 }} value={newType.duration_minutes}
+            onChange={e => setNewType({ ...newType, duration_minutes: e.target.value })} />
+          <span className="muted" style={{ fontSize: 12 }}>min</span>
+          <button className="btn-ghost" style={{ padding: '7px 14px', fontSize: 13 }} onClick={addType}>
+            <Plus size={13} style={{ verticalAlign: -2, marginRight: 4 }} />Add type
+          </button>
+        </div>
+      </div>
 
       {/* ===== WEEKLY HOURS ===== */}
       <div className="card" style={{ marginBottom: 16 }}>
@@ -384,7 +497,17 @@ export default function CoachCalls() {
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 180 }}>
                 <strong style={{ fontSize: 15 }}>{nameOf(b.client_id)}</strong>
-                <div style={{ fontSize: 13, marginTop: 2 }}>{fmtDateTime(b.starts_at, tz)}</div>
+                <div style={{ fontSize: 13, marginTop: 2 }}>
+                  {fmtDateTime(b.starts_at, tz)}
+                  <span className="muted"> · {Math.round((new Date(b.ends_at) - new Date(b.starts_at)) / 60000)} min</span>
+                </div>
+                {b.call_type_id && (
+                  <span style={{
+                    display: 'inline-block', marginTop: 4, fontSize: 10.5, fontWeight: 700,
+                    textTransform: 'uppercase', letterSpacing: .5, padding: '2px 8px',
+                    borderRadius: 20, background: 'var(--steel)', color: 'var(--orange-hot)',
+                  }}>{types.find(t => t.id === b.call_type_id)?.name || 'Deleted type'}</span>
+                )}
                 {b.status === 'cancelled' && (
                   <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 2 }}>
                     Cancelled{b.cancelled_by ? ` by the ${b.cancelled_by}` : ''}
