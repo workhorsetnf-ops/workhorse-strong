@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import {
   LayoutGrid, List, Plus, X, Trash2, Pencil, Check, ArrowLeft, ArrowRight,
   Phone, MessageSquare, Mail, StickyNote, GitBranch, Archive, RotateCcw,
-  UserPlus, UserCheck, Undo2,
+  UserPlus, UserCheck, Undo2, CalendarClock, CheckCircle2,
 } from 'lucide-react'
 
 const KIND_META = {
@@ -34,6 +34,49 @@ function money(n) {
   return '$' + Number(n).toLocaleString()
 }
 
+// Local-midnight comparison. Using new Date(dateStr) on a bare 'YYYY-MM-DD'
+// parses as UTC, which reads as "yesterday" for anyone west of Greenwich —
+// so a follow-up due today would show overdue. Compare the strings instead.
+function todayStr() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function dueState(dateStr) {
+  if (!dateStr) return null
+  const t = todayStr()
+  if (dateStr < t) return 'overdue'
+  if (dateStr === t) return 'today'
+  return 'upcoming'
+}
+
+function dueLabel(dateStr) {
+  const state = dueState(dateStr)
+  if (!state) return null
+  if (state === 'today') return 'Due today'
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const then = new Date(y, m - 1, d)
+  const now = new Date(); now.setHours(0, 0, 0, 0)
+  const diff = Math.round((then - now) / 864e5)
+  if (state === 'overdue') return `${Math.abs(diff)}d overdue`
+  if (diff === 1) return 'Due tomorrow'
+  return `Due in ${diff}d`
+}
+
+function dueColor(dateStr) {
+  const state = dueState(dateStr)
+  if (state === 'overdue') return 'var(--red)'
+  if (state === 'today') return 'var(--orange-hot)'
+  return 'var(--muted)'
+}
+
+// Date arithmetic for the quick-set buttons, kept in local time.
+function addDays(n) {
+  const d = new Date()
+  d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export default function CoachPipeline() {
   const [stages, setStages] = useState([])
   const [leads, setLeads] = useState([])
@@ -54,6 +97,7 @@ export default function CoachPipeline() {
   const [profiles, setProfiles] = useState([])        // for showing who a lead converted into
   const [converting, setConverting] = useState(false)
   const [convertForm, setConvertForm] = useState(null) // null = closed
+  const [dueOnly, setDueOnly] = useState(false)
 
   async function load() {
     const [{ data: st }, { data: ld }, { data: pf }] = await Promise.all([
@@ -68,7 +112,9 @@ export default function CoachPipeline() {
   }
   useEffect(() => { load() }, [])
 
-  const visible = leads.filter(l => showArchived ? true : !l.archived)
+  const visible = leads
+    .filter(l => showArchived ? true : !l.archived)
+    .filter(l => dueOnly ? ['overdue', 'today'].includes(dueState(l.next_action_date)) : true)
 
   // ===== ADD =====
   async function createLead() {
@@ -83,6 +129,8 @@ export default function CoachPipeline() {
       source: newLead.source || '',
       deal_size: newLead.deal_size ? Number(newLead.deal_size) : null,
       stage_id: newLead.stage_id || firstStage?.id || null,
+      next_action: newLead.next_action || '',
+      next_action_date: newLead.next_action_date || null,
     })
     if (error) { alert('Could not add lead: ' + error.message); return }
     setNewLead({}); setAdding(false); load()
@@ -115,6 +163,7 @@ export default function CoachPipeline() {
       handle: lead.handle || '', source: lead.source || '',
       deal_size: lead.deal_size ?? '', call_date: lead.call_date || '',
       notes: lead.notes || '', stage_id: lead.stage_id || '',
+      next_action: lead.next_action || '', next_action_date: lead.next_action_date || '',
     })
     setNewNote({ kind: 'note', body: '' })
     const { data } = await supabase.from('lead_activity').select('*')
@@ -130,6 +179,8 @@ export default function CoachPipeline() {
       deal_size: detail.deal_size === '' ? null : Number(detail.deal_size),
       call_date: detail.call_date || null, notes: detail.notes,
       stage_id: detail.stage_id || null,
+      next_action: detail.next_action || '',
+      next_action_date: detail.next_action_date || null,
     }).eq('id', selected)
     setSaving(false)
     if (error) { alert('Could not save: ' + error.message); return }
@@ -156,6 +207,22 @@ export default function CoachPipeline() {
   async function deleteActivity(id) {
     await supabase.from('lead_activity').delete().eq('id', id)
     setActivity(a => a.filter(x => x.id !== id))
+  }
+
+  // Ticking off a follow-up clears it and leaves a line on the timeline,
+  // so the history reads as a sequence of touches rather than blank gaps.
+  async function completeAction(leadId, outcome = '') {
+    const { error } = await supabase.rpc('complete_next_action', {
+      target_lead_id: leadId, outcome,
+    })
+    if (error) { alert('Could not mark that done: ' + error.message); return }
+    if (selected === leadId) {
+      setDetail(d => ({ ...d, next_action: '', next_action_date: '' }))
+      const { data } = await supabase.from('lead_activity').select('*')
+        .eq('lead_id', leadId).order('occurred_at', { ascending: false })
+      setActivity(data || [])
+    }
+    load()
   }
 
   async function setArchived(leadId, val) {
@@ -281,6 +348,7 @@ export default function CoachPipeline() {
   })
   const wonValue = wonThisMonth.reduce((sum, l) => sum + (Number(l.deal_size) || 0), 0)
   const stale = openLeads.filter(l => (daysSince(l.stage_changed_at) ?? 0) >= 7).length
+  const dueNow = leads.filter(l => !l.archived && ['overdue', 'today'].includes(dueState(l.next_action_date))).length
 
   // ===== LIST SORT =====
   const stagePos = id => stages.find(s => s.id === id)?.position ?? 999
@@ -290,6 +358,14 @@ export default function CoachPipeline() {
     if (sort.key === 'stage') return dir * (stagePos(a.stage_id) - stagePos(b.stage_id))
     if (sort.key === 'days') return dir * ((daysSince(a.stage_changed_at) ?? 0) - (daysSince(b.stage_changed_at) ?? 0))
     if (sort.key === 'value') return dir * ((Number(a.deal_size) || 0) - (Number(b.deal_size) || 0))
+    if (sort.key === 'due') {
+      // Leads with nothing scheduled always sink to the bottom, either direction —
+      // flipping the sort should reorder what's due, not bury it under blanks.
+      if (!a.next_action_date && !b.next_action_date) return 0
+      if (!a.next_action_date) return 1
+      if (!b.next_action_date) return -1
+      return dir * a.next_action_date.localeCompare(b.next_action_date)
+    }
     return 0
   })
   function toggleSort(key) {
@@ -314,6 +390,7 @@ export default function CoachPipeline() {
           { label: 'Open leads', value: openLeads.length },
           { label: 'Pipeline value', value: money(openValue) || '$0' },
           { label: 'Won this month', value: `${wonThisMonth.length}${wonValue ? ' · ' + money(wonValue) : ''}` },
+          { label: 'Follow-ups due', value: dueNow, tone: dueNow > 0 ? 'var(--red)' : null },
           { label: 'Going cold (7d+)', value: stale, tone: stale > 0 ? 'var(--orange-hot)' : null },
         ].map(s => (
           <div className="card" key={s.label} style={{ padding: '12px 14px' }}>
@@ -330,6 +407,10 @@ export default function CoachPipeline() {
         <button className={view === 'list' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }}
           onClick={() => setView('list')}><List size={14} style={{ verticalAlign: -2, marginRight: 5 }} />List</button>
         <div style={{ flex: 1 }} />
+        <button className={dueOnly ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }}
+          onClick={() => setDueOnly(v => !v)}>
+          <CalendarClock size={14} style={{ verticalAlign: -2, marginRight: 5 }} />Due now{dueNow ? ` (${dueNow})` : ''}
+        </button>
         <button className="btn-ghost" style={{ padding: '7px 14px', fontSize: 13 }}
           onClick={() => setShowArchived(v => !v)}>
           {showArchived ? 'Hide archived' : 'Show archived'}
@@ -368,6 +449,12 @@ export default function CoachPipeline() {
               {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8, marginTop: 8 }}>
+            <input placeholder="Next action (e.g. send the offer)" value={newLead.next_action || ''}
+              onChange={e => setNewLead({ ...newLead, next_action: e.target.value })} />
+            <input type="date" value={newLead.next_action_date || ''}
+              onChange={e => setNewLead({ ...newLead, next_action_date: e.target.value })} />
+          </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <button className="btn" onClick={createLead}>Add to pipeline</button>
             <button className="btn-ghost" onClick={() => { setAdding(false); setNewLead({}) }}>Cancel</button>
@@ -384,6 +471,13 @@ export default function CoachPipeline() {
         <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' }}>
           {stages.map(stage => {
             const inStage = visible.filter(l => l.stage_id === stage.id)
+              .sort((a, b) => {
+                // Anything owed today or overdue floats to the top of the column.
+                const rank = l => ({ overdue: 0, today: 1, upcoming: 2 }[dueState(l.next_action_date)] ?? 3)
+                const d = rank(a) - rank(b)
+                if (d !== 0) return d
+                return (daysSince(b.stage_changed_at) ?? 0) - (daysSince(a.stage_changed_at) ?? 0)
+              })
             const value = inStage.reduce((s, l) => s + (Number(l.deal_size) || 0), 0)
             const isOver = dragOverStage === stage.id
             return (
@@ -445,6 +539,29 @@ export default function CoachPipeline() {
                           {d === null ? '' : d === 0 ? 'Moved today' : `${d}d in stage`}
                           {l.archived && ' · archived'}
                         </div>
+                        {l.next_action && (
+                          <div style={{
+                            marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--line)',
+                            display: 'flex', alignItems: 'flex-start', gap: 5,
+                          }}>
+                            <CalendarClock size={11} style={{ marginTop: 2, flexShrink: 0, color: dueColor(l.next_action_date) }} />
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontSize: 11, lineHeight: 1.3 }}>{l.next_action}</div>
+                              {l.next_action_date && (
+                                <div style={{ fontSize: 10, color: dueColor(l.next_action_date), fontWeight: 600 }}>
+                                  {dueLabel(l.next_action_date)}
+                                </div>
+                              )}
+                            </div>
+                            {['overdue', 'today'].includes(dueState(l.next_action_date)) && (
+                              <button className="btn-ghost" title="Mark done"
+                                style={{ padding: 1, color: 'var(--green)', flexShrink: 0 }}
+                                onClick={e => { e.stopPropagation(); completeAction(l.id) }}>
+                                <CheckCircle2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -473,6 +590,7 @@ export default function CoachPipeline() {
                 {[
                   { key: 'name', label: 'Name' },
                   { key: 'stage', label: 'Stage' },
+                  { key: 'due', label: 'Next action' },
                   { key: 'days', label: 'Days in stage' },
                   { key: 'value', label: 'Deal size' },
                 ].map(c => (
@@ -496,6 +614,18 @@ export default function CoachPipeline() {
                       {l.full_name || 'Unnamed lead'}{l.archived && <span className="muted" style={{ fontWeight: 400 }}> · archived</span>}
                     </td>
                     <td style={{ padding: '10px 12px' }}>{stage?.name || '—'}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      {l.next_action
+                        ? <>
+                            <div>{l.next_action}</div>
+                            {l.next_action_date && (
+                              <div style={{ fontSize: 11, color: dueColor(l.next_action_date), fontWeight: 600 }}>
+                                {dueLabel(l.next_action_date)}
+                              </div>
+                            )}
+                          </>
+                        : <span className="muted">—</span>}
+                    </td>
                     <td style={{ padding: '10px 12px', color: staleColor(d) }}>{d === null ? '—' : `${d}d`}</td>
                     <td style={{ padding: '10px 12px', color: money(l.deal_size) ? 'var(--green)' : 'var(--muted)' }}>{money(l.deal_size) || '—'}</td>
                     <td style={{ padding: '10px 12px' }} className="muted">{l.source || '—'}</td>
@@ -504,7 +634,9 @@ export default function CoachPipeline() {
                 )
               })}
               {sorted.length === 0 && (
-                <tr><td colSpan={6} className="muted" style={{ padding: 20, textAlign: 'center' }}>No leads yet.</td></tr>
+                <tr><td colSpan={7} className="muted" style={{ padding: 20, textAlign: 'center' }}>
+                  {dueOnly ? 'Nothing due right now.' : 'No leads yet.'}
+                </td></tr>
               )}
             </tbody>
           </table>
@@ -607,6 +739,38 @@ export default function CoachPipeline() {
               <div>
                 <label className="muted" style={{ fontSize: 11.5 }}>Call date</label>
                 <input type="date" value={detail.call_date} onChange={e => setDetail({ ...detail, call_date: e.target.value })} />
+              </div>
+              <div style={{
+                background: 'var(--steel)', borderRadius: 8, padding: 10,
+                borderLeft: `3px solid ${detail.next_action_date ? dueColor(detail.next_action_date) : 'var(--line)'}`,
+              }}>
+                <label className="muted" style={{ fontSize: 11.5 }}>Next action — what you owe them, and when</label>
+                <input placeholder="e.g. send the offer, follow up after his match"
+                  value={detail.next_action}
+                  onChange={e => setDetail({ ...detail, next_action: e.target.value })} />
+                <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <input type="date" style={{ maxWidth: 150 }} value={detail.next_action_date}
+                    onChange={e => setDetail({ ...detail, next_action_date: e.target.value })} />
+                  {[['Today', 0], ['+3d', 3], ['+1wk', 7]].map(([label, n]) => (
+                    <button key={label} className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }}
+                      onClick={() => setDetail({ ...detail, next_action_date: addDays(n) })}>{label}</button>
+                  ))}
+                  {detail.next_action_date && (
+                    <button className="btn-ghost" style={{ padding: '5px 8px', fontSize: 12, color: 'var(--muted)' }}
+                      onClick={() => setDetail({ ...detail, next_action_date: '' })}>Clear</button>
+                  )}
+                </div>
+                {detail.next_action_date && (
+                  <div style={{ fontSize: 11.5, marginTop: 6, color: dueColor(detail.next_action_date), fontWeight: 600 }}>
+                    {dueLabel(detail.next_action_date)}
+                  </div>
+                )}
+                {selectedLead.next_action && (
+                  <button className="btn-ghost" style={{ padding: '6px 11px', fontSize: 12, marginTop: 8, color: 'var(--green)' }}
+                    onClick={() => completeAction(selected)}>
+                    <CheckCircle2 size={13} style={{ verticalAlign: -2, marginRight: 5 }} />Mark done
+                  </button>
+                )}
               </div>
               <div>
                 <label className="muted" style={{ fontSize: 11.5 }}>Notes (the standing summary — one-offs go in the timeline below)</label>

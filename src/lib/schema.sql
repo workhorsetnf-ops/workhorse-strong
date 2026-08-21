@@ -704,3 +704,27 @@ revoke all on function public.convert_lead(uuid, uuid) from public;
 grant execute on function public.convert_lead(uuid, uuid) to authenticated;
 
 create index leads_converted_idx on leads (converted_profile_id);
+
+-- ===== NEXT ACTION + DUE DATE (Update 75) =====
+alter table leads add column next_action text default '';
+alter table leads add column next_action_date date;
+create index leads_next_action_date_idx on leads (next_action_date)
+  where next_action_date is not null and archived = false;
+
+create or replace function public.complete_next_action(
+  target_lead_id uuid, outcome text default ''
+) returns void language plpgsql security definer set search_path = public as $$
+declare prior_action text;
+begin
+  if not public.is_coach() then raise exception 'Only the coach can update leads.'; end if;
+  select next_action into prior_action from leads where id = target_lead_id;
+  update leads set next_action = '', next_action_date = null, last_touch_at = now()
+   where id = target_lead_id;
+  insert into lead_activity (lead_id, kind, body)
+  values (target_lead_id, 'note',
+    case when coalesce(outcome,'') <> '' then outcome
+         when coalesce(prior_action,'') <> '' then 'Done: ' || prior_action
+         else 'Followed up.' end);
+end $$;
+revoke all on function public.complete_next_action(uuid, text) from public;
+grant execute on function public.complete_next_action(uuid, text) to authenticated;

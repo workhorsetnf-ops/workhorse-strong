@@ -50,7 +50,7 @@ export default function CoachHome() {
   async function loadPipeline() {
     const [{ data: stagesData }, { data: leadsData }] = await Promise.all([
       supabase.from('lead_stages').select('*').order('position'),
-      supabase.from('leads').select('id, stage_id, deal_size, archived, stage_changed_at'),
+      supabase.from('leads').select('id, full_name, stage_id, deal_size, archived, stage_changed_at, next_action, next_action_date'),
     ])
     const stages = stagesData || []
     const leads = leadsData || []
@@ -63,12 +63,20 @@ export default function CoachHome() {
       const d = new Date(l.stage_changed_at)
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
     })
+    // Compared as strings against local today — parsing 'YYYY-MM-DD' as a Date
+    // treats it as UTC and would mark today's follow-ups overdue.
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
+    const due = leads
+      .filter(l => !l.archived && l.next_action_date && l.next_action_date <= today)
+      .sort((a, b) => a.next_action_date.localeCompare(b.next_action_date))
     setPipeline({
       open: open.length,
       value: open.reduce((s, l) => s + (Number(l.deal_size) || 0), 0),
       cold: open.filter(l => daysAgo(l.stage_changed_at) >= 7).length,
       won: wonThisMonth.length,
       total: leads.length,
+      due,
+      today,
     })
   }
 
@@ -79,6 +87,12 @@ export default function CoachHome() {
     ])
     setTasks(t || [])
     setTaskCompletions(new Set((comp || []).map(c => c.task_id)))
+  }
+
+  async function completeLeadAction(leadId) {
+    const { error } = await supabase.rpc('complete_next_action', { target_lead_id: leadId, outcome: '' })
+    if (error) { alert('Could not mark that done: ' + error.message); return }
+    loadPipeline()
   }
 
   async function addTask() {
@@ -407,29 +421,58 @@ export default function CoachHome() {
       </div>
 
       {pipeline && pipeline.total > 0 && (
-        <Link to="/coach/pipeline" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--orange-hot)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <strong style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 7 }}>
-                <Target size={16} strokeWidth={2} /> Pipeline
-              </strong>
-              <span className="muted" style={{ fontSize: 12 }}>View board →</span>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 10 }}>
-              {[
-                { label: 'Open', value: pipeline.open },
-                { label: 'Value', value: '$' + pipeline.value.toLocaleString() },
-                { label: 'Won this month', value: pipeline.won, tone: pipeline.won > 0 ? 'var(--green)' : null },
-                { label: 'Going cold', value: pipeline.cold, tone: pipeline.cold > 0 ? 'var(--orange-hot)' : null },
-              ].map(s => (
-                <div key={s.label}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: s.tone || 'var(--white)' }}>{s.value}</div>
-                  <div className="muted" style={{ fontSize: 11 }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
+        <div className="card" style={{ marginBottom: 20, borderLeft: `3px solid ${pipeline.due.length ? 'var(--red)' : 'var(--orange-hot)'}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <strong style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 7 }}>
+              <Target size={16} strokeWidth={2} /> Pipeline
+            </strong>
+            <Link to="/coach/pipeline" className="muted" style={{ fontSize: 12, textDecoration: 'none' }}>View board →</Link>
           </div>
-        </Link>
+
+          {pipeline.due.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--red)', marginBottom: 6 }}>
+                {pipeline.due.length} follow-up{pipeline.due.length === 1 ? '' : 's'} due
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {pipeline.due.slice(0, 5).map(l => (
+                  <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                    <button onClick={() => completeLeadAction(l.id)} title="Mark done"
+                      style={{ background: 'none', display: 'flex', color: 'var(--muted)', flexShrink: 0 }}>
+                      <Square size={16} />
+                    </button>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <strong>{l.full_name || 'Unnamed lead'}</strong>
+                      <span className="muted"> — {l.next_action || 'follow up'}</span>
+                    </span>
+                    {l.next_action_date < pipeline.today && (
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--red)', flexShrink: 0 }}>OVERDUE</span>
+                    )}
+                  </div>
+                ))}
+                {pipeline.due.length > 5 && (
+                  <Link to="/coach/pipeline" className="muted" style={{ fontSize: 12, textDecoration: 'none' }}>
+                    +{pipeline.due.length - 5} more →
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 10 }}>
+            {[
+              { label: 'Open', value: pipeline.open },
+              { label: 'Value', value: '$' + pipeline.value.toLocaleString() },
+              { label: 'Won this month', value: pipeline.won, tone: pipeline.won > 0 ? 'var(--green)' : null },
+              { label: 'Going cold', value: pipeline.cold, tone: pipeline.cold > 0 ? 'var(--orange-hot)' : null },
+            ].map(s => (
+              <div key={s.label}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: s.tone || 'var(--white)' }}>{s.value}</div>
+                <div className="muted" style={{ fontSize: 11 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       <div className="eyebrow">Home</div>
