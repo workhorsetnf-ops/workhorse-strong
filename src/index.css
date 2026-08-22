@@ -24,8 +24,8 @@ body {
     repeating-linear-gradient(115deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
   background-attachment: fixed;
   color: var(--white);
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: 17.5px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -36,11 +36,11 @@ h1, h2, h3, .display {
   letter-spacing: 0.03em;
 }
 
-h1 { font-size: 2.3em; line-height: 1.02; }
-h2 { font-size: 1.5em; line-height: 1.08; }
+h1 { font-size: 2.45em; line-height: 1.02; }
+h2 { font-size: 1.6em; line-height: 1.08; }
 
 @media (max-width: 480px) {
-  h1 { font-size: 2em; }
+  h1 { font-size: 2.15em; }
 }
 
 button {
@@ -55,8 +55,8 @@ input, textarea, select {
   border: 1px solid var(--line);
   color: var(--white);
   border-radius: 8px;
-  padding: 13px 15px;
-  font-size: 15.5px;
+  padding: 14px 16px;
+  font-size: 17px;
   width: 100%;
   transition: border-color 0.15s;
 }
@@ -78,8 +78,8 @@ a { color: var(--orange-hot); text-decoration: none; }
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 14.5px;
-  padding: 14px 24px;
+  font-size: 16px;
+  padding: 15px 26px;
   border-radius: 8px;
   box-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 4px 16px rgba(191,87,0,0.22);
   transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
@@ -92,8 +92,8 @@ a { color: var(--orange-hot); text-decoration: none; }
   border: 1px solid var(--line);
   color: var(--white);
   font-weight: 700;
-  font-size: 13.5px;
-  padding: 10px 17px;
+  font-size: 15.5px;
+  padding: 11px 18px;
   border-radius: 8px;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
@@ -103,14 +103,14 @@ a { color: var(--orange-hot); text-decoration: none; }
   background: linear-gradient(180deg, var(--coal) 0%, #101010 100%);
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 20px;
+  padding: 22px;
   box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 22px rgba(0,0,0,0.3);
 }
 
 .eyebrow {
   font-family: 'Bebas Neue', 'Montserrat', system-ui, sans-serif;
   color: var(--orange-hot);
-  font-size: 13.5px;
+  font-size: 14.5px;
   font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.2em;
@@ -120,14 +120,14 @@ a { color: var(--orange-hot); text-decoration: none; }
 
 .stat-num {
   font-family: 'Bebas Neue', 'Montserrat', system-ui, sans-serif;
-  font-size: 40px;
+  font-size: 44px;
   font-weight: 400;
   line-height: 1;
 }
 
 /* macro progress bars */
 .bar-track {
-  height: 9px;
+  height: 10px;
   border-radius: 5px;
   background: var(--steel);
   overflow: hidden;
@@ -151,7 +151,7 @@ a { color: var(--orange-hot); text-decoration: none; }
 }
 .client-main {
   flex: 1;
-  padding: 22px 17px 94px;
+  padding: 22px 17px 98px;
 }
 .bottom-nav {
   position: fixed;
@@ -169,13 +169,14 @@ a { color: var(--orange-hot); text-decoration: none; }
   text-align: center;
   padding: 12px 4px 10px;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.06em;
   transition: color 0.15s;
 }
 .bottom-nav a .ico { display: flex; justify-content: center; margin-bottom: 3px; }
+.bottom-nav a .ico svg { width: 22px; height: 22px; }
 .bottom-nav a.active { color: var(--orange-hot); }
 
 /* ---- coach desktop shell ---- */
@@ -184,7 +185,7 @@ a { color: var(--orange-hot); text-decoration: none; }
   min-height: 100dvh;
 }
 .coach-side {
-  width: 236px;
+  width: 248px;
   background: var(--coal);
   border-right: 1px solid var(--line);
   padding: 24px 14px;
@@ -196,8 +197,8 @@ a { color: var(--orange-hot); text-decoration: none; }
 .coach-side a {
   color: var(--muted);
   font-weight: 700;
-  font-size: 14.5px;
-  padding: 11px 14px;
+  font-size: 16px;
+  padding: 12px 14px;
   border-radius: 8px;
   border-left: 3px solid transparent;
   transition: background 0.15s, color 0.15s;
@@ -205,14 +206,14 @@ a { color: var(--orange-hot); text-decoration: none; }
   align-items: center;
   gap: 11px;
 }
-.coach-side a svg { flex-shrink: 0; opacity: 0.85; }
+.coach-side a svg { flex-shrink: 0; opacity: 0.85; width: 18px; height: 18px; }
 .coach-side a:hover { color: var(--white); }
 .coach-side a.active { color: var(--white); background: var(--steel); border-left-color: var(--orange); }
 .coach-side a.active svg { opacity: 1; color: var(--orange-hot); }
 .coach-main {
   flex: 1;
   padding: 34px;
-  max-width: 1120px;
+  max-width: 1160px;
 }
 
 .wordmark {
@@ -220,7 +221,7 @@ a { color: var(--orange-hot); text-decoration: none; }
   font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-size: 22px;
+  font-size: 24px;
 }
 .wordmark span { color: var(--orange-hot); }
 
@@ -240,10 +241,10 @@ a { color: var(--orange-hot); text-decoration: none; }
 .chat-scroll { display: flex; flex-direction: column; gap: 8px; }
 .bubble {
   max-width: 78%;
-  padding: 11px 15px;
+  padding: 12px 16px;
   border-radius: 14px;
-  font-size: 15px;
-  line-height: 1.45;
+  font-size: 16.5px;
+  line-height: 1.48;
 }
 .bubble.me { align-self: flex-end; background: linear-gradient(135deg, var(--orange), #a04c00); border-bottom-right-radius: 3px; }
 .bubble.them { align-self: flex-start; background: var(--steel); border-bottom-left-radius: 3px; }
@@ -251,18 +252,18 @@ a { color: var(--orange-hot); text-decoration: none; }
 table.data {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14.5px;
+  font-size: 16px;
 }
 table.data th {
   text-align: left;
-  font-size: 11.5px;
+  font-size: 12.5px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--muted);
-  padding: 9px 10px;
+  padding: 10px 11px;
   border-bottom: 1px solid var(--line);
 }
-table.data td { padding: 11px 10px; border-bottom: 1px solid var(--line); }
+table.data td { padding: 12px 11px; border-bottom: 1px solid var(--line); }
 table.data tr:hover td { background: rgba(255,255,255,0.015); }
 
 /* small thumbnails (exercise icons, avatars) get a defined edge to read
