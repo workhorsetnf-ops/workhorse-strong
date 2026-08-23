@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import Sparkline from '../../lib/Sparkline'
@@ -17,13 +17,20 @@ export default function ClientProgress() {
   const [mform, setMform] = useState({ waist: '', chest: '', arms: '', thighs: '', hips: '', neck: '' })
   const [msaved, setMsaved] = useState(false)
 
+  // guards so the auto-save effects below don't fire while we're populating
+  // fields FROM the database on load — only real user edits should trigger a save
+  const dailyLoaded = useRef(false)
+  const measurementsLoaded = useRef(false)
+
   async function load() {
     const since = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10)
     const { data } = await supabase.from('daily_logs').select('*')
       .eq('client_id', profile.id).gte('log_date', since).order('log_date')
     setLogs(data || [])
     const todays = (data || []).find(l => l.log_date === todayStr())
+    dailyLoaded.current = false
     if (todays) { setWeight(todays.weight ?? ''); setSteps(todays.steps ?? '') }
+    setTimeout(() => { dailyLoaded.current = true }, 0)
   }
   async function loadMeasurements() {
     const since = new Date(Date.now() - 180 * 864e5).toISOString().slice(0, 10)
@@ -31,9 +38,11 @@ export default function ClientProgress() {
       .eq('client_id', profile.id).gte('log_date', since).order('log_date')
     setMeasurements(data || [])
     const latest = (data || [])[data.length - 1]
+    measurementsLoaded.current = false
     if (latest && latest.log_date === todayStr()) {
       setMform({ waist: latest.waist ?? '', chest: latest.chest ?? '', arms: latest.arms ?? '', thighs: latest.thighs ?? '', hips: latest.hips ?? '', neck: latest.neck ?? '' })
     }
+    setTimeout(() => { measurementsLoaded.current = true }, 0)
   }
   useEffect(() => { if (profile) { load(); loadMeasurements() } }, [profile])
 
@@ -46,6 +55,16 @@ export default function ClientProgress() {
     loadMeasurements()
   }
 
+  // auto-save measurements ~1.2s after the user stops typing, so a value
+  // they entered is safe on the server even if they leave without hitting Save
+  useEffect(() => {
+    if (!measurementsLoaded.current) return
+    if (!Object.values(mform).some(v => v !== '')) return
+    const t = setTimeout(saveMeasurements, 1200)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mform])
+
   async function save() {
     if (!weight && !steps) return
     await supabase.from('daily_logs').upsert({
@@ -56,6 +75,16 @@ export default function ClientProgress() {
     setSaved(true); setTimeout(() => setSaved(false), 2000)
     load()
   }
+
+  // auto-save weight/steps the same way — typing it in is enough, the
+  // "Save today" button becomes a confirmation, not a requirement
+  useEffect(() => {
+    if (!dailyLoaded.current) return
+    if (!weight && !steps) return
+    const t = setTimeout(save, 1200)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weight, steps])
 
   const windowed = logs.filter(l => l.log_date >= new Date(Date.now() - range * 864e5).toISOString().slice(0, 10))
   const weightData = windowed.map(l => ({ label: fmt(l.log_date), value: l.weight }))
@@ -84,6 +113,7 @@ export default function ClientProgress() {
           </div>
         </div>
         <button className="btn" onClick={save}>{saved ? 'Saved ✓' : 'Save today'}</button>
+        <p className="muted" style={{ fontSize: 11, marginTop: -4 }}>Auto-saves shortly after you stop typing — this button is just a quick confirmation.</p>
       </div>
 
       <div style={{ display: 'flex', gap: 8 }}>
@@ -114,6 +144,7 @@ export default function ClientProgress() {
           ))}
         </div>
         <button className="btn" onClick={saveMeasurements}>{msaved ? 'Saved ✓' : 'Save measurements'}</button>
+        <p className="muted" style={{ fontSize: 11, marginTop: -4 }}>Auto-saves shortly after you stop typing — this button is just a quick confirmation.</p>
       </div>
 
       {measurements.length >= 2 && ['waist','chest','arms'].map(k => {
