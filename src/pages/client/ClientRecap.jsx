@@ -42,7 +42,7 @@ export default function ClientRecap() {
       </header>
 
       <div className="card glow-behind" style={{ textAlign: 'center', padding: '28px 20px' }}>
-        <div style={{ fontSize: 44, fontWeight: 900, color: 'var(--orange-hot)', fontFamily: "'Bebas Neue', sans-serif" }}>{stats.sessions}</div>
+        <div style={{ fontSize: 44, fontWeight: 900, color: 'var(--orange-hot)', fontFamily: "'Anton', sans-serif" }}>{stats.sessions}</div>
         <div className="muted" style={{ fontSize: 12.5, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Sessions logged</div>
       </div>
 

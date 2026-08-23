@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 const PLATES = [45, 35, 25, 10, 5, 2.5]
-const COLORS = { 45: '#BF5700', 35: '#4A6FA5', 25: '#3E8E7E', 10: 'var(--white)', 5: '#7C5CBF', 2.5: 'var(--muted)' }
+const COLORS = { 45: '#FF5A00', 35: '#4A6FA5', 25: '#3E8E7E', 10: 'var(--white)', 5: '#7C5CBF', 2.5: 'var(--muted)' }
 
 function calc(target, bar) {
   let perSide = (target - bar) / 2

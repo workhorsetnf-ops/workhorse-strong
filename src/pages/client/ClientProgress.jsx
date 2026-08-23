@@ -124,7 +124,7 @@ export default function ClientProgress() {
 
       <div className="card">
         <div className="eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>Weight trend</div>
-        <Sparkline data={weightData} color="#BF5700" unit=" lbs" />
+        <Sparkline data={weightData} color="#FF5A00" unit=" lbs" />
       </div>
 
       <div className="card">

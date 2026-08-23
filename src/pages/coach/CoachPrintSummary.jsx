@@ -30,16 +30,16 @@ export default function CoachPrintSummary() {
         table { width: 100%; border-collapse: collapse; margin-top: 6px; }
         th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #ddd; font-size: 13px; }
         th { color: #666; font-size: 11px; text-transform: uppercase; }
-        h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #BF5700; padding-bottom: 4px; margin-top: 22px; }
+        h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #FF5A00; padding-bottom: 4px; margin-top: 22px; }
       `}</style>
 
       <div className="no-print" style={{ marginBottom: 16 }}>
-        <button onClick={() => window.print()} style={{ padding: '8px 16px', background: '#BF5700', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, cursor: 'pointer' }}>Print / Save as PDF</button>
+        <button onClick={() => window.print()} style={{ padding: '8px 16px', background: '#FF5A00', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, cursor: 'pointer' }}>Print / Save as PDF</button>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '3px solid #0A0A0A', paddingBottom: 8 }}>
         <div>
-          <div style={{ fontSize: 11, color: '#BF5700', fontWeight: 700, letterSpacing: '0.1em' }}>WORKHORSE TRAINING &amp; NUTRITION</div>
+          <div style={{ fontSize: 11, color: '#FF5A00', fontWeight: 700, letterSpacing: '0.1em' }}>WORKHORSE TRAINING &amp; NUTRITION</div>
           <h1 style={{ fontSize: 26, margin: '4px 0 0' }}>{profile?.full_name}</h1>
         </div>
         <div style={{ fontSize: 12, color: '#666', textAlign: 'right' }}>Generated {new Date().toLocaleDateString()}</div>

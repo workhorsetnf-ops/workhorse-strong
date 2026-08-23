@@ -13,7 +13,7 @@ function loomEmbed(url) {
 
 const prefixOf = l => (l || '').replace(/[0-9]/g, '')
 const isNumbered = l => /^[A-Z]+\d+$/.test(l || '')
-const GROUP_COLORS = ['#BF5700', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
+const GROUP_COLORS = ['#FF5A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
 
 function chunkGroups(list) {
   const out = []

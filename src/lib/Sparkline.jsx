@@ -1,5 +1,5 @@
 // Lightweight dependency-free line chart
-export default function Sparkline({ data, height = 90, color = '#BF5700', unit = '' }) {
+export default function Sparkline({ data, height = 90, color = '#FF5A00', unit = '' }) {
   const points = data.filter(d => d.value !== null && d.value !== undefined && d.value !== '')
   if (points.length < 2) {
     return <div style={{ height, display: 'grid', placeItems: 'center' }} className="muted">

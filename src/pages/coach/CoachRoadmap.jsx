@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
-const TYPE_COLOR = { cut: '#BF5700', build: '#4A6FA5', recomp: '#7C5CBF', maintain: '#3E8E7E', peak: '#E06A00' }
+const TYPE_COLOR = { cut: '#FF5A00', build: '#4A6FA5', recomp: '#7C5CBF', maintain: '#3E8E7E', peak: '#FF6200' }
 const TYPE_LABEL = { cut: 'Cut', build: 'Build', recomp: 'Recomp', maintain: 'Maintain', peak: 'Peak' }
 const EMPTY = { name: '', phase_type: 'build', start_date: '', end_date: '', protein_g: '', carbs_g: '', fat_g: '', calories: '', notes: '' }
 
