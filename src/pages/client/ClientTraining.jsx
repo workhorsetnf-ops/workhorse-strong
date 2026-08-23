@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import RestTimer from '../../lib/RestTimer'
@@ -36,6 +36,8 @@ const BODYWEIGHT_SUBS = [
   ['Conditioning', 'Bodyweight circuits, burpees, jump rope if available, hill sprints'],
 ]
 
+const todayStr = () => new Date().toISOString().slice(0, 10)
+
 export default function ClientTraining() {
   const { profile } = useAuth()
   const [program, setProgram] = useState(null)
@@ -61,6 +63,10 @@ export default function ClientTraining() {
   const [flaggedIds, setFlaggedIds] = useState(new Set())
   const [awayMode, setAwayMode] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [savingSets, setSavingSets] = useState(new Set()) // exerciseId-setNumber currently being auto-saved
+
+  // debounce timers for auto-save, keyed per set (or per conditioning result)
+  const saveTimers = useRef({})
 
   useEffect(() => {
     if (!profile) return
@@ -123,8 +129,9 @@ export default function ClientTraining() {
         }
         setLog(init)
         setResults({})
-        // pull most recent prior logged set per exercise for a "last time" hint
         const ids = (data || []).map(ex => ex.id)
+
+        // pull most recent PRIOR logged set per exercise, for the "last time" hint
         if (ids.length) {
           supabase.from('workout_logs').select('exercise_id, weight, reps, rir, logged_at')
             .in('exercise_id', ids).order('logged_at', { ascending: false }).limit(200)
@@ -138,6 +145,32 @@ export default function ClientTraining() {
               setLastLogged(seen)
             })
         } else setLastLogged({})
+
+        // rehydrate anything ALREADY saved for TODAY — so switching away and back
+        // shows what was actually saved, not a blank form
+        if (ids.length) {
+          supabase.from('workout_logs').select('exercise_id, set_number, weight, reps, rir, result_text')
+            .eq('client_id', profile.id).eq('logged_date', todayStr()).in('exercise_id', ids)
+            .then(({ data: todayLogs }) => {
+              if (!todayLogs?.length) return
+              setLog(prev => {
+                const next = { ...prev }
+                for (const row of todayLogs) {
+                  if (!next[row.exercise_id]) continue
+                  const idx = row.set_number - 1
+                  if (idx >= 0 && idx < next[row.exercise_id].length) {
+                    next[row.exercise_id] = next[row.exercise_id].map((s, j) =>
+                      j === idx ? { weight: row.weight || '', reps: row.reps || '', rir: row.rir || '' } : s)
+                  }
+                }
+                return next
+              })
+              const resultsInit = {}
+              for (const row of todayLogs) if (row.result_text) resultsInit[row.exercise_id] = row.result_text
+              if (Object.keys(resultsInit).length) setResults(r => ({ ...r, ...resultsInit }))
+            })
+        }
+
         if (ids.length) {
           supabase.from('exercise_comments').select('exercise_id').in('exercise_id', ids)
             .then(({ data }) => {
@@ -177,27 +210,76 @@ export default function ClientTraining() {
     setFlaggedIds(f => new Set([...f, exId]))
   }
 
-  function updateSet(exId, i, field, value) {
-    setLog(l => ({ ...l, [exId]: l[exId].map((s, j) => j === i ? { ...s, [field]: value } : s) }))
+  // ---- auto-save: each set gets its own debounce timer, keyed so editing
+  // Set 2 doesn't reset/cancel a pending save for Set 1 ----
+  function autoSaveSet(exId, setNumber, s, exerciseName) {
+    const key = `${exId}-${setNumber}`
+    clearTimeout(saveTimers.current[key])
+    saveTimers.current[key] = setTimeout(async () => {
+      if (!s.weight && !s.reps) return // nothing worth saving yet
+      setSavingSets(prev => new Set(prev).add(key))
+      await supabase.from('workout_logs').upsert({
+        client_id: profile.id, exercise_id: exId, exercise_name: exerciseName,
+        set_number: setNumber, weight: s.weight || null, reps: s.reps || null, rir: s.rir || null,
+        logged_date: todayStr(),
+      }, { onConflict: 'client_id,exercise_id,set_number,logged_date' })
+      setSavingSets(prev => { const n = new Set(prev); n.delete(key); return n })
+    }, 900)
   }
 
+  function updateSet(exId, i, field, value) {
+    setLog(l => {
+      const updated = l[exId].map((s, j) => j === i ? { ...s, [field]: value } : s)
+      const ex = exercises.find(e => e.id === exId)
+      autoSaveSet(exId, i + 1, updated[i], ex?.name)
+      return { ...l, [exId]: updated }
+    })
+  }
+
+  function autoSaveResult(exId, value, exerciseName) {
+    const key = `result-${exId}`
+    clearTimeout(saveTimers.current[key])
+    saveTimers.current[key] = setTimeout(async () => {
+      if (!value?.toString().trim()) return
+      setSavingSets(prev => new Set(prev).add(key))
+      await supabase.from('workout_logs').upsert({
+        client_id: profile.id, exercise_id: exId, exercise_name: exerciseName,
+        set_number: 1, result_text: value.toString().trim(),
+        logged_date: todayStr(),
+      }, { onConflict: 'client_id,exercise_id,set_number,logged_date' })
+      setSavingSets(prev => { const n = new Set(prev); n.delete(key); return n })
+    }, 900)
+  }
+
+  function updateResult(exId, value, exerciseName) {
+    setResults(r => ({ ...r, [exId]: value }))
+    autoSaveResult(exId, value, exerciseName)
+  }
+
+  // manual "Save workout" stays as a confirmation/backstop pass — uses the
+  // same upsert key so it can never create a duplicate alongside auto-saves
   async function saveWorkout() {
     const rows = []
     for (const ex of exercises) {
       (log[ex.id] || []).forEach((s, i) => {
         if (s.weight || s.reps) rows.push({
           client_id: profile.id, exercise_id: ex.id, exercise_name: ex.name,
-          set_number: i + 1, weight: s.weight || null, reps: s.reps || null, rir: s.rir || null
+          set_number: i + 1, weight: s.weight || null, reps: s.reps || null, rir: s.rir || null,
+          logged_date: todayStr(),
         })
       })
     }
     for (const ex of exercises) {
-      if (ex.kind === 'conditioning' && (results[ex.id] || '').trim()) {
-        rows.push({ client_id: profile.id, exercise_id: ex.id, exercise_name: ex.name, set_number: 1, result_text: results[ex.id].trim() })
+      if (ex.kind === 'conditioning' && (results[ex.id] || '').toString().trim()) {
+        rows.push({
+          client_id: profile.id, exercise_id: ex.id, exercise_name: ex.name, set_number: 1,
+          result_text: results[ex.id].toString().trim(), logged_date: todayStr(),
+        })
       }
     }
     if (!rows.length) return
-    const { error } = await supabase.from('workout_logs').insert(rows)
+    const { error } = await supabase.from('workout_logs')
+      .upsert(rows, { onConflict: 'client_id,exercise_id,set_number,logged_date' })
     if (!error) { setSaved(true); setTimeout(() => setSaved(false), 2500) }
   }
 
@@ -268,7 +350,6 @@ export default function ClientTraining() {
           }
           return null
         }
-        const dayCache = {}
         function workoutsOn(dayNum) {
           if (!sd || allBlocks.length === 0) return []
           const date = new Date(y, m, dayNum)
@@ -277,7 +358,6 @@ export default function ClientTraining() {
           const resolved = resolveBlock(diff)
           if (!resolved) return []
           const dn = (diff % 7) + 1
-          // only show markers for the currently loaded block's days (fast path); other blocks show a generic dot
           if (resolved.blk.id === block?.id) {
             return days.filter(d => d.day_number === dn).map(d => ({ ...d, wk: resolved.wkInBlock, blockId: resolved.blk.id }))
           }
@@ -419,22 +499,22 @@ export default function ClientTraining() {
           )}
           {ex.kind === 'conditioning' && !ex.tracking_type && (
             <input placeholder="Result (time, rounds, notes)" value={results[ex.id] || ''}
-              onChange={e => setResults(r => ({ ...r, [ex.id]: e.target.value }))} style={{ marginTop: 4 }} />
+              onChange={e => updateResult(ex.id, e.target.value, ex.name)} style={{ marginTop: 4 }} />
           )}
           {ex.kind === 'conditioning' && ex.tracking_type === 'count' && (
             <input inputMode="numeric" placeholder="Count" value={results[ex.id] || ''}
-              onChange={e => setResults(r => ({ ...r, [ex.id]: e.target.value }))} style={{ marginTop: 4 }} />
+              onChange={e => updateResult(ex.id, e.target.value, ex.name)} style={{ marginTop: 4 }} />
           )}
           {ex.kind === 'conditioning' && ex.tracking_type === 'time' && (
             <input type="time" value={results[ex.id] || ''}
-              onChange={e => setResults(r => ({ ...r, [ex.id]: e.target.value }))} style={{ marginTop: 4 }} />
+              onChange={e => updateResult(ex.id, e.target.value, ex.name)} style={{ marginTop: 4 }} />
           )}
           {ex.kind === 'conditioning' && ex.tracking_type === 'yesno' && (
             <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
               {['Yes', 'No'].map(v => (
                 <button key={v} type="button" className={results[ex.id] === v ? 'btn' : 'btn-ghost'}
                   style={{ flex: 1, padding: '10px 0', fontSize: 13 }}
-                  onClick={() => setResults(r => ({ ...r, [ex.id]: v }))}>{v}</button>
+                  onClick={() => updateResult(ex.id, v, ex.name)}>{v}</button>
               ))}
             </div>
           )}
@@ -444,13 +524,15 @@ export default function ClientTraining() {
                 <span>Quality</span><span style={{ color: 'var(--orange-hot)' }}>{results[ex.id] || 5}/10</span>
               </div>
               <input type="range" min="1" max="10" value={results[ex.id] || 5}
-                onChange={e => setResults(r => ({ ...r, [ex.id]: e.target.value }))}
+                onChange={e => updateResult(ex.id, e.target.value, ex.name)}
                 style={{ accentColor: 'var(--orange)', padding: 0 }} />
             </div>
           )}
           {ex.kind !== 'conditioning' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-            {(log[ex.id] || []).map((s, i) => (
+            {(log[ex.id] || []).map((s, i) => {
+              const isSaving = savingSets.has(`${ex.id}-${i + 1}`)
+              return (
               <div key={i}>
                 <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr auto', gap: 6, alignItems: 'center' }}>
                   <span className="muted" style={{ fontSize: 12, fontWeight: 800 }}>S{i + 1}</span>
@@ -459,8 +541,10 @@ export default function ClientTraining() {
                   <input inputMode="numeric" placeholder={ex.progression_type === 'rpe' ? 'RPE' : 'RIR'} value={s.rir} onChange={e => updateSet(ex.id, i, 'rir', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
                   <PlateCalc weight={s.weight} />
                 </div>
+                {isSaving && <p className="muted" style={{ fontSize: 10.5, margin: '2px 0 0 36px' }}>Saving…</p>}
               </div>
-            ))}
+              )
+            })}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 2 }}>
               <RestTimer restText={ex.rest} />
             </div>
@@ -490,6 +574,9 @@ export default function ClientTraining() {
 
       {!calMode && !awayMode && activeDay && exercises.length > 0 && (
         <button className="btn" onClick={saveWorkout}>{saved ? 'Workout saved ✓' : 'Save workout'}</button>
+      )}
+      {!calMode && !awayMode && activeDay && exercises.length > 0 && (
+        <p className="muted" style={{ fontSize: 11, textAlign: 'center', marginTop: -8 }}>Every set saves automatically a moment after you enter it — this button is just a final confirmation.</p>
       )}
     </div>
   )
