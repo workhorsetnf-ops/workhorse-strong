@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { resolveAssignment, rotationForWeek, dayShowsInWeek, daysBetween, resolveBlockWeek, setTargets, hasVariedSets, repsSummary, targetSummary } from '../../lib/weeks'
 import { useAuth } from '../../context/AuthContext'
 import RestTimer from '../../lib/RestTimer'
 import PlateCalc from '../../lib/PlateCalc'
@@ -47,6 +48,7 @@ export default function ClientTraining() {
   const [startDate, setStartDate] = useState(null)
   const [calMode, setCalMode] = useState(false)
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
+  const [rotations, setRotations] = useState([])
   const [days, setDays] = useState([])
   const [activeDay, setActiveDay] = useState(null)
   const [exercises, setExercises] = useState([])
@@ -71,20 +73,28 @@ export default function ClientTraining() {
   useEffect(() => {
     if (!profile) return
     supabase.from('program_assignments')
-      .select('program_id, current_week, current_block_id, start_date, programs(id, name, notes, weeks)')
+      .select('program_id, current_week, current_block_id, start_date, week_mode, programs(id, name, notes, weeks)')
       .eq('client_id', profile.id).maybeSingle()
       .then(async ({ data }) => {
         if (!data) return
         setProgram(data.programs)
-        setWeek(data.current_week || 1)
         setStartDate(data.start_date || null)
         const { data: bs } = await supabase.from('program_blocks').select('*').eq('program_id', data.program_id).order('position')
         setAllBlocks(bs || [])
-        const activeBlock = (bs || []).find(b => b.id === data.current_block_id) || (bs || [])[0]
+        // On 'auto' this walks the start date forward on its own; on 'manual' it's
+        // whatever the coach last set. Either way one helper decides, so the day
+        // tabs and the calendar below can't disagree about what week it is.
+        const pos = resolveAssignment(data, bs || [])
+        const activeBlock = pos.block
+        setWeek(pos.weekInBlock)
         setBlock(activeBlock || null)
         if (activeBlock) {
-          const { data: d } = await supabase.from('program_days').select('*').eq('block_id', activeBlock.id).order('day_number').order('position')
+          const [{ data: d }, { data: r }] = await Promise.all([
+            supabase.from('program_days').select('*').eq('block_id', activeBlock.id).order('day_number').order('position'),
+            supabase.from('program_rotations').select('*').eq('block_id', activeBlock.id).order('position'),
+          ])
           setDays(d || [])
+          setRotations(r || [])
         }
       })
     supabase.from('client_maxes').select('*').eq('client_id', profile.id)
@@ -101,19 +111,49 @@ export default function ClientTraining() {
       sets: wt?.sets ?? ex.sets,
       reps: wt?.reps ?? ex.reps,
       target: wt?.target ?? ex.rir,
+      entry: wt,
     }
   }
 
-  function targetText(ex) {
-    const { sets, reps, target } = weekTarget(ex)
-    if (ex.progression_type === 'percent') {
-      const max = maxes[(ex.based_on_lift || ex.name).toLowerCase()]
-      const load = max ? ` → ${roundTo5(max * (+target / 100))} lbs` : ''
-      return `${sets} × ${reps} @ ${target}%${load}${ex.rest ? ` · rest ${ex.rest}` : ''}`
-    }
-    if (ex.progression_type === 'rpe') return `${sets} × ${reps} @ RPE ${target}${ex.rest ? ` · rest ${ex.rest}` : ''}`
-    return `${sets} × ${reps} @ RIR ${target}${ex.rest ? ` · rest ${ex.rest}` : ''}`
+  // One resolved target per set, so set 1 can be a heavy 4-9 while sets 2-3 are
+  // 6-12. Exercises with no per-set data return the same value for every set.
+  function setTargetsFor(ex) {
+    const { entry, sets, reps, target } = weekTarget(ex)
+    return setTargets(entry ? { ...entry, sets } : { sets, reps, target }, ex)
   }
+
+  // The load a given set is aiming at, for percent-based work.
+  function setLoad(ex, pct) {
+    if (ex.progression_type !== 'percent') return null
+    const max = maxes[(ex.based_on_lift || ex.name).toLowerCase()]
+    if (!max || !pct) return null
+    return roundTo5(max * (+pct / 100))
+  }
+
+  function targetText(ex) {
+    const { sets, reps, target, entry } = weekTarget(ex)
+    const wt = entry ? { ...entry, sets } : { sets, reps, target }
+    const repsPart = repsSummary(wt, ex)
+    const targetPart = targetSummary(wt, ex)
+    const rest = ex.rest ? ` · rest ${ex.rest}` : ''
+    if (ex.progression_type === 'percent') {
+      // with mixed loads a single computed weight would be a lie, so only show
+      // the arrow when every set is pulling from the same percentage
+      const max = maxes[(ex.based_on_lift || ex.name).toLowerCase()]
+      const single = !targetPart.includes('/')
+      const load = max && single ? ` → ${roundTo5(max * (+targetPart / 100))} lbs` : ''
+      return `${repsPart} @ ${targetPart}%${load}${rest}`
+    }
+    if (ex.progression_type === 'rpe') return `${repsPart} @ RPE ${targetPart}${rest}`
+    return `${repsPart} @ RIR ${targetPart}${rest}`
+  }
+
+  // If the week moves (calendar jump, or auto mode rolling over) and the day
+  // that's open belongs to the other rotation, drop it rather than leaving the
+  // client logging a workout that isn't scheduled this week.
+  useEffect(() => {
+    if (activeDay && !dayShowsInWeek(activeDay, rotations, week)) setActiveDay(null)
+  }, [week, rotations])
 
   useEffect(() => {
     if (!activeDay) return
@@ -293,7 +333,10 @@ export default function ClientTraining() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <header>
-        <div className="eyebrow">Training · {block?.name || 'Block 1'} · Week {week} of {blockWeeks}</div>
+        <div className="eyebrow">
+          Training · {block?.name || 'Block 1'} · Week {week} of {blockWeeks}
+          {rotations.length > 0 && ` · ${rotationForWeek(rotations, week)?.name || ''}`}
+        </div>
         <h1 style={{ fontSize: 24, marginTop: 4 }}>{program.name}</h1>
         {program.notes && <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>{program.notes}</p>}
       </header>
@@ -303,12 +346,12 @@ export default function ClientTraining() {
           onClick={() => setCalMode(!calMode)}>📅</button>
         <button className={awayMode ? 'btn' : 'btn-ghost'} style={{ padding: '10px 14px', fontSize: 13 }}
           onClick={() => setAwayMode(!awayMode)} title="Traveling / no equipment">✈️</button>
-        {!calMode && days.filter(d => (d.track || 'exercise') === 'exercise').map(d => (
+        {!calMode && days.filter(d => (d.track || 'exercise') === 'exercise' && dayShowsInWeek(d, rotations, week)).map(d => (
           <button key={d.id} className={activeDay?.id === d.id ? 'btn' : 'btn-ghost'}
             style={{ padding: '10px 16px', fontSize: 13 }}
             onClick={() => setActiveDay(d)}>{d.day_label}</button>
         ))}
-        {!calMode && days.filter(d => (d.track || 'exercise') === 'lifestyle').map(d => (
+        {!calMode && days.filter(d => (d.track || 'exercise') === 'lifestyle' && dayShowsInWeek(d, rotations, week)).map(d => (
           <button key={d.id} className={activeDay?.id === d.id ? 'btn' : 'btn-ghost'}
             style={{ padding: '10px 16px', fontSize: 13, borderColor: activeDay?.id === d.id ? undefined : '#3E8E7E', color: activeDay?.id === d.id ? undefined : '#3E8E7E' }}
             onClick={() => setActiveDay(d)}>{d.day_label}</button>
@@ -341,27 +384,21 @@ export default function ClientTraining() {
         const sd = startDate ? new Date(startDate + 'T00:00:00') : null
         const today = new Date(); today.setHours(0, 0, 0, 0)
 
-        function resolveBlock(diff) {
-          const wkOverall = Math.floor(diff / 7) + 1
-          let cursor = 0
-          for (const b of allBlocks) {
-            if (wkOverall <= cursor + (b.weeks || 4)) return { blk: b, wkInBlock: wkOverall - cursor }
-            cursor += (b.weeks || 4)
-          }
-          return null
-        }
         function workoutsOn(dayNum) {
           if (!sd || allBlocks.length === 0) return []
-          const date = new Date(y, m, dayNum)
-          const diff = Math.round((date - sd) / 864e5)
-          if (diff < 0) return []
-          const resolved = resolveBlock(diff)
+          // whole calendar days, not a millisecond division — an hour of DST
+          // drift used to be enough to round a date onto the wrong day
+          const diff = daysBetween(startDate, new Date(y, m, dayNum))
+          if (diff === null || diff < 0) return []
+          const resolved = resolveBlockWeek(allBlocks, Math.floor(diff / 7) + 1)
           if (!resolved) return []
           const dn = (diff % 7) + 1
-          if (resolved.blk.id === block?.id) {
-            return days.filter(d => d.day_number === dn).map(d => ({ ...d, wk: resolved.wkInBlock, blockId: resolved.blk.id }))
+          if (resolved.block.id === block?.id) {
+            return days
+              .filter(d => d.day_number === dn && dayShowsInWeek(d, rotations, resolved.weekInBlock))
+              .map(d => ({ ...d, wk: resolved.weekInBlock, blockId: resolved.block.id }))
           }
-          return [{ id: `ghost-${resolved.blk.id}-${dn}`, day_label: resolved.blk.name, track: 'exercise', wk: resolved.wkInBlock, blockId: resolved.blk.id, ghost: true }]
+          return [{ id: `ghost-${resolved.block.id}-${dn}`, day_label: resolved.block.name, track: 'exercise', wk: resolved.weekInBlock, blockId: resolved.block.id, ghost: true }]
         }
 
         return (
@@ -393,8 +430,12 @@ export default function ClientTraining() {
                             if (d.blockId !== block?.id) {
                               const nb = allBlocks.find(b => b.id === d.blockId)
                               setBlock(nb)
-                              const { data: nd } = await supabase.from('program_days').select('*').eq('block_id', d.blockId).order('day_number').order('position')
+                              const [{ data: nd }, { data: nr }] = await Promise.all([
+                                supabase.from('program_days').select('*').eq('block_id', d.blockId).order('day_number').order('position'),
+                                supabase.from('program_rotations').select('*').eq('block_id', d.blockId).order('position'),
+                              ])
                               setDays(nd || [])
+                              setRotations(nr || [])
                               if (d.ghost) { setWeek(d.wk); setCalMode(false); return }
                             }
                             setWeek(d.wk); setActiveDay(d); setCalMode(false)
@@ -530,21 +571,39 @@ export default function ClientTraining() {
           )}
           {ex.kind !== 'conditioning' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-            {(log[ex.id] || []).map((s, i) => {
+            {(() => {
+              const perSet = setTargetsFor(ex)
+              const varied = hasVariedSets(
+                (Array.isArray(ex.week_targets) ? { ...ex.week_targets[week - 1], sets: perSet.length } : null)
+                  || { sets: perSet.length, reps: ex.reps, target: ex.rir }, ex)
+              return (log[ex.id] || []).map((s, i) => {
               const isSaving = savingSets.has(`${ex.id}-${i + 1}`)
+              const t = perSet[i] || {}
+              const load = setLoad(ex, t.target)
               return (
               <div key={i}>
+                {/* Only label sets individually when they actually differ —
+                    on a straight 3×8-12 this would just be noise on every row. */}
+                {varied && (
+                  <p className="muted" style={{ fontSize: 10.5, margin: '0 0 2px 36px', letterSpacing: 0.2 }}>
+                    target {t.reps}
+                    {ex.progression_type === 'percent'
+                      ? ` @ ${t.target}%${load ? ` → ${load} lbs` : ''}`
+                      : ex.progression_type === 'rpe' ? ` @ RPE ${t.target}` : ` @ RIR ${t.target}`}
+                  </p>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr auto', gap: 6, alignItems: 'center' }}>
                   <span className="muted" style={{ fontSize: 12, fontWeight: 800 }}>S{i + 1}</span>
-                  <input inputMode="decimal" placeholder="lbs" value={s.weight} onChange={e => updateSet(ex.id, i, 'weight', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
-                  <input inputMode="numeric" placeholder={ex.metric === 'time' ? 'secs' : ex.metric === 'distance' ? 'dist' : 'reps'} value={s.reps} onChange={e => updateSet(ex.id, i, 'reps', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
-                  <input inputMode="numeric" placeholder={ex.progression_type === 'rpe' ? 'RPE' : 'RIR'} value={s.rir} onChange={e => updateSet(ex.id, i, 'rir', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
+                  <input inputMode="decimal" placeholder={load ? String(load) : 'lbs'} value={s.weight} onChange={e => updateSet(ex.id, i, 'weight', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
+                  <input inputMode="numeric" placeholder={ex.metric === 'time' ? 'secs' : ex.metric === 'distance' ? 'dist' : (t.reps || 'reps')} value={s.reps} onChange={e => updateSet(ex.id, i, 'reps', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
+                  <input inputMode="numeric" placeholder={(ex.progression_type === 'rpe' ? 'RPE' : 'RIR') + (t.target ? ` ${t.target}` : '')} value={s.rir} onChange={e => updateSet(ex.id, i, 'rir', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
                   <PlateCalc weight={s.weight} />
                 </div>
                 {isSaving && <p className="muted" style={{ fontSize: 10.5, margin: '2px 0 0 36px' }}>Saving…</p>}
               </div>
               )
-            })}
+            })
+            })()}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 2 }}>
               <RestTimer restText={ex.rest} />
             </div>
