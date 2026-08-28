@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek } from '../../lib/weeks'
+import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary } from '../../lib/weeks'
 
 const GROUP_COLORS = ['#FF5A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
 const prefixOf = l => (l || '').replace(/[0-9]/g, '')
@@ -40,6 +40,7 @@ export default function CoachPrograms() {
   const [days, setDays] = useState({})            // blockId -> [days]
   const [rotations, setRotations] = useState({})  // blockId -> [rotations]
   const [activeRot, setActiveRot] = useState(null) // rotation id being edited, or null
+  const [openSetRows, setOpenSetRows] = useState(null) // which week row has its per-set editor open
   const [exercises, setExercises] = useState({})  // dayId -> [exercises]
   const [newProgram, setNewProgram] = useState('')
   const [newWeeks, setNewWeeks] = useState(4)
@@ -286,7 +287,51 @@ export default function CoachPrograms() {
     const wt = Array.isArray(ex.week_targets) ? ex.week_targets : []
     setEditWeeks(Array.from({ length: weeks }, (_, i) => ({
       sets: wt[i]?.sets ?? ex.sets, reps: wt[i]?.reps ?? ex.reps, target: wt[i]?.target ?? ex.rir ?? '2',
+      ...(Array.isArray(wt[i]?.setRows) ? { setRows: wt[i].setRows } : {}),
     })))
+    setOpenSetRows(null)
+  }
+
+  // Open the per-set editor for one week, seeded from that week's base values so
+  // it starts as what's already programmed rather than a row of empty boxes.
+  function openPerSet(weekIdx) {
+    if (openSetRows === weekIdx) { setOpenSetRows(null); return }
+    setEditWeeks(w => w.map((x, j) => {
+      if (j !== weekIdx || Array.isArray(x.setRows)) return x
+      const n = +x.sets || 3
+      return { ...x, setRows: Array.from({ length: n }, () => ({ reps: String(x.reps ?? ''), target: String(x.target ?? '') })) }
+    }))
+    setOpenSetRows(weekIdx)
+  }
+
+  function updateSetRow(weekIdx, setIdx, field, value) {
+    setEditWeeks(w => w.map((x, j) => {
+      if (j !== weekIdx) return x
+      const n = +x.sets || 3
+      const rows = Array.from({ length: n }, (_, i) => x.setRows?.[i] || { reps: String(x.reps ?? ''), target: String(x.target ?? '') })
+      rows[setIdx] = { ...rows[setIdx], [field]: value }
+      return { ...x, setRows: rows }
+    }))
+  }
+
+  // Copy one week's set structure across every week this exercise runs. Loads
+  // usually progress week to week, but the SHAPE of the session rarely changes,
+  // so retyping it in eight columns is the wrong default.
+  function applySetRowsToAllWeeks(weekIdx) {
+    setEditWeeks(w => {
+      const src = w[weekIdx]
+      if (!src?.setRows) return w
+      return w.map((x, j) => j === weekIdx ? x : ({ ...x, setRows: src.setRows.map(r => ({ ...r })) }))
+    })
+  }
+
+  function clearSetRows(weekIdx) {
+    setEditWeeks(w => w.map((x, j) => {
+      if (j !== weekIdx) return x
+      const { setRows, ...rest } = x
+      return rest
+    }))
+    setOpenSetRows(null)
   }
 
   async function uploadExerciseIcon(file) {
@@ -305,7 +350,18 @@ export default function CoachPrograms() {
       based_on_lift: edit.progression_type === 'percent' ? edit.based_on_lift.trim() : '',
       description: edit.description || '', icon_url: edit.icon_url || null,
       sets: +editWeeks[0]?.sets || 3, reps: String(editWeeks[0]?.reps ?? ''),
-      week_targets: editWeeks.map(r => ({ sets: +r.sets || 3, reps: String(r.reps), target: String(r.target) })),
+      week_targets: editWeeks.map(r => {
+        const sets = +r.sets || 3
+        const entry = { sets, reps: String(r.reps), target: String(r.target) }
+        if (Array.isArray(r.setRows)) {
+          entry.setRows = Array.from({ length: sets }, (_, i) => ({
+            reps: String(r.setRows[i]?.reps ?? ''), target: String(r.setRows[i]?.target ?? ''),
+          }))
+        }
+        // strip it back out if every set ended up matching the base, so opening
+        // the editor and changing nothing leaves no stale data behind
+        return compactSetRows(entry)
+      }),
     }).eq('id', exId)
     setExpanded(null)
     loadDay(dayId)
@@ -508,7 +564,7 @@ export default function CoachPrograms() {
             {edit.kind !== 'conditioning' && (
               <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                 <table className="data" style={{ fontSize: 12, minWidth: 230 }}>
-                  <thead><tr><th>Wk</th><th>Sets</th><th>{edit.metric === 'time' ? 'Time' : edit.metric === 'distance' ? 'Dist' : 'Reps'}</th><th style={{ color: 'var(--orange-hot)' }}>{targetLabel[edit.progression_type]}</th></tr></thead>
+                  <thead><tr><th>Wk</th><th>Sets</th><th>{edit.metric === 'time' ? 'Time' : edit.metric === 'distance' ? 'Dist' : 'Reps'}</th><th style={{ color: 'var(--orange-hot)' }}>{targetLabel[edit.progression_type]}</th><th></th></tr></thead>
                   <tbody>
                     {editWeeks.map((r, i) => {
                       // week_targets stays indexed by CALENDAR week, so rotation A
@@ -521,9 +577,52 @@ export default function CoachPrograms() {
                         <td><input disabled={!runs} title={runs ? '' : 'This rotation does not run in week ' + (i + 1)} style={{ width: 40, padding: '4px 5px', fontSize: 12 }} value={r.sets} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, sets: e.target.value } : x))} /></td>
                         <td><input disabled={!runs} style={{ width: 50, padding: '4px 5px', fontSize: 12 }} value={r.reps} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, reps: e.target.value } : x))} /></td>
                         <td><input disabled={!runs} style={{ width: 46, padding: '4px 5px', fontSize: 12, borderColor: runs ? 'var(--orange)' : 'var(--line)' }} value={r.target} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, target: e.target.value } : x))} /></td>
+                        <td>
+                          <button className="btn-ghost" disabled={!runs}
+                            title={r.setRows ? 'This week has per-set targets' : 'Give each set its own reps and load'}
+                            style={{ padding: '3px 7px', fontSize: 10.5, opacity: runs ? 1 : 0.4, color: r.setRows ? 'var(--orange)' : undefined }}
+                            onClick={() => runs && openPerSet(i)}>
+                            {r.setRows ? repsSummary({ ...r, sets: +r.sets || 3 }, ex) : 'per set'}
+                          </button>
+                        </td>
                       </tr>
                       )
                     })}
+                    {/* The per-set editor sits directly under the week it belongs
+                        to, so it's obvious which week you're editing. */}
+                    {openSetRows !== null && editWeeks[openSetRows] && (
+                      <tr>
+                        <td colSpan={5} style={{ paddingTop: 6 }}>
+                          <div style={{ border: '1px solid var(--line)', borderRadius: 8, padding: 8 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
+                              <span className="eyebrow" style={{ fontSize: 10 }}>Week {openSetRows + 1} · per set</span>
+                              <span style={{ display: 'flex', gap: 6 }}>
+                                <button className="btn-ghost" style={{ padding: '3px 8px', fontSize: 11 }}
+                                  onClick={() => applySetRowsToAllWeeks(openSetRows)}>Same every week</button>
+                                <button className="btn-ghost" style={{ padding: '3px 8px', fontSize: 11, color: 'var(--red)' }}
+                                  onClick={() => clearSetRows(openSetRows)}>Back to one range</button>
+                              </span>
+                            </div>
+                            {Array.from({ length: +editWeeks[openSetRows].sets || 3 }, (_, si) => {
+                              const row = editWeeks[openSetRows].setRows?.[si] || {}
+                              return (
+                                <div key={si} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                                  <span className="muted" style={{ fontSize: 11, fontWeight: 800 }}>S{si + 1}</span>
+                                  <input placeholder="reps" style={{ padding: '4px 6px', fontSize: 12 }}
+                                    value={row.reps ?? ''} onChange={e => updateSetRow(openSetRows, si, 'reps', e.target.value)} />
+                                  <input placeholder={edit.progression_type === 'percent' ? '%' : edit.progression_type === 'rpe' ? 'RPE' : 'RIR'}
+                                    style={{ padding: '4px 6px', fontSize: 12, borderColor: 'var(--orange)' }}
+                                    value={row.target ?? ''} onChange={e => updateSetRow(openSetRows, si, 'target', e.target.value)} />
+                                </div>
+                              )
+                            })}
+                            <p className="muted" style={{ fontSize: 10.5, marginTop: 4 }}>
+                              Leave a box empty to use week {openSetRows + 1}'s main value for that set.
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
