@@ -1,4 +1,4 @@
-// Shared week + rotation resolution.
+// Shared program resolution: weeks, rotations, and per-set targets.
 //
 // One place that answers three questions, so the day tabs, the calendar and the
 // coach builder can never drift apart again:
@@ -91,4 +91,74 @@ export function weeksForRotation(rotations, rotationId, blockWeeks) {
 // Default names for a freshly created set of rotations.
 export function defaultRotationName(i) {
   return `Rotation ${String.fromCharCode(65 + i)}`
+}
+
+// ---------------------------------------------------------------------------
+// PER-SET TARGETS
+// ---------------------------------------------------------------------------
+// A week entry looks like { sets, reps, target } and applies to every set.
+// It may ALSO carry setRows: [{ reps, target }, ...] so a heavy top set can run
+// a different rep range and load than its backoffs. setRows is optional and
+// absent on everything written before this existed, so the base values stay the
+// fallback and old programs keep working untouched.
+
+// Normalise a week entry into exactly one target per set.
+export function setTargets(weekEntry, exercise) {
+  const base = {
+    reps: weekEntry?.reps ?? exercise?.reps ?? '',
+    target: weekEntry?.target ?? exercise?.rir ?? '',
+  }
+  const count = Number(weekEntry?.sets ?? exercise?.sets ?? 0) || 0
+  const rows = Array.isArray(weekEntry?.setRows) ? weekEntry.setRows : []
+  // Short setRows pad from the base, long ones truncate — the set count is the
+  // single source of truth, so changing it can never desync the two.
+  return Array.from({ length: count }, (_, i) => ({
+    reps: (rows[i]?.reps ?? '') !== '' ? String(rows[i].reps) : String(base.reps),
+    target: (rows[i]?.target ?? '') !== '' ? String(rows[i].target) : String(base.target),
+  }))
+}
+
+// True when the sets are not all identical — i.e. worth showing per set.
+export function hasVariedSets(weekEntry, exercise) {
+  const rows = setTargets(weekEntry, exercise)
+  if (rows.length < 2) return false
+  return rows.some(r => r.reps !== rows[0].reps || r.target !== rows[0].target)
+}
+
+// "3 × 8-12" when uniform, "4-9, 6-12 × 2" when not — so a mixed exercise reads
+// honestly in the one-line summary instead of showing a rep range it isn't using.
+export function repsSummary(weekEntry, exercise) {
+  const rows = setTargets(weekEntry, exercise)
+  if (!rows.length) return ''
+  // judge on REPS alone — sets that share a rep range but differ in load should
+  // still read as "3 × 8-12", with the variation shown on the load side
+  if (rows.every(r => r.reps === rows[0].reps)) return `${rows.length} × ${rows[0].reps}`
+  const parts = []
+  for (const r of rows) {
+    const last = parts[parts.length - 1]
+    if (last && last.reps === r.reps) last.n++
+    else parts.push({ reps: r.reps, n: 1 })
+  }
+  return parts.map(p => (p.n > 1 ? `${p.reps} × ${p.n}` : p.reps)).join(', ')
+}
+
+// Same idea for the load/RIR side: one value when they agree, otherwise a list.
+export function targetSummary(weekEntry, exercise) {
+  const rows = setTargets(weekEntry, exercise)
+  if (!rows.length) return ''
+  const uniq = [...new Set(rows.map(r => r.target))]
+  return uniq.length === 1 ? uniq[0] : rows.map(r => r.target).join('/')
+}
+
+// Drop setRows entirely when every set matches the base, so a coach who opens
+// the per-set editor and changes nothing doesn't leave redundant data behind.
+export function compactSetRows(weekEntry) {
+  const rows = Array.isArray(weekEntry?.setRows) ? weekEntry.setRows : null
+  if (!rows) return weekEntry
+  const varied = rows.some(r =>
+    (r?.reps ?? '') !== '' && String(r.reps) !== String(weekEntry.reps) ||
+    (r?.target ?? '') !== '' && String(r.target) !== String(weekEntry.target))
+  if (varied) return weekEntry
+  const { setRows, ...rest } = weekEntry
+  return rest
 }
