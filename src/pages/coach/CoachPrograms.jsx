@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek } from '../../lib/weeks'
 
 const GROUP_COLORS = ['#FF5A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
 const prefixOf = l => (l || '').replace(/[0-9]/g, '')
@@ -37,6 +38,8 @@ export default function CoachPrograms() {
   const [viewWeek, setViewWeek] = useState(1)
   const [track, setTrack] = useState('exercise')
   const [days, setDays] = useState({})            // blockId -> [days]
+  const [rotations, setRotations] = useState({})  // blockId -> [rotations]
+  const [activeRot, setActiveRot] = useState(null) // rotation id being edited, or null
   const [exercises, setExercises] = useState({})  // dayId -> [exercises]
   const [newProgram, setNewProgram] = useState('')
   const [newWeeks, setNewWeeks] = useState(4)
@@ -81,6 +84,12 @@ export default function CoachPrograms() {
     const { data: e } = await supabase.from('program_exercises').select('*').eq('day_id', dayId).order('position')
     setExercises(prev => ({ ...prev, [dayId]: e || [] }))
   }
+  async function loadRotations(blockId) {
+    const { data: r } = await supabase.from('program_rotations').select('*').eq('block_id', blockId).order('position')
+    setRotations(prev => ({ ...prev, [blockId]: r || [] }))
+    return r || []
+  }
+
   async function loadDays(blockId) {
     const { data: d } = await supabase.from('program_days').select('*').eq('block_id', blockId).order('position')
     setDays(prev => ({ ...prev, [blockId]: d || [] }))
@@ -94,9 +103,11 @@ export default function CoachPrograms() {
     if (bs[0]) openBlockView(bs[0])
   }
 
-  function openBlockView(block) {
+  async function openBlockView(block) {
     setOpenBlock(block.id); setViewWeek(1); setTrack('exercise'); setExpanded(null)
     loadDays(block.id)
+    const r = await loadRotations(block.id)
+    setActiveRot(r[0]?.id || null)
   }
 
   async function createProgram() {
@@ -140,10 +151,63 @@ export default function CoachPrograms() {
     load()
   }
 
+  // ---- rotations ----
+  // Two rotations is the normal case (an A week and a B week), so the first
+  // click creates the pair rather than making him add one, then the other.
+  async function startRotations(blockId) {
+    if (!confirm('Split this block into alternating weeks?\n\nRotation A runs weeks 1, 3, 5…\nRotation B runs weeks 2, 4, 6…\n\nWorkouts already in this block stay put and run every week until you assign them to a rotation.')) return
+    const rows = [0, 1].map(i => ({ block_id: blockId, name: defaultRotationName(i), position: i }))
+    await supabase.from('program_rotations').insert(rows)
+    const r = await loadRotations(blockId)
+    setActiveRot(r[0]?.id || null)
+    setViewWeek(1)
+  }
+
+  async function addRotation(blockId) {
+    const list = rotations[blockId] || []
+    const name = prompt('Rotation name:', defaultRotationName(list.length))
+    if (!name) return
+    await supabase.from('program_rotations').insert({ block_id: blockId, name: name.trim(), position: list.length })
+    loadRotations(blockId)
+  }
+
+  async function renameRotation(blockId, rot) {
+    const name = prompt('Rotation name:', rot.name)
+    if (!name || name.trim() === rot.name) return
+    await supabase.from('program_rotations').update({ name: name.trim() }).eq('id', rot.id)
+    loadRotations(blockId)
+  }
+
+  async function deleteRotation(blockId, rot) {
+    const list = rotations[blockId] || []
+    const affected = (days[blockId] || []).filter(d => d.rotation_id === rot.id).length
+    const warn = affected
+      ? `\n\n${affected} workout(s) are in this rotation. They will NOT be deleted — they'll go back to running every week, and you can reassign them.`
+      : ''
+    const tail = list.length === 2
+      ? '\n\nWith only one rotation left the block stops alternating and every workout runs every week.'
+      : ''
+    if (!confirm(`Delete "${rot.name}"?${warn}${tail}`)) return
+    await supabase.from('program_rotations').delete().eq('id', rot.id)
+    const r = await loadRotations(blockId)
+    setActiveRot(r[0]?.id || null)
+    setViewWeek(1)
+    loadDays(blockId)
+  }
+
+  async function setDayRotation(blockId, dayId, rotationId) {
+    await supabase.from('program_days').update({ rotation_id: rotationId || null }).eq('id', dayId)
+    loadDays(blockId)
+  }
+
   async function addWorkout(blockId, dayNumber) {
     const label = prompt(track === 'lifestyle' ? 'Lifestyle card name:' : 'Workout name (e.g. Upper A):', track === 'lifestyle' ? 'Lifestyle' : 'Workout')
     if (!label) return
-    const { error } = await supabase.from('program_days').insert({ program_id: open, block_id: blockId, day_label: label, day_number: dayNumber, position: (days[blockId]?.length || 0), track })
+    const { error } = await supabase.from('program_days').insert({
+      program_id: open, block_id: blockId, day_label: label, day_number: dayNumber,
+      position: (days[blockId]?.length || 0), track,
+      rotation_id: (rotations[blockId]?.length ? activeRot : null) || null,
+    })
     if (error) { alert('Could not add workout: ' + error.message); return }
     loadDays(blockId)
   }
@@ -313,6 +377,10 @@ export default function CoachPrograms() {
     await supabase.from('program_assignments').update({ current_block_id: blockId, current_week: 1 }).eq('id', assignmentId)
     load()
   }
+  async function setWeekMode(assignmentId, mode) {
+    await supabase.from('program_assignments').update({ week_mode: mode }).eq('id', assignmentId)
+    load()
+  }
   async function setStartDate(assignmentId, date) {
     await supabase.from('program_assignments').update({ start_date: date || null }).eq('id', assignmentId)
     load()
@@ -326,12 +394,22 @@ export default function CoachPrograms() {
     for (const b of srcBlocks.data || []) {
       const { data: newBlock } = await supabase.from('program_blocks').insert({ program_id: newProg.id, name: b.name, weeks: b.weeks, position: b.position }).select().single()
       if (!newBlock) continue
+      // rotations first, so each copied day can point at the COPY of its rotation
+      // rather than at the original program's row
+      const rotMap = {}
+      const srcRots = await supabase.from('program_rotations').select('*').eq('block_id', b.id).order('position')
+      for (const r of srcRots.data || []) {
+        const { data: newRot } = await supabase.from('program_rotations')
+          .insert({ block_id: newBlock.id, name: r.name, position: r.position }).select().single()
+        if (newRot) rotMap[r.id] = newRot.id
+      }
       const srcDays = await supabase.from('program_days').select('*').eq('block_id', b.id).order('position')
       for (const d of srcDays.data || []) {
         const { data: newDay } = await supabase.from('program_days').insert({
           program_id: newProg.id, block_id: newBlock.id, day_label: d.day_label, day_number: d.day_number,
           track: d.track, position: d.position, notes: d.notes, video_note: d.video_note,
           warmup: d.warmup, warmup_video: d.warmup_video, cooldown: d.cooldown, cooldown_video: d.cooldown_video,
+          rotation_id: d.rotation_id ? (rotMap[d.rotation_id] || null) : null,
         }).select().single()
         if (!newDay) continue
         const srcEx = await supabase.from('program_exercises').select('*').eq('day_id', d.id).order('position')
@@ -369,6 +447,9 @@ export default function CoachPrograms() {
 
   function renderExercise(block, d, ex, dragIdx = null) {
     const sel = selected[d.id]?.has(ex.id)
+    // A day inherits its run-weeks from the rotation it sits in. A day with no
+    // rotation runs every week, and weeksForRotation returns all weeks for it.
+    const editRunWeeks = weeksForRotation(rotations[block.id] || [], d.rotation_id, block.weeks || 4)
     return (
       <div key={ex.id}
         draggable={dragIdx !== null && expanded !== ex.id}
@@ -429,14 +510,20 @@ export default function CoachPrograms() {
                 <table className="data" style={{ fontSize: 12, minWidth: 230 }}>
                   <thead><tr><th>Wk</th><th>Sets</th><th>{edit.metric === 'time' ? 'Time' : edit.metric === 'distance' ? 'Dist' : 'Reps'}</th><th style={{ color: 'var(--orange-hot)' }}>{targetLabel[edit.progression_type]}</th></tr></thead>
                   <tbody>
-                    {editWeeks.map((r, i) => (
-                      <tr key={i}>
-                        <td className="muted">{i + 1}</td>
-                        <td><input style={{ width: 40, padding: '4px 5px', fontSize: 12 }} value={r.sets} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, sets: e.target.value } : x))} /></td>
-                        <td><input style={{ width: 50, padding: '4px 5px', fontSize: 12 }} value={r.reps} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, reps: e.target.value } : x))} /></td>
-                        <td><input style={{ width: 46, padding: '4px 5px', fontSize: 12, borderColor: 'var(--orange)' }} value={r.target} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, target: e.target.value } : x))} /></td>
+                    {editWeeks.map((r, i) => {
+                      // week_targets stays indexed by CALENDAR week, so rotation A
+                      // fills 1,3,5,7 and the weeks it never sees are greyed out
+                      // rather than hidden — the week numbers still line up.
+                      const runs = editRunWeeks.includes(i + 1)
+                      return (
+                      <tr key={i} style={{ opacity: runs ? 1 : 0.32 }}>
+                        <td className="muted">{i + 1}{!runs && <span style={{ fontSize: 9.5, marginLeft: 3 }}>—</span>}</td>
+                        <td><input disabled={!runs} title={runs ? '' : 'This rotation does not run in week ' + (i + 1)} style={{ width: 40, padding: '4px 5px', fontSize: 12 }} value={r.sets} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, sets: e.target.value } : x))} /></td>
+                        <td><input disabled={!runs} style={{ width: 50, padding: '4px 5px', fontSize: 12 }} value={r.reps} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, reps: e.target.value } : x))} /></td>
+                        <td><input disabled={!runs} style={{ width: 46, padding: '4px 5px', fontSize: 12, borderColor: runs ? 'var(--orange)' : 'var(--line)' }} value={r.target} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, target: e.target.value } : x))} /></td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -503,20 +590,43 @@ export default function CoachPrograms() {
 
               {assigned.length > 0 && (
                 <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {assigned.map(a => (
+                  {assigned.map(a => {
+                    const auto = a.week_mode === 'auto'
+                    // what auto WOULD put them on right now, shown next to the
+                    // toggle so switching a client over is never a guess
+                    const derived = resolveBlockWeek(blocks[p.id] || [], overallWeek(a.start_date))
+                    return (
                     <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, flexWrap: 'wrap' }}>
                       <span style={{ minWidth: 90 }}>{clients.find(c => c.id === a.client_id)?.full_name || 'Client'}</span>
-                      <select style={{ width: 'auto', padding: '4px 8px', fontSize: 13 }} value={a.current_block_id || ''} onChange={e => setAssignBlock(a.id, e.target.value)}>
+                      <select style={{ width: 'auto', padding: '4px 8px', fontSize: 13 }} value={a.current_block_id || ''} onChange={e => setAssignBlock(a.id, e.target.value)} disabled={auto}>
                         {(blocks[p.id] || []).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                       </select>
                       <span className="muted">week</span>
-                      <select style={{ width: 'auto', padding: '4px 8px', fontSize: 13 }} value={a.current_week} onChange={e => setWeek(a.id, e.target.value)}>
+                      <select style={{ width: 'auto', padding: '4px 8px', fontSize: 13 }} value={a.current_week} onChange={e => setWeek(a.id, e.target.value)} disabled={auto}>
                         {Array.from({ length: (blocks[p.id] || []).find(b => b.id === a.current_block_id)?.weeks || 4 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}</option>)}
                       </select>
                       <span className="muted">starts</span>
                       <input type="date" style={{ width: 'auto', padding: '4px 8px', fontSize: 13 }} value={a.start_date || ''} onChange={e => setStartDate(a.id, e.target.value)} title="Block 1 / Week 1 / Day 1 date" />
+                      <button className={auto ? 'btn' : 'btn-ghost'} style={{ padding: '4px 10px', fontSize: 12 }}
+                        title={a.start_date
+                          ? 'Advance this client\u2019s week automatically from their start date'
+                          : 'Set a start date first \u2014 auto has nothing to count from'}
+                        onClick={() => setWeekMode(a.id, auto ? 'manual' : 'auto')}>
+                        {auto ? 'Auto' : 'Manual'}
+                      </button>
+                      {auto && (
+                        <span className="muted" style={{ fontSize: 12 }}>
+                          {derived ? `now on ${derived.block.name} · week ${derived.weekInBlock}` : 'no start date — falling back to the week above'}
+                        </span>
+                      )}
+                      {!auto && derived && (
+                        <span className="muted" style={{ fontSize: 12, opacity: 0.75 }}>
+                          auto would be {derived.block.name} · wk {derived.weekInBlock}
+                        </span>
+                      )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
@@ -543,17 +653,68 @@ export default function CoachPrograms() {
 
                   {activeBlock && (
                     <>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
-                        <span className="eyebrow" style={{ marginRight: 6 }}>Week</span>
-                        {Array.from({ length: activeBlock.weeks || 4 }, (_, i) => (
-                          <button key={i} className={viewWeek === i + 1 ? 'btn' : 'btn-ghost'} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setViewWeek(i + 1)}>{i + 1}</button>
-                        ))}
-                        <span style={{ display: 'inline-flex', gap: 4, marginLeft: 14 }}>
-                          <button className={track === 'exercise' ? 'btn' : 'btn-ghost'} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setTrack('exercise')}>Exercise</button>
-                          <button className={track === 'lifestyle' ? 'btn' : 'btn-ghost'} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setTrack('lifestyle')}>Lifestyle</button>
-                        </span>
-                        <span className="muted" style={{ fontSize: 12.5, marginLeft: 8 }}>{activeBlock.name} · Week {viewWeek} of {activeBlock.weeks}</span>
-                      </div>
+                      {(() => {
+                        const rots = rotations[activeBlock.id] || []
+                        const runWeeks = rots.length
+                          ? weeksForRotation(rots, activeRot, activeBlock.weeks || 4)
+                          : Array.from({ length: activeBlock.weeks || 4 }, (_, i) => i + 1)
+                        return (
+                          <>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+                              <span className="eyebrow" style={{ marginRight: 4 }}>Rotation</span>
+                              {rots.length === 0 && (
+                                <>
+                                  <span className="muted" style={{ fontSize: 12.5 }}>Every week is the same in this block.</span>
+                                  <button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => startRotations(activeBlock.id)}>+ Alternate weeks</button>
+                                </>
+                              )}
+                              {rots.map(r => (
+                                <span key={r.id} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                  <button className={activeRot === r.id ? 'btn' : 'btn-ghost'}
+                                    style={{ padding: '6px 12px', fontSize: 13, borderRadius: '8px 0 0 8px' }}
+                                    onClick={() => { setActiveRot(r.id); setViewWeek(weeksForRotation(rots, r.id, activeBlock.weeks || 4)[0] || 1) }}>
+                                    {r.name}
+                                    <span className="muted" style={{ fontSize: 11, marginLeft: 5 }}>
+                                      wk {weeksForRotation(rots, r.id, activeBlock.weeks || 4).join(', ')}
+                                    </span>
+                                  </button>
+                                  <button className={activeRot === r.id ? 'btn' : 'btn-ghost'} title="Rename"
+                                    style={{ padding: '6px 9px', fontSize: 12, borderRadius: 0, borderLeft: activeRot === r.id ? '1px solid rgba(255,255,255,0.25)' : '1px solid var(--line)' }}
+                                    onClick={() => renameRotation(activeBlock.id, r)}>✎</button>
+                                  <button className={activeRot === r.id ? 'btn' : 'btn-ghost'} title="Delete rotation"
+                                    style={{ padding: '6px 9px', fontSize: 12, borderRadius: '0 8px 8px 0', color: 'var(--red)', borderLeft: activeRot === r.id ? '1px solid rgba(255,255,255,0.25)' : '1px solid var(--line)' }}
+                                    onClick={() => deleteRotation(activeBlock.id, r)}>✕</button>
+                                </span>
+                              ))}
+                              {rots.length > 0 && (
+                                <button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => addRotation(activeBlock.id)}>+ Rotation</button>
+                              )}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+                              <span className="eyebrow" style={{ marginRight: 6 }}>Week</span>
+                              {Array.from({ length: activeBlock.weeks || 4 }, (_, i) => {
+                                const wk = i + 1
+                                const runs = runWeeks.includes(wk)
+                                return (
+                                  <button key={i} className={viewWeek === wk ? 'btn' : 'btn-ghost'} disabled={!runs}
+                                    title={runs ? '' : 'This rotation does not run in week ' + wk}
+                                    style={{ padding: '6px 14px', fontSize: 13, opacity: runs ? 1 : 0.3, cursor: runs ? 'pointer' : 'default' }}
+                                    onClick={() => runs && setViewWeek(wk)}>{wk}</button>
+                                )
+                              })}
+                              <span style={{ display: 'inline-flex', gap: 4, marginLeft: 14 }}>
+                                <button className={track === 'exercise' ? 'btn' : 'btn-ghost'} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setTrack('exercise')}>Exercise</button>
+                                <button className={track === 'lifestyle' ? 'btn' : 'btn-ghost'} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setTrack('lifestyle')}>Lifestyle</button>
+                              </span>
+                              <span className="muted" style={{ fontSize: 12.5, marginLeft: 8 }}>
+                                {activeBlock.name} · Week {viewWeek} of {activeBlock.weeks}
+                                {rots.length > 0 && ` · ${rotationForWeek(rots, viewWeek)?.name || ''}`}
+                              </span>
+                            </div>
+                          </>
+                        )
+                      })()}
 
                       <div style={{ overflowX: 'auto' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(215px, 1fr))', gap: 8, minWidth: 1520 }}>
@@ -572,7 +733,14 @@ export default function CoachPrograms() {
                                 <button className="btn-ghost" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => addWorkout(activeBlock.id, dn)}>+ Add</button>
                               </div>
 
-                              {(days[activeBlock.id] || []).filter(d => d.day_number === dn && (d.track || 'exercise') === track).map(d => {
+                              {(days[activeBlock.id] || []).filter(d => {
+                                if (d.day_number !== dn || (d.track || 'exercise') !== track) return false
+                                const rots = rotations[activeBlock.id] || []
+                                if (!rots.length) return true
+                                // every-week days (no rotation) show under every tab,
+                                // because that's exactly when the client sees them
+                                return !d.rotation_id || d.rotation_id === activeRot
+                              }).map(d => {
                                 const list = exercises[d.id] || []
                                 const groups = chunkGroups(list)
                                 const selCount = selected[d.id]?.size || 0
@@ -593,6 +761,14 @@ export default function CoachPrograms() {
                                           style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--orange-hot)', cursor: 'pointer' }}>{d.day_label} <span style={{ fontSize: 10, opacity: 0.6 }}>✎</span></strong>
                                       </span>
                                       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                        {(rotations[activeBlock.id] || []).length > 0 && (
+                                          <select title="Which rotation this workout belongs to"
+                                            style={{ width: 'auto', padding: '2px 6px', fontSize: 11, borderColor: d.rotation_id ? 'var(--line)' : '#3E8E7E', color: d.rotation_id ? undefined : '#3E8E7E' }}
+                                            value={d.rotation_id || ''} onChange={e => setDayRotation(activeBlock.id, d.id, e.target.value)}>
+                                            <option value="">Every wk</option>
+                                            {(rotations[activeBlock.id] || []).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                          </select>
+                                        )}
                                         <select title="Move to day" style={{ width: 'auto', padding: '2px 6px', fontSize: 11 }} value={d.day_number} onChange={e => moveWorkout(activeBlock.id, d.id, e.target.value)}>
                                           {[1,2,3,4,5,6,7].map(n => <option key={n} value={n}>D{n}</option>)}
                                         </select>
