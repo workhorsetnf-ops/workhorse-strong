@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary } from '../../lib/weeks'
+import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets } from '../../lib/weeks'
+import { parseProgramText } from '../../lib/parse'
 
 const GROUP_COLORS = ['#FF5A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
 const prefixOf = l => (l || '').replace(/[0-9]/g, '')
@@ -41,6 +42,9 @@ export default function CoachPrograms() {
   const [rotations, setRotations] = useState({})  // blockId -> [rotations]
   const [activeRot, setActiveRot] = useState(null) // rotation id being edited, or null
   const [openSetRows, setOpenSetRows] = useState(null) // which week row has its per-set editor open
+  const [pasteDay, setPasteDay] = useState(null)   // day id whose paste box is open
+  const [pasteText, setPasteText] = useState('')
+  const [pasteBusy, setPasteBusy] = useState(false)
   const [exercises, setExercises] = useState({})  // dayId -> [exercises]
   const [newProgram, setNewProgram] = useState('')
   const [newWeeks, setNewWeeks] = useState(4)
@@ -253,6 +257,61 @@ export default function CoachPrograms() {
     })
     setQuickAdd(q => ({ ...q, [dayId]: '' }))
     loadDay(dayId)
+  }
+
+  // ---- paste a whole day ----
+  // Everything is previewed before anything is written. A parser that quietly
+  // guessed wrong would put bad numbers in a client's program, so the coach
+  // confirms what was understood first.
+  function openPaste(dayId) {
+    setPasteDay(prev => (prev === dayId ? null : dayId))
+    setPasteText('')
+  }
+
+  async function commitPaste(block, dayId) {
+    const rows = parseProgramText(pasteText).filter(r => r.name && !r.issues.length)
+    if (!rows.length) return
+    setPasteBusy(true)
+    const list = exercises[dayId] || []
+    const weeks = block.weeks || 4
+    const used = new Set(list.map(e => (e.letter || '').toUpperCase()).filter(Boolean))
+    const payload = rows.map((r, i) => {
+      const sets = r.sets || 3
+      const reps = r.reps || defaultReps('reps')
+      const target = r.target || '2'
+      const base = { sets, reps: String(reps), target: String(target) }
+      // setRows only rides along when the line actually specified per-set work
+      const entry = r.setRows
+        ? { ...base, setRows: r.setRows.map(x => ({ reps: String(x.reps), target: String(x.target) })) }
+        : base
+      // Keep a typed letter if it's free, otherwise fall back to the next
+      // available one so pasting twice can't create two exercise A's.
+      let letter = (r.letter || '').toUpperCase()
+      if (!letter || used.has(letter)) letter = nextFreeLetter([...list, ...payloadSoFar(used)])
+      used.add(letter)
+      return {
+        day_id: dayId, name: r.name, kind: 'exercise', description: '',
+        tracking_type: '', letter,
+        video_url: '', notes: '', icon_url: null,
+        metric: 'reps', rest: r.rest || '', progression_type: r.progression_type || 'rir',
+        sets, reps: String(reps), rir: String(target),
+        week_targets: Array.from({ length: weeks }, () => ({ ...entry, setRows: entry.setRows ? entry.setRows.map(x => ({ ...x })) : undefined })),
+        position: list.length + i,
+      }
+    })
+    // strip the undefined setRows key so it never lands in the JSON as null
+    for (const p of payload) p.week_targets = p.week_targets.map(w => (w.setRows ? w : (({ setRows, ...rest }) => rest)(w)))
+    await supabase.from('program_exercises').insert(payload)
+    setPasteBusy(false)
+    setPasteDay(null)
+    setPasteText('')
+    loadDay(dayId)
+  }
+
+  // nextFreeLetter works off a list of exercise-shaped objects; this adapts the
+  // letters already claimed during this paste into that shape.
+  function payloadSoFar(used) {
+    return [...used].map(l => ({ letter: l }))
   }
 
   async function deleteExercise(dayId, exId) {
@@ -497,8 +556,13 @@ export default function CoachPrograms() {
   function exLine(ex) {
     const wt = Array.isArray(ex.week_targets) ? ex.week_targets[viewWeek - 1] : null
     const sets = wt?.sets ?? ex.sets, reps = wt?.reps ?? ex.reps, target = wt?.target ?? ex.rir
-    const t = ex.progression_type === 'percent' ? `${target}%` : ex.progression_type === 'rpe' ? `RPE ${target}` : `RIR ${target}`
-    return `${sets} × ${reps} @ ${t}${ex.rest ? `, rest ${ex.rest}` : ''}`
+    // Read the per-set data when there is any, so the card shows what the CLIENT
+    // will actually see rather than a base rep range the sets aren't using.
+    const entry = wt ? { ...wt, sets } : { sets, reps, target }
+    const repsPart = repsSummary(entry, ex)
+    const targetPart = targetSummary(entry, ex)
+    const t = ex.progression_type === 'percent' ? `${targetPart}%` : ex.progression_type === 'rpe' ? `RPE ${targetPart}` : `RIR ${targetPart}`
+    return `${repsPart} @ ${t}${ex.rest ? `, rest ${ex.rest}` : ''}`
   }
 
   function renderExercise(block, d, ex, dragIdx = null) {
@@ -575,14 +639,27 @@ export default function CoachPrograms() {
                       <tr key={i} style={{ opacity: runs ? 1 : 0.32 }}>
                         <td className="muted">{i + 1}{!runs && <span style={{ fontSize: 9.5, marginLeft: 3 }}>—</span>}</td>
                         <td><input disabled={!runs} title={runs ? '' : 'This rotation does not run in week ' + (i + 1)} style={{ width: 40, padding: '4px 5px', fontSize: 12 }} value={r.sets} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, sets: e.target.value } : x))} /></td>
-                        <td><input disabled={!runs} style={{ width: 50, padding: '4px 5px', fontSize: 12 }} value={r.reps} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, reps: e.target.value } : x))} /></td>
+                        <td>
+                          {r.setRows && hasVariedSets({ ...r, sets: +r.sets || 3 }, ex) ? (
+                            // The base box would sit here showing a range these
+                            // sets aren't using, which reads as "it didn't save".
+                            <button className="btn-ghost" disabled={!runs}
+                              title="Per-set reps — click to edit"
+                              style={{ width: 74, padding: '4px 5px', fontSize: 11, color: 'var(--orange)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                              onClick={() => runs && openPerSet(i)}>
+                              {repsSummary({ ...r, sets: +r.sets || 3 }, ex)}
+                            </button>
+                          ) : (
+                            <input disabled={!runs} style={{ width: 74, padding: '4px 5px', fontSize: 12 }} value={r.reps} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, reps: e.target.value } : x))} />
+                          )}
+                        </td>
                         <td><input disabled={!runs} style={{ width: 46, padding: '4px 5px', fontSize: 12, borderColor: runs ? 'var(--orange)' : 'var(--line)' }} value={r.target} onChange={e => setEditWeeks(w => w.map((x, j) => j === i ? { ...x, target: e.target.value } : x))} /></td>
                         <td>
                           <button className="btn-ghost" disabled={!runs}
                             title={r.setRows ? 'This week has per-set targets' : 'Give each set its own reps and load'}
-                            style={{ padding: '3px 7px', fontSize: 10.5, opacity: runs ? 1 : 0.4, color: r.setRows ? 'var(--orange)' : undefined }}
+                            style={{ padding: '3px 6px', fontSize: 10.5, opacity: runs ? 1 : 0.4, color: r.setRows ? 'var(--orange)' : undefined }}
                             onClick={() => runs && openPerSet(i)}>
-                            {r.setRows ? repsSummary({ ...r, sets: +r.sets || 3 }, ex) : 'per set'}
+                            {r.setRows ? '⋮' : 'per set'}
                           </button>
                         </td>
                       </tr>
@@ -606,12 +683,12 @@ export default function CoachPrograms() {
                             {Array.from({ length: +editWeeks[openSetRows].sets || 3 }, (_, si) => {
                               const row = editWeeks[openSetRows].setRows?.[si] || {}
                               return (
-                                <div key={si} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                                <div key={si} style={{ display: 'grid', gridTemplateColumns: '26px minmax(0,1fr) minmax(0,1fr)', gap: 5, alignItems: 'center', marginBottom: 4 }}>
                                   <span className="muted" style={{ fontSize: 11, fontWeight: 800 }}>S{si + 1}</span>
-                                  <input placeholder="reps" style={{ padding: '4px 6px', fontSize: 12 }}
+                                  <input placeholder="reps" style={{ width: '100%', minWidth: 0, padding: '4px 6px', fontSize: 12 }}
                                     value={row.reps ?? ''} onChange={e => updateSetRow(openSetRows, si, 'reps', e.target.value)} />
                                   <input placeholder={edit.progression_type === 'percent' ? '%' : edit.progression_type === 'rpe' ? 'RPE' : 'RIR'}
-                                    style={{ padding: '4px 6px', fontSize: 12, borderColor: 'var(--orange)' }}
+                                    style={{ width: '100%', minWidth: 0, padding: '4px 6px', fontSize: 12, borderColor: 'var(--orange)' }}
                                     value={row.target ?? ''} onChange={e => updateSetRow(openSetRows, si, 'target', e.target.value)} />
                                 </div>
                               )
@@ -910,6 +987,53 @@ export default function CoachPrograms() {
                                       onChange={e => setQuickAdd(q => ({ ...q, [d.id]: e.target.value }))}
                                       onKeyDown={e => e.key === 'Enter' && quickAddExercise(activeBlock, d.id, matches.length === 1 ? matches[0] : null)}
                                       style={{ padding: '7px 9px', fontSize: 12.5 }} />
+
+                                    <button className="btn-ghost" style={{ padding: '5px 9px', fontSize: 11.5, width: '100%', marginTop: 4 }}
+                                      onClick={() => openPaste(d.id)}>
+                                      {pasteDay === d.id ? 'Cancel paste' : '⇩ Paste whole day'}
+                                    </button>
+
+                                    {pasteDay === d.id && (() => {
+                                      const parsed = parseProgramText(pasteText)
+                                      const good = parsed.filter(r => r.name && !r.issues.length)
+                                      const bad = parsed.filter(r => !r.name || r.issues.length)
+                                      return (
+                                        <div style={{ marginTop: 5, border: '1px solid var(--line)', borderRadius: 8, padding: 7, maxWidth: '100%', boxSizing: 'border-box' }}>
+                                          <textarea rows={6} value={pasteText} onChange={e => setPasteText(e.target.value)}
+                                            placeholder={'A) Incline chest press 3x8-12 @2\nB) Pec deck 3x10-15 RIR 1\nBack squat 4-9@1, 6-12@2'}
+                                            style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', padding: '6px 8px', fontSize: 12, fontFamily: 'inherit', resize: 'vertical' }} />
+                                          {parsed.length > 0 && (
+                                            <div style={{ marginTop: 5 }}>
+                                              <span className="eyebrow" style={{ fontSize: 9.5 }}>Will add {good.length}</span>
+                                              {/* Preview before writing: a mis-read line is obvious here and
+                                                  invisible once it's in a client's program. */}
+                                              {good.map((r, i) => (
+                                                <p key={i} className="muted" style={{ fontSize: 11, margin: '2px 0' }}>
+                                                  <span style={{ color: 'var(--orange)' }}>{r.letter || '·'}</span> {r.name}
+                                                  {' — '}
+                                                  {r.setRows
+                                                    ? r.setRows.map(x => `${x.reps}@${x.target}`).join(', ')
+                                                    : `${r.sets || 3} × ${r.reps || '8-12'} @ ${r.target || '2'}`}
+                                                </p>
+                                              ))}
+                                              {bad.map((r, i) => (
+                                                <p key={`b${i}`} style={{ fontSize: 11, margin: '2px 0', color: 'var(--red)' }}>
+                                                  skipped: {r.raw || '(blank)'}
+                                                </p>
+                                              ))}
+                                            </div>
+                                          )}
+                                          <button className="btn" disabled={!good.length || pasteBusy}
+                                            style={{ padding: '6px 12px', fontSize: 12, width: '100%', marginTop: 6, opacity: good.length && !pasteBusy ? 1 : 0.4 }}
+                                            onClick={() => commitPaste(activeBlock, d.id)}>
+                                            {pasteBusy ? 'Adding…' : `Add ${good.length} exercise${good.length === 1 ? '' : 's'}`}
+                                          </button>
+                                          <p className="muted" style={{ fontSize: 10, marginTop: 4 }}>
+                                            One exercise per line. Sets/reps and target are optional — anything missing uses 3 × 8-12 @ RIR 2.
+                                          </p>
+                                        </div>
+                                      )
+                                    })()}
                                     {(matches.length > 0 || condMatches.length > 0 || lifeMatches.length > 0) && (
                                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
                                         {matches.map(m => (
