@@ -120,7 +120,11 @@ export default function ClientCheckin() {
             {['Front', 'Side', 'Back'].map(label => (
               <label key={label} className="btn-ghost" style={{ textAlign: 'center', borderColor: photos[label] ? 'var(--orange)' : 'var(--line)', color: photos[label] ? 'var(--orange-hot)' : 'var(--white)' }}>
                 {photos[label] ? `${label} ✓` : label}
-                <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                {/* No capture attribute: that forces the camera and hides the
+                    gallery, so a client who shot their photos earlier had no way
+                    to submit them. Without it they get the normal picker —
+                    camera or existing photo, their choice. */}
+                <input type="file" accept="image/*" style={{ display: 'none' }}
                   onChange={e => setPhotos(ph => ({ ...ph, [label]: e.target.files[0] || null }))} />
               </label>
             ))}
