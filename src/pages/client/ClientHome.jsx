@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature } from 'lucide-react'
+import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature, FileStack } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
@@ -266,6 +266,12 @@ export default function ClientHome() {
             )}
             <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><FileCheck2 size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Forms</div>
+          </div>
+        </Link>
+        <Link to="/app/documents" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><FileStack size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Documents</div>
           </div>
         </Link>
         <Link to="/app/contracts" style={{ textDecoration: 'none' }}>

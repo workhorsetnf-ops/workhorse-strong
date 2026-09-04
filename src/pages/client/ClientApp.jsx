@@ -19,6 +19,7 @@ import ClientFAQ from './ClientFAQ'
 import ClientCalendar from './ClientCalendar'
 import ClientIntakeForms from './ClientIntakeForms'
 import ClientContracts from './ClientContracts'
+import ClientDocuments from './ClientDocuments'
 import ContractPrint from '../ContractPrint'
 
 function Dot() {
@@ -75,6 +76,7 @@ export default function ClientApp() {
           <Route path="intake-forms" element={<ClientIntakeForms />} />
           <Route path="contracts" element={<ClientContracts />} />
           <Route path="contracts/print/:contractId" element={<ContractPrint />} />
+          <Route path="documents" element={<ClientDocuments />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>
