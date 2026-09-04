@@ -17,6 +17,9 @@ import ClientCommunity from '../ClientCommunity'
 import ClientRecap from './ClientRecap'
 import ClientFAQ from './ClientFAQ'
 import ClientCalendar from './ClientCalendar'
+import ClientIntakeForms from './ClientIntakeForms'
+import ClientContracts from './ClientContracts'
+import ContractPrint from '../ContractPrint'
 
 function Dot() {
   return <span style={{ position: 'absolute', top: 4, right: '28%', width: 8, height: 8, borderRadius: '50%', background: 'var(--red)', border: '1.5px solid var(--coal)' }} />
@@ -69,6 +72,9 @@ export default function ClientApp() {
           <Route path="recap" element={<ClientRecap />} />
           <Route path="faq" element={<ClientFAQ />} />
           <Route path="calendar" element={<ClientCalendar />} />
+          <Route path="intake-forms" element={<ClientIntakeForms />} />
+          <Route path="contracts" element={<ClientContracts />} />
+          <Route path="contracts/print/:contractId" element={<ContractPrint />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>

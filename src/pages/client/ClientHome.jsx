@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall } from 'lucide-react'
+import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
@@ -16,6 +16,8 @@ export default function ClientHome() {
   const [milestonePrompt, setMilestonePrompt] = useState(null)
   const [testimonialText, setTestimonialText] = useState('')
   const [testimonialSent, setTestimonialSent] = useState(false)
+  const [pendingForms, setPendingForms] = useState(0)
+  const [pendingContracts, setPendingContracts] = useState(0)
 
   useEffect(() => {
     if (!profile) return
@@ -83,6 +85,12 @@ export default function ClientHome() {
         const days = lastCheckin ? Math.floor((Date.now() - lastCheckin.getTime()) / 864e5) : null
         setCheckinDue({ due: true, days, overdue: daysPastDue >= 2 })
       })
+    supabase.from('standalone_form_assignments').select('id', { count: 'exact', head: true })
+      .eq('client_id', profile.id).eq('status', 'pending')
+      .then(({ count }) => setPendingForms(count || 0))
+    supabase.from('contracts').select('id', { count: 'exact', head: true })
+      .eq('client_id', profile.id).eq('status', 'sent')
+      .then(({ count }) => setPendingContracts(count || 0))
     checkMilestones()
   }, [profile])
 
@@ -249,6 +257,24 @@ export default function ClientHome() {
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
             <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><HelpCircle size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Hub / FAQ</div>
+          </div>
+        </Link>
+        <Link to="/app/intake-forms" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '14px 6px', position: 'relative' }}>
+            {pendingForms > 0 && (
+              <span style={{ position: 'absolute', top: 6, right: 6, background: 'var(--orange)', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 20, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{pendingForms}</span>
+            )}
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><FileCheck2 size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Forms</div>
+          </div>
+        </Link>
+        <Link to="/app/contracts" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '14px 6px', position: 'relative' }}>
+            {pendingContracts > 0 && (
+              <span style={{ position: 'absolute', top: 6, right: 6, background: 'var(--orange)', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 20, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{pendingContracts}</span>
+            )}
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><ClipboardSignature size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Contracts</div>
           </div>
         </Link>
       </div>
