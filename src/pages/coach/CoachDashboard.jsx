@@ -2,6 +2,7 @@ import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Bell, Video, Trophy, FileText, BookOpen, Map, Users2,
   ClipboardList, Library, ListChecks, CalendarCheck, MessageCircle, Quote, Target, Webcam,
+  FileCheck2, ClipboardSignature,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import CoachHome from './CoachHome'
@@ -23,6 +24,9 @@ import CoachCheckins from './CoachCheckins'
 import CoachMessages from './CoachMessages'
 import CoachPipeline from './CoachPipeline'
 import CoachCalls from './CoachCalls'
+import CoachIntakeForms from './CoachIntakeForms'
+import CoachContracts from './CoachContracts'
+import ContractPrint from '../ContractPrint'
 
 export default function CoachDashboard() {
   const { signOut } = useAuth()
@@ -46,6 +50,8 @@ export default function CoachDashboard() {
         <NavLink to="/coach/programs"><ClipboardList size={17} strokeWidth={2} /><span>Programs</span></NavLink>
         <NavLink to="/coach/library"><Library size={17} strokeWidth={2} /><span>Library</span></NavLink>
         <NavLink to="/coach/forms"><ListChecks size={17} strokeWidth={2} /><span>Forms</span></NavLink>
+        <NavLink to="/coach/intake-forms"><FileCheck2 size={17} strokeWidth={2} /><span>Intake Forms</span></NavLink>
+        <NavLink to="/coach/contracts"><ClipboardSignature size={17} strokeWidth={2} /><span>Contracts</span></NavLink>
         <NavLink to="/coach/checkins"><CalendarCheck size={17} strokeWidth={2} /><span>Check-ins</span></NavLink>
         <NavLink to="/coach/calls"><Webcam size={17} strokeWidth={2} /><span>Calls</span></NavLink>
         <NavLink to="/coach/messages"><MessageCircle size={17} strokeWidth={2} /><span>Messages</span></NavLink>
@@ -61,6 +67,9 @@ export default function CoachDashboard() {
           <Route path="programs" element={<CoachPrograms />} />
           <Route path="library" element={<CoachLibrary />} />
           <Route path="forms" element={<CoachForms />} />
+          <Route path="intake-forms" element={<CoachIntakeForms />} />
+          <Route path="contracts" element={<CoachContracts />} />
+          <Route path="contracts/print/:contractId" element={<ContractPrint />} />
           <Route path="alerts" element={<CoachAlerts />} />
           <Route path="form-checks" element={<CoachFormChecks />} />
           <Route path="challenges" element={<CoachChallenges />} />
