@@ -279,3 +279,11 @@ table.data tr:hover td { background: rgba(255,255,255,0.015); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* print-friendly pages (contract/print summary routes) render inside the
+   normal coach/client shell, so hide the surrounding chrome when printing */
+@media print {
+  .coach-side, .bottom-nav { display: none !important; }
+  .coach-main { padding: 0 !important; max-width: none !important; }
+  .client-main { padding: 0 !important; }
+}
