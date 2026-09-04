@@ -1269,3 +1269,29 @@ begin
 end $$;
 revoke all on function public.sign_contract(uuid, text) from public;
 grant execute on function public.sign_contract(uuid, text) to authenticated;
+
+-- ===== CLIENT DOCUMENTS — meal plan PDFs, etc. (Update 83) =====
+-- Private per-client files (unlike the shared "resources" library, which every
+-- client can see). Storage path convention: "<client_id>/<filename>", same
+-- folder-per-client pattern as checkin-photos, so the RLS check below works.
+insert into storage.buckets (id, name, public) values ('client-documents','client-documents', false);
+
+create table client_documents (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references profiles(id) on delete cascade,
+  title text not null,
+  category text default 'Meal Plan',
+  file_path text not null,
+  file_name text default '',
+  uploaded_at timestamptz default now()
+);
+alter table client_documents enable row level security;
+create policy "coach manages client documents" on client_documents for all using (is_coach());
+create policy "client reads own documents" on client_documents for select using (client_id = auth.uid());
+
+create policy "coach uploads client document files" on storage.objects for insert
+  with check (bucket_id = 'client-documents' and public.is_coach());
+create policy "coach deletes client document files" on storage.objects for delete
+  using (bucket_id = 'client-documents' and public.is_coach());
+create policy "read own or coach reads client document files" on storage.objects for select
+  using (bucket_id = 'client-documents' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_coach()));
