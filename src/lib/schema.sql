@@ -1157,3 +1157,115 @@ alter table profiles add column start_date date;
 
 -- ===== PAYMENT DATE (Update 80) =====
 alter table profiles add column payment_date date;
+
+-- ===== STANDALONE FORMS — intake / PAR-Q / waivers (Update 81) =====
+-- Independent of the checkin_forms/* tables above, which attach a question
+-- set to the recurring weekly check-in. These are assigned once, filled
+-- once — for onboarding paperwork rather than an every-week form.
+create table standalone_forms (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text default '',
+  created_at timestamptz default now()
+);
+create table standalone_form_questions (
+  id uuid primary key default gen_random_uuid(),
+  form_id uuid not null references standalone_forms(id) on delete cascade,
+  label text not null,
+  qtype text not null default 'text' check (qtype in ('text','number','scale','choice','yesno')),
+  options jsonb default '[]',
+  required boolean not null default true,
+  position int not null default 0
+);
+create table standalone_form_assignments (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references profiles(id) on delete cascade,
+  form_id uuid not null references standalone_forms(id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending','completed')),
+  assigned_at timestamptz default now(),
+  unique (client_id, form_id)
+);
+create table standalone_form_responses (
+  id uuid primary key default gen_random_uuid(),
+  assignment_id uuid not null references standalone_form_assignments(id) on delete cascade,
+  client_id uuid not null references profiles(id) on delete cascade,
+  form_id uuid not null references standalone_forms(id) on delete cascade,
+  answers jsonb not null default '[]',
+  submitted_at timestamptz default now()
+);
+alter table standalone_forms enable row level security;
+alter table standalone_form_questions enable row level security;
+alter table standalone_form_assignments enable row level security;
+alter table standalone_form_responses enable row level security;
+
+create policy "coach manages standalone forms" on standalone_forms for all using (is_coach());
+create policy "client reads assigned standalone forms" on standalone_forms for select using (
+  exists (select 1 from standalone_form_assignments a where a.form_id = standalone_forms.id and a.client_id = auth.uid())
+);
+create policy "coach manages standalone form questions" on standalone_form_questions for all using (is_coach());
+create policy "client reads assigned standalone form questions" on standalone_form_questions for select using (
+  exists (select 1 from standalone_form_assignments a where a.form_id = standalone_form_questions.form_id and a.client_id = auth.uid())
+);
+create policy "coach manages standalone form assignments" on standalone_form_assignments for all using (is_coach());
+create policy "client reads own standalone form assignments" on standalone_form_assignments for select using (client_id = auth.uid());
+create policy "coach reads standalone form responses" on standalone_form_responses for select using (is_coach());
+create policy "client inserts own standalone form response" on standalone_form_responses for insert with check (client_id = auth.uid());
+create policy "client reads own standalone form responses" on standalone_form_responses for select using (client_id = auth.uid());
+
+-- The client can flip their own assignment pending -> completed (right after
+-- submitting a response) and nothing else about it, via this function rather
+-- than a broad UPDATE policy.
+create or replace function public.complete_standalone_form(target_assignment_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  update standalone_form_assignments
+  set status = 'completed'
+  where id = target_assignment_id and client_id = auth.uid();
+end $$;
+revoke all on function public.complete_standalone_form(uuid) from public;
+grant execute on function public.complete_standalone_form(uuid) to authenticated;
+
+-- ===== CONTRACTS + E-SIGNATURE (Update 82) =====
+create table contract_templates (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  body text not null default '',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create table contracts (
+  id uuid primary key default gen_random_uuid(),
+  template_id uuid references contract_templates(id) on delete set null,
+  client_id uuid not null references profiles(id) on delete cascade,
+  title text not null,
+  body text not null,
+  status text not null default 'sent' check (status in ('sent','signed','void')),
+  sent_at timestamptz default now(),
+  signed_at timestamptz,
+  signature_name text
+);
+alter table contract_templates enable row level security;
+alter table contracts enable row level security;
+create policy "coach manages contract templates" on contract_templates for all using (is_coach());
+create policy "coach manages contracts" on contracts for all using (is_coach());
+create policy "client reads own contracts" on contracts for select using (client_id = auth.uid());
+
+-- Signing goes through this function instead of a client UPDATE policy, so a
+-- client can never edit the contract's text/title/dates — only move a
+-- contract they own from sent -> signed by typing their name.
+create or replace function public.sign_contract(target_contract_id uuid, signer_name text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  c record;
+begin
+  select * into c from contracts where id = target_contract_id;
+  if c is null then raise exception 'Contract not found.'; end if;
+  if c.client_id <> auth.uid() then raise exception 'Not your contract.'; end if;
+  if c.status = 'signed' then raise exception 'This is already signed.'; end if;
+  if c.status = 'void' then raise exception 'This contract was voided.'; end if;
+  if signer_name is null or trim(signer_name) = '' then raise exception 'Type your full name to sign.'; end if;
+  update contracts set status = 'signed', signed_at = now(), signature_name = trim(signer_name)
+  where id = target_contract_id;
+end $$;
+revoke all on function public.sign_contract(uuid, text) from public;
+grant execute on function public.sign_contract(uuid, text) to authenticated;
