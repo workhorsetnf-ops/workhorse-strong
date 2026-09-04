@@ -6,7 +6,7 @@ const EMPTY_LOG = { client_id: '', weight: '', waist: '', sleep_avg: '', energy:
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 const EMPTY_SNAPSHOT = {
-  status: 'pending', current_macros: '', training_program: '', cardio: '',
+  status: 'pending', current_macros: '', training_program: '', cardio: '', steps: '', biofeedback: '',
   coach_notes: '', training_notes: '', nutrition_notes: '', other_notes: '',
 }
 
@@ -96,7 +96,7 @@ export default function CoachCheckins() {
   async function load() {
     const [{ data: c }, { data: p }] = await Promise.all([
       supabase.from('checkins').select('*').order('submitted_at', { ascending: false }).limit(200),
-      supabase.from('profiles').select('id, full_name, phase, checkin_day, status, payment_plan, contract_ends, split_ends')
+      supabase.from('profiles').select('id, full_name, phase, checkin_day, status, payment_plan, contract_ends, split_ends, start_date')
         .eq('role', 'client').order('full_name'),
     ])
     setCheckins(c || [])
@@ -113,6 +113,8 @@ export default function CoachCheckins() {
           current_macros: row.current_macros || '',
           training_program: row.training_program || '',
           cardio: row.cardio || '',
+          steps: row.steps ?? '',
+          biofeedback: row.biofeedback || '',
           coach_notes: row.coach_notes || '',
           training_notes: row.training_notes || '',
           nutrition_notes: row.nutrition_notes || '',
@@ -144,6 +146,8 @@ export default function CoachCheckins() {
       current_macros: snap.current_macros?.trim() || null,
       training_program: snap.training_program?.trim() || null,
       cardio: snap.cardio?.trim() || null,
+      steps: snap.steps === '' || snap.steps == null ? null : +snap.steps,
+      biofeedback: snap.biofeedback?.trim() || null,
       coach_notes: snap.coach_notes || '',
       training_notes: snap.training_notes || '',
       nutrition_notes: snap.nutrition_notes || '',
@@ -313,6 +317,7 @@ export default function CoachCheckins() {
                   {!latest && <span className="muted" style={{ fontSize: 12.5, marginLeft: 8 }}>No check-ins yet</span>}
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {g.profile.start_date && <Chip>Since {fmtDate(g.profile.start_date)}</Chip>}
                   {g.profile.checkin_day != null && g.profile.checkin_day !== undefined && <Chip>{WEEKDAYS[g.profile.checkin_day]}</Chip>}
                   {g.profile.phase && <Chip><span style={{ textTransform: 'capitalize' }}>{g.profile.phase}</span></Chip>}
                   {latest && <StatusBadge status={latest.status || 'pending'} />}
@@ -470,6 +475,10 @@ export default function CoachCheckins() {
                             <input placeholder="Current macros" value={snap.current_macros} onChange={e => updateSnap(c.id, 'current_macros', e.target.value)} style={{ fontSize: 13, padding: '8px 10px' }} />
                             <input placeholder="Training program" value={snap.training_program} onChange={e => updateSnap(c.id, 'training_program', e.target.value)} style={{ fontSize: 13, padding: '8px 10px' }} />
                             <input placeholder="Cardio" value={snap.cardio} onChange={e => updateSnap(c.id, 'cardio', e.target.value)} style={{ fontSize: 13, padding: '8px 10px' }} />
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
+                            <input inputMode="numeric" placeholder="Steps" value={snap.steps} onChange={e => updateSnap(c.id, 'steps', e.target.value)} style={{ fontSize: 13, padding: '8px 10px' }} />
+                            <input placeholder="Biofeedback (sleep, DOMS, energy…)" value={snap.biofeedback} onChange={e => updateSnap(c.id, 'biofeedback', e.target.value)} style={{ fontSize: 13, padding: '8px 10px' }} />
                           </div>
                           <div>
                             <label className="muted" style={{ fontSize: 11 }}>Notes</label>
