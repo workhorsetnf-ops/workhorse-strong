@@ -63,6 +63,31 @@ function Chip({ children }) {
   return <span className="muted" style={{ fontSize: 11.5, background: 'var(--steel)', padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap' }}>{children}</span>
 }
 
+// Read-only reference strip repeating the client-level fields (set on their
+// profile in Coach → Clients) on every individual check-in — mirrors how
+// each task carried its own copy of these custom fields on the Asana board.
+function ClientFieldsStrip({ profile }) {
+  const rows = [
+    ['Start Date', profile.start_date ? fmtDate(profile.start_date) : '—'],
+    ['Check-In Day', (profile.checkin_day ?? null) !== null ? WEEKDAYS[profile.checkin_day] : '—'],
+    ['Phase', profile.phase ? profile.phase[0].toUpperCase() + profile.phase.slice(1) : '—'],
+    ['Payment Plan', profile.payment_plan || '—'],
+    ['Payment Date', profile.payment_date ? fmtDate(profile.payment_date) : '—'],
+    ['Contract Ends', profile.contract_ends ? fmtDate(profile.contract_ends) : '—'],
+    ['Split Ends', profile.split_ends ? fmtDate(profile.split_ends) : '—'],
+  ]
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '8px 14px', background: 'var(--steel)', borderRadius: 8, padding: '10px 12px', marginBottom: 10 }}>
+      {rows.map(([label, val]) => (
+        <div key={label}>
+          <div className="muted" style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>{val}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function StatusBadge({ status }) {
   const done = status === 'done'
   return (
@@ -96,7 +121,7 @@ export default function CoachCheckins() {
   async function load() {
     const [{ data: c }, { data: p }] = await Promise.all([
       supabase.from('checkins').select('*').order('submitted_at', { ascending: false }).limit(200),
-      supabase.from('profiles').select('id, full_name, phase, checkin_day, status, payment_plan, contract_ends, split_ends, start_date')
+      supabase.from('profiles').select('id, full_name, phase, checkin_day, status, payment_plan, payment_date, contract_ends, split_ends, start_date')
         .eq('role', 'client').order('full_name'),
     ])
     setCheckins(c || [])
@@ -342,6 +367,7 @@ export default function CoachCheckins() {
                     const snap = snapshot[c.id] || EMPTY_SNAPSHOT
                     return (
                       <div key={c.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 14 }}>
+                        <ClientFieldsStrip profile={g.profile} />
                         <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                           <span className="muted" style={{ fontSize: 13 }}>{new Date(c.submitted_at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                           {!c.coach_feedback && <span style={{ color: 'var(--orange-hot)', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Needs review</span>}

@@ -88,7 +88,7 @@ export default function CoachClients() {
     const { data: r } = await supabase.from('client_ratings').select('*').eq('client_id', c.id).maybeSingle()
     setRating({ retention: r?.retention || null, mindset: r?.mindset || null, notes: r?.notes || '' })
     setCalcResult(null)
-    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null, status: c.status || 'active', payment_plan: c.payment_plan || '', contract_ends: c.contract_ends || '', split_ends: c.split_ends || '', start_date: c.start_date || '' })
+    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null, status: c.status || 'active', payment_plan: c.payment_plan || '', contract_ends: c.contract_ends || '', split_ends: c.split_ends || '', start_date: c.start_date || '', payment_date: c.payment_date || '' })
     setOriginalEmail(c.email || '')
     // Pull their pre-sale timeline in if they came through the pipeline.
     const hist = leadHistory[c.id]
@@ -122,6 +122,7 @@ export default function CoachClients() {
       contract_ends: form.contract_ends || null,
       split_ends: form.split_ends || null,
       start_date: form.start_date || null,
+      payment_date: form.payment_date || null,
       // Only restamp when the status genuinely moved, so "12d paused" stays honest.
       ...(statusChanged ? { status_changed_at: new Date().toISOString() } : {}),
     }).eq('id', id)
@@ -251,14 +252,10 @@ export default function CoachClients() {
                 </div>
                 <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
                   <span className="eyebrow" style={{ fontSize: 10 }}>Client details</span>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 1fr 1fr', gap: 8, marginTop: 6 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 6 }}>
                     <div>
                       <label className="muted" style={{ fontSize: 11.5 }}>Start date</label>
                       <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="muted" style={{ fontSize: 11.5 }}>Payment plan</label>
-                      <input placeholder="e.g. $200/mo, autopay" value={form.payment_plan} onChange={e => setForm({ ...form, payment_plan: e.target.value })} />
                     </div>
                     <div>
                       <label className="muted" style={{ fontSize: 11.5 }}>Contract ends</label>
@@ -267,6 +264,16 @@ export default function CoachClients() {
                     <div>
                       <label className="muted" style={{ fontSize: 11.5 }}>Split ends</label>
                       <input type="date" value={form.split_ends} onChange={e => setForm({ ...form, split_ends: e.target.value })} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 8, marginTop: 8 }}>
+                    <div>
+                      <label className="muted" style={{ fontSize: 11.5 }}>Payment plan</label>
+                      <input placeholder="e.g. $200/mo, autopay" value={form.payment_plan} onChange={e => setForm({ ...form, payment_plan: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="muted" style={{ fontSize: 11.5 }}>Payment date</label>
+                      <input type="date" value={form.payment_date} onChange={e => setForm({ ...form, payment_date: e.target.value })} />
                     </div>
                   </div>
                 </div>
@@ -417,11 +424,12 @@ export default function CoachClients() {
                   <div className="muted" style={{ fontSize: 13, marginTop: 3, textTransform: 'capitalize' }}>
                     {c.phase} · P {c.protein_g} / C {c.carbs_g} / F {c.fat_g} · {c.calories} kcal
                   </div>
-                  {(c.start_date || c.payment_plan || c.contract_ends || c.split_ends) && (
+                  {(c.start_date || c.payment_plan || c.payment_date || c.contract_ends || c.split_ends) && (
                     <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
                       {[
                         c.start_date && `Started ${new Date(c.start_date + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`,
                         c.payment_plan,
+                        c.payment_date && `Payment ${new Date(c.payment_date + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`,
                         c.contract_ends && `Contract ends ${new Date(c.contract_ends + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`,
                         c.split_ends && `Split ends ${new Date(c.split_ends + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`,
                       ].filter(Boolean).join(' · ')}
