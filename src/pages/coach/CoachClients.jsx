@@ -39,6 +39,11 @@ export default function CoachClients() {
   const [rating, setRating] = useState({ retention: null, mindset: null, notes: '' })
   const [photosFor, setPhotosFor] = useState(null)     // client id with timeline open
   const [timeline, setTimeline] = useState({})         // clientId -> rows
+  const [docsFor, setDocsFor] = useState(null)          // client id with documents panel open
+  const [docs, setDocs] = useState({})                  // clientId -> rows
+  const [docForm, setDocForm] = useState({ title: '', category: 'Meal Plan', file: null })
+  const [docUploading, setDocUploading] = useState(false)
+  const [docFileKey, setDocFileKey] = useState(0)       // bumped to reset the file input after upload
   const [calc, setCalc] = useState({ weightLbs: '', age: '', sex: 'male', hft: '', hin: '', bf: '', activity: 'working-talent', goal: 'cut' })
   const [calcResult, setCalcResult] = useState(null)
   const [statusFilter, setStatusFilter] = useState('all')
@@ -164,6 +169,47 @@ export default function CoachClients() {
       rows.push(row)
     }
     setTimeline(t => ({ ...t, [clientId]: rows }))
+  }
+
+  async function toggleDocs(clientId) {
+    if (docsFor === clientId) { setDocsFor(null); return }
+    setDocsFor(clientId)
+    if (docs[clientId]) return
+    const { data } = await supabase.from('client_documents').select('*').eq('client_id', clientId).order('uploaded_at', { ascending: false })
+    setDocs(d => ({ ...d, [clientId]: data || [] }))
+  }
+
+  async function refreshDocs(clientId) {
+    const { data } = await supabase.from('client_documents').select('*').eq('client_id', clientId).order('uploaded_at', { ascending: false })
+    setDocs(d => ({ ...d, [clientId]: data || [] }))
+  }
+
+  async function uploadDoc(clientId) {
+    if (!docForm.file || !docForm.title.trim()) { alert('Add a title and choose a PDF first.'); return }
+    setDocUploading(true)
+    const path = `${clientId}/${Date.now()}-${docForm.file.name}`
+    const { error: upErr } = await supabase.storage.from('client-documents').upload(path, docForm.file)
+    if (upErr) { alert('Upload failed: ' + upErr.message); setDocUploading(false); return }
+    const { error } = await supabase.from('client_documents').insert({
+      client_id: clientId, title: docForm.title.trim(), category: docForm.category, file_path: path, file_name: docForm.file.name,
+    })
+    if (error) { alert('Could not save: ' + error.message); setDocUploading(false); return }
+    setDocForm({ title: '', category: 'Meal Plan', file: null })
+    setDocFileKey(k => k + 1)
+    setDocUploading(false)
+    refreshDocs(clientId)
+  }
+
+  async function viewDoc(item) {
+    const { data } = await supabase.storage.from('client-documents').createSignedUrl(item.file_path, 3600)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+  }
+
+  async function deleteDoc(clientId, item) {
+    if (!confirm(`Delete "${item.title}"?`)) return
+    await supabase.storage.from('client-documents').remove([item.file_path])
+    await supabase.from('client_documents').delete().eq('id', item.id)
+    refreshDocs(clientId)
   }
 
   async function removeMax(i) {
@@ -443,6 +489,9 @@ export default function CoachClients() {
                   <button className="btn-ghost" onClick={() => togglePhotos(c.id)}>
                     {photosFor === c.id ? 'Hide photos' : 'Photos'}
                   </button>
+                  <button className="btn-ghost" onClick={() => toggleDocs(c.id)}>
+                    {docsFor === c.id ? 'Hide documents' : 'Documents'}
+                  </button>
                   <button className="btn-ghost" onClick={() => startEdit(c)}>
                     {savedId === c.id ? 'Saved ✓' : 'Edit'}
                   </button>
@@ -475,6 +524,40 @@ export default function CoachClients() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {docsFor === c.id && (
+              <div style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+                <span className="eyebrow" style={{ fontSize: 10 }}>Upload a document (meal plan, program, etc.)</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8, marginBottom: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8 }}>
+                    <input placeholder="Title (e.g. Meal Plan — Cut Phase)" value={docForm.title} onChange={e => setDocForm({ ...docForm, title: e.target.value })} />
+                    <select value={docForm.category} onChange={e => setDocForm({ ...docForm, category: e.target.value })}>
+                      <option value="Meal Plan">Meal Plan</option>
+                      <option value="Training Program">Training Program</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <input key={docFileKey} type="file" accept="application/pdf" onChange={e => setDocForm({ ...docForm, file: e.target.files?.[0] || null })} />
+                  <button className="btn" style={{ alignSelf: 'flex-start', padding: '9px 18px', fontSize: 12.5 }} disabled={docUploading} onClick={() => uploadDoc(c.id)}>
+                    {docUploading ? 'Uploading…' : 'Upload'}
+                  </button>
+                </div>
+
+                {!docs[c.id] && <p className="muted" style={{ fontSize: 13 }}>Loading…</p>}
+                {docs[c.id]?.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No documents yet.</p>}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(docs[c.id] || []).map(d => (
+                    <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: 'var(--steel)', borderRadius: 8, padding: '10px 12px' }}>
+                      <div style={{ cursor: 'pointer' }} onClick={() => viewDoc(d)}>
+                        <strong style={{ fontSize: 13.5 }}>{d.title}</strong>
+                        <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{d.category} · {new Date(d.uploaded_at).toLocaleDateString()}</div>
+                      </div>
+                      <button className="btn-ghost" style={{ color: 'var(--red)', padding: '4px 10px', fontSize: 11, whiteSpace: 'nowrap' }} onClick={() => deleteDoc(c.id, d)}>Delete</button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
