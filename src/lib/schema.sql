@@ -1149,3 +1149,8 @@ alter table checkins add column other_notes text default '';
 alter table profiles add column payment_plan text;
 alter table profiles add column contract_ends date;
 alter table profiles add column split_ends date;
+
+-- ===== CHECK-IN STEPS/BIOFEEDBACK + CLIENT START DATE (Update 79) =====
+alter table checkins add column steps numeric;
+alter table checkins add column biofeedback text;
+alter table profiles add column start_date date;
