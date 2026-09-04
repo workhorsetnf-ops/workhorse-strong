@@ -1,11 +1,11 @@
 /* WORKHORSE STRONG — black / white / vibrant orange */
 :root {
   --black: #0A0A0A;
-  --coal: #141414;
-  --steel: #1F1F1F;
-  --line: #2B2B2B;
+  --coal: #1C1C1C;
+  --steel: #333333;
+  --line: #4F4F4F;
   --white: #F5F3F0;
-  --muted: #ACA69D;
+  --muted: #B8B2A8;
   --orange: #FF5A00;
   --orange-hot: #FF6200;
   --green: #4CAF6D;
@@ -25,6 +25,7 @@ body {
   background-attachment: fixed;
   color: var(--white);
   font-size: 17.5px;
+  font-weight: 500;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
@@ -51,7 +52,7 @@ button {
 
 input, textarea, select {
   font-family: inherit;
-  background: var(--coal);
+  background: var(--steel);
   border: 1px solid var(--line);
   color: var(--white);
   border-radius: 8px;
@@ -88,7 +89,7 @@ a { color: var(--orange-hot); text-decoration: none; }
 .btn:active { transform: translateY(0); box-shadow: 0 1px 0 rgba(0,0,0,0.35); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn-ghost {
-  background: rgba(255,255,255,0.02);
+  background: rgba(255,255,255,0.04);
   border: 1px solid var(--line);
   color: var(--white);
   font-weight: 700;
@@ -100,11 +101,11 @@ a { color: var(--orange-hot); text-decoration: none; }
 .btn-ghost:hover { border-color: var(--orange); color: var(--orange-hot); background: rgba(255,90,0,0.06); }
 
 .card {
-  background: linear-gradient(180deg, var(--coal) 0%, #101010 100%);
+  background: var(--coal);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 22px;
-  box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 22px rgba(0,0,0,0.3);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 10px 26px rgba(0,0,0,0.35);
 }
 
 .eyebrow {
@@ -116,7 +117,7 @@ a { color: var(--orange-hot); text-decoration: none; }
   letter-spacing: 0.2em;
 }
 
-.muted { color: var(--muted); }
+.muted { color: var(--muted); font-weight: 500; }
 
 .stat-num {
   font-family: 'Anton', 'Barlow Condensed', system-ui, sans-serif;
@@ -264,11 +265,11 @@ table.data th {
   border-bottom: 1px solid var(--line);
 }
 table.data td { padding: 12px 11px; border-bottom: 1px solid var(--line); }
-table.data tr:hover td { background: rgba(255,255,255,0.015); }
+table.data tr:hover td { background: rgba(255,255,255,0.04); }
 
 /* small thumbnails (exercise icons, avatars) get a defined edge to read
    clearly against the dark background — hero/banner images opt out via .no-border */
-.thumb { border: 1px solid rgba(255,255,255,0.08); }
+.thumb { border: 1px solid rgba(255,255,255,0.14); }
 
 @media (max-width: 760px) {
   .coach-shell { flex-direction: column; }
