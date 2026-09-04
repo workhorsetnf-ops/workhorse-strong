@@ -30,9 +30,14 @@ export default function ClientHome() {
         }), { p: 0, c: 0, f: 0 })
         setTodayMacros(t)
       })
-    const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString()
+    // calendar week (Monday–Sunday), not a rolling 7-day trailing window —
+    // otherwise sessions from last week still count as "this week" for a few days
+    const nowForWeek = new Date()
+    const weekDow = (nowForWeek.getDay() + 6) % 7 // 0=Mon..6=Sun
+    const startOfWeek = new Date(nowForWeek); startOfWeek.setHours(0, 0, 0, 0); startOfWeek.setDate(nowForWeek.getDate() - weekDow)
+    const weekStart = startOfWeek.toISOString()
     supabase.from('workout_logs').select('logged_at')
-      .eq('client_id', profile.id).gte('logged_at', weekAgo)
+      .eq('client_id', profile.id).gte('logged_at', weekStart)
       .then(({ data }) => {
         const days = new Set((data || []).map(l => l.logged_at.slice(0, 10)))
         setWeekWorkouts(days.size)
