@@ -1154,3 +1154,6 @@ alter table profiles add column split_ends date;
 alter table checkins add column steps numeric;
 alter table checkins add column biofeedback text;
 alter table profiles add column start_date date;
+
+-- ===== PAYMENT DATE (Update 80) =====
+alter table profiles add column payment_date date;
