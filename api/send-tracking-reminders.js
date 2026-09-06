@@ -80,7 +80,11 @@ export default async function handler(req, res) {
     if (!r.ok) throw new Error(`GHL contact search failed (${r.status}): ${await r.text()}`)
     const data = await r.json()
     const contacts = data.contacts || []
-    return contacts.find(c => (c.email || '').toLowerCase() === email.toLowerCase()) || contacts[0] || null
+    const match = contacts.find(c => (c.email || '').toLowerCase() === email.toLowerCase())
+    // Returning the raw count (even when it's 0) is what lets us tell "wrong location ID /
+    // search endpoint" (0 results for everyone) apart from "these emails just don't match
+    // what's in GHL" (results come back, just not for this email) without more guessing.
+    return { match: match || null, totalFound: contacts.length, sampleEmails: contacts.slice(0, 3).map(c => c.email) }
   }
 
   async function removeTags(contactId, tags) {
@@ -123,9 +127,14 @@ export default async function handler(req, res) {
       if (!missingFood && !missingSteps) continue
 
       try {
-        const contact = await findContactByEmail(client.email)
+        const { match: contact, totalFound, sampleEmails } = await findContactByEmail(client.email)
         if (!contact) {
-          results.push({ client: client.id, tagged: false, error: 'No matching GHL contact found for this email' })
+          results.push({
+            client: client.id,
+            tagged: false,
+            error: `No matching GHL contact for ${client.email} (search returned ${totalFound} result(s))`,
+            sampleEmails,
+          })
           continue
         }
 
