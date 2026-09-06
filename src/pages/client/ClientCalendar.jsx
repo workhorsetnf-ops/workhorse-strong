@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
 export default function ClientCalendar() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const [startDate, setStartDate] = useState(null)
   const [allBlocks, setAllBlocks] = useState([])
   const [daysByBlock, setDaysByBlock] = useState({})   // blockId -> [days]
@@ -79,6 +81,10 @@ export default function ClientCalendar() {
   const sel = selected ? daySessions(selected) : []
   const selDate = selected ? new Date(y, m, selected) : null
 
+  function openWorkout(s) {
+    navigate('/app/training', { state: { targetBlockId: s.block_id, targetWeek: s.wk, targetDayNumber: s.day_number } })
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <header>
@@ -138,9 +144,14 @@ export default function ClientCalendar() {
           <strong style={{ fontSize: 14 }}>{selDate?.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</strong>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
             {sel.map(s => (
-              <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--steel)', borderRadius: 6, padding: '8px 10px' }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: (s.track || 'exercise') === 'lifestyle' ? '#3E8E7E' : 'var(--orange-hot)' }}>{s.day_label}</span>
-                <span className="muted" style={{ fontSize: 11.5 }}>{s.blockName} · Wk {s.wk}</span>
+              <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--steel)', borderRadius: 6, padding: '8px 10px' }}>
+                <div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: (s.track || 'exercise') === 'lifestyle' ? '#3E8E7E' : 'var(--orange-hot)' }}>{s.day_label}</span>
+                  <span className="muted" style={{ fontSize: 11.5, marginLeft: 8 }}>{s.blockName} · Wk {s.wk}</span>
+                </div>
+                <button className="btn" style={{ padding: '7px 14px', fontSize: 12 }} onClick={() => openWorkout(s)}>
+                  {(s.track || 'exercise') === 'lifestyle' ? 'Open day →' : 'Start workout →'}
+                </button>
               </div>
             ))}
             {sel.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Nothing scheduled.</p>}

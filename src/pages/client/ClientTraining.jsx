@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { resolveAssignment, rotationForWeek, dayShowsInWeek, daysBetween, resolveBlockWeek, setTargets, hasVariedSets, repsSummary, targetSummary } from '../../lib/weeks'
 import { useAuth } from '../../context/AuthContext'
@@ -41,6 +42,8 @@ const todayStr = () => new Date().toISOString().slice(0, 10)
 
 export default function ClientTraining() {
   const { profile } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [program, setProgram] = useState(null)
   const [allBlocks, setAllBlocks] = useState([])
   const [block, setBlock] = useState(null)
@@ -81,12 +84,24 @@ export default function ClientTraining() {
         setStartDate(data.start_date || null)
         const { data: bs } = await supabase.from('program_blocks').select('*').eq('program_id', data.program_id).order('position')
         setAllBlocks(bs || [])
-        // On 'auto' this walks the start date forward on its own; on 'manual' it's
-        // whatever the coach last set. Either way one helper decides, so the day
-        // tabs and the calendar below can't disagree about what week it is.
-        const pos = resolveAssignment(data, bs || [])
-        const activeBlock = pos.block
-        setWeek(pos.weekInBlock)
+
+        // Arriving from the Calendar tab ("open this day's workout") jumps
+        // straight to that specific block/week instead of whatever week
+        // resolveAssignment would otherwise land on.
+        const target = location.state
+        let activeBlock, activeWeek
+        if (target?.targetBlockId) {
+          activeBlock = (bs || []).find(b => b.id === target.targetBlockId) || null
+          activeWeek = target.targetWeek || 1
+        } else {
+          // On 'auto' this walks the start date forward on its own; on 'manual' it's
+          // whatever the coach last set. Either way one helper decides, so the day
+          // tabs and the calendar below can't disagree about what week it is.
+          const pos = resolveAssignment(data, bs || [])
+          activeBlock = pos.block
+          activeWeek = pos.weekInBlock
+        }
+        setWeek(activeWeek)
         setBlock(activeBlock || null)
         if (activeBlock) {
           const [{ data: d }, { data: r }] = await Promise.all([
@@ -95,6 +110,14 @@ export default function ClientTraining() {
           ])
           setDays(d || [])
           setRotations(r || [])
+          if (target?.targetDayNumber != null) {
+            const inRotation = (d || []).find(x => x.day_number === target.targetDayNumber && dayShowsInWeek(x, r || [], activeWeek))
+            const anyMatch = inRotation || (d || []).find(x => x.day_number === target.targetDayNumber)
+            if (anyMatch) setActiveDay(anyMatch)
+            // clear the one-time navigation state so a later visit via the bottom
+            // nav (or a browser refresh) falls back to the normal "current" day
+            navigate(location.pathname, { replace: true, state: null })
+          }
         }
       })
     supabase.from('client_maxes').select('*').eq('client_id', profile.id)
