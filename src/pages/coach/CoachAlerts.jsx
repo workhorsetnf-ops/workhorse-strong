@@ -10,14 +10,16 @@ export default function CoachAlerts() {
 
   async function load() {
     const results = []
-    const [{ data: clients }, { data: assignments }, { data: blocksAll }, { data: checkins }, { data: dailyLogs }, { data: workoutLogs }, { data: daysAll }] = await Promise.all([
+    const since30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)
+    const [{ data: clients }, { data: assignments }, { data: blocksAll }, { data: checkins }, { data: dailyLogs }, { data: workoutLogs }, { data: daysAll }, { data: mealLogs }] = await Promise.all([
       supabase.from('profiles').select('*').eq('role', 'client'),
       supabase.from('program_assignments').select('*'),
       supabase.from('program_blocks').select('*'),
       supabase.from('checkins').select('client_id, submitted_at, weight').order('submitted_at', { ascending: false }),
-      supabase.from('daily_logs').select('client_id, log_date, weight').order('log_date', { ascending: false }),
+      supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }),
       supabase.from('workout_logs').select('client_id, logged_at').order('logged_at', { ascending: false }),
       supabase.from('program_days').select('id, block_id, day_number, track'),
+      supabase.from('meal_logs').select('client_id, logged_on').gte('logged_on', since30),
     ])
 
     const nameOf = id => clients?.find(c => c.id === id)?.full_name || 'A client'
@@ -55,6 +57,36 @@ export default function CoachAlerts() {
             results.push({ type: 'missed', severity: missed >= 3 ? 'high' : 'med', client: c, text: `${nameOf(c.id)} missed ${missed} training day(s) logged in the last week.` })
           }
         }
+      }
+
+      // --- Missed food/steps logging: last 3 completed days (applies to every client, program or no program) ---
+      const today0 = new Date(); today0.setHours(0, 0, 0, 0)
+      const clientMealDays = new Set((mealLogs || []).filter(m => m.client_id === c.id).map(m => m.logged_on))
+      const clientStepDays = new Set((dailyLogs || []).filter(d => d.client_id === c.id && d.steps != null).map(d => d.log_date))
+      let missedFood = 0, missedSteps = 0
+      for (let back = 1; back <= 3; back++) {
+        const d = new Date(today0); d.setDate(d.getDate() - back)
+        const ds = d.toISOString().slice(0, 10)
+        if (!clientMealDays.has(ds)) missedFood++
+        if (!clientStepDays.has(ds)) missedSteps++
+      }
+      if (missedFood >= 2) {
+        results.push({ type: 'nutrition', severity: missedFood >= 3 ? 'high' : 'med', client: c, text: `${nameOf(c.id)} hasn't logged food in ${missedFood} of the last 3 days.` })
+      }
+      if (missedSteps >= 2) {
+        results.push({ type: 'steps', severity: missedSteps >= 3 ? 'high' : 'med', client: c, text: `${nameOf(c.id)} hasn't logged steps in ${missedSteps} of the last 3 days.` })
+      }
+
+      // --- Tracking streak: consecutive days with BOTH food and steps logged ---
+      let trackStreak = 0
+      for (let back = 0; back < 30; back++) {
+        const d = new Date(today0); d.setDate(d.getDate() - back)
+        const ds = d.toISOString().slice(0, 10)
+        if (clientMealDays.has(ds) && clientStepDays.has(ds)) trackStreak++
+        else if (back > 0) break
+      }
+      if (trackStreak >= 5) {
+        results.push({ type: 'tracking-streak', severity: 'good', client: c, text: `📋 ${nameOf(c.id)} has logged food & steps ${trackStreak} days in a row.` })
       }
 
       // --- No check-in in 10+ days ---
