@@ -1295,3 +1295,18 @@ create policy "coach deletes client document files" on storage.objects for delet
   using (bucket_id = 'client-documents' and public.is_coach());
 create policy "read own or coach reads client document files" on storage.objects for select
   using (bucket_id = 'client-documents' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_coach()));
+
+-- ===== TRACKING REMINDERS (Update 84) =====
+-- Idempotency log for the daily food/steps reminder email (api/send-tracking-reminders.js).
+-- Written by that serverless function using the service_role key, so no client-facing
+-- policy is needed beyond letting the coach read it.
+create table tracking_reminders_sent (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references profiles(id) on delete cascade,
+  sent_date date not null default current_date,
+  missing text not null, -- 'food', 'steps', or 'food+steps'
+  created_at timestamptz default now(),
+  unique (client_id, sent_date)
+);
+alter table tracking_reminders_sent enable row level security;
+create policy "coach reads reminder log" on tracking_reminders_sent for select using (is_coach());
