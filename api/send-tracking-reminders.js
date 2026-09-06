@@ -4,6 +4,10 @@
 // means you can change the message wording, timing, or add follow-ups entirely inside GHL,
 // with zero code changes.
 //
+// If a client's email doesn't match any existing GHL contact, one is created automatically
+// (using their name + email from the app) rather than skipping them — this covers clients
+// who were never added to your current GHL account (e.g. after switching GHL accounts).
+//
 // Triggered once a day by Vercel Cron (see vercel.json) — not called by the app itself.
 //
 // Required environment variables (Vercel project Settings > Environment Variables):
@@ -104,6 +108,19 @@ export default async function handler(req, res) {
     if (!r.ok) throw new Error(`GHL add tags failed (${r.status}): ${await r.text()}`)
   }
 
+  async function createContact(email, fullName) {
+    const parts = (fullName || '').trim().split(/\s+/)
+    const firstName = parts[0] || 'Client'
+    const lastName = parts.slice(1).join(' ')
+    const r = await fetch(`${GHL_BASE}/contacts/`, {
+      method: 'POST', headers: ghlHeaders(),
+      body: JSON.stringify({ locationId: GHL_LOCATION_ID, email, firstName, lastName }),
+    })
+    if (!r.ok) throw new Error(`GHL create contact failed (${r.status}): ${await r.text()}`)
+    const data = await r.json()
+    return data.contact
+  }
+
   try {
     const supabase = createClient(VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -127,15 +144,11 @@ export default async function handler(req, res) {
       if (!missingFood && !missingSteps) continue
 
       try {
-        const { match: contact, totalFound, sampleEmails } = await findContactByEmail(client.email)
+        let { match: contact } = await findContactByEmail(client.email)
+        let created = false
         if (!contact) {
-          results.push({
-            client: client.id,
-            tagged: false,
-            error: `No matching GHL contact for ${client.email} (search returned ${totalFound} result(s))`,
-            sampleEmails,
-          })
-          continue
+          contact = await createContact(client.email, client.full_name)
+          created = true
         }
 
         // Reset first so the "Tag Added" trigger reliably fires again today.
@@ -151,7 +164,7 @@ export default async function handler(req, res) {
           sent_date: today,
           missing: missingFood && missingSteps ? 'food+steps' : missingFood ? 'food' : 'steps',
         })
-        results.push({ client: client.id, tagged: true, tags: tagsToAdd })
+        results.push({ client: client.id, tagged: true, tags: tagsToAdd, createdContact: created })
       } catch (err) {
         results.push({ client: client.id, tagged: false, error: err.message })
       }
