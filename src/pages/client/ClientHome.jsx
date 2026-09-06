@@ -18,6 +18,9 @@ export default function ClientHome() {
   const [testimonialSent, setTestimonialSent] = useState(false)
   const [pendingForms, setPendingForms] = useState(0)
   const [pendingContracts, setPendingContracts] = useState(0)
+  const [hasFoodToday, setHasFoodToday] = useState(true)
+  const [hasStepsToday, setHasStepsToday] = useState(true)
+  const [trackingStreak, setTrackingStreak] = useState(0)
 
   useEffect(() => {
     if (!profile) return
@@ -31,7 +34,28 @@ export default function ClientHome() {
           p: a.p + m.protein_g, c: a.c + m.carbs_g, f: a.f + m.fat_g
         }), { p: 0, c: 0, f: 0 })
         setTodayMacros(t)
+        setHasFoodToday((data || []).length > 0)
       })
+    supabase.from('daily_logs').select('steps').eq('client_id', profile.id).eq('log_date', today).maybeSingle()
+      .then(({ data }) => setHasStepsToday(data?.steps != null))
+    // tracking streak — consecutive days (today optional, same rule as the workout streak below)
+    // with BOTH a food entry and a steps entry logged
+    const since90 = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10)
+    Promise.all([
+      supabase.from('meal_logs').select('logged_on').eq('client_id', profile.id).gte('logged_on', since90),
+      supabase.from('daily_logs').select('log_date, steps').eq('client_id', profile.id).gte('log_date', since90),
+    ]).then(([{ data: meals }, { data: dailies }]) => {
+      const foodDays = new Set((meals || []).map(m => m.logged_on))
+      const stepDays = new Set((dailies || []).filter(d => d.steps != null).map(d => d.log_date))
+      let count = 0
+      for (let back = 0; back < 90; back++) {
+        const d = new Date(); d.setDate(d.getDate() - back)
+        const ds = d.toISOString().slice(0, 10)
+        if (foodDays.has(ds) && stepDays.has(ds)) count++
+        else if (back > 0) break
+      }
+      setTrackingStreak(count)
+    })
     // calendar week (Monday–Sunday), not a rolling 7-day trailing window —
     // otherwise sessions from last week still count as "this week" for a few days
     const nowForWeek = new Date()
@@ -146,7 +170,8 @@ export default function ClientHome() {
             <div className="eyebrow" style={{ margin: 0 }}>Workhorse Strong</div>
           </div>
           <h1 style={{ fontSize: 26, marginTop: 4 }}>{profile?.full_name || 'Athlete'}
-            {streak >= 2 && <span style={{ fontSize: 14, marginLeft: 8, color: 'var(--orange-hot)', fontWeight: 800 }}>🔥 {streak}</span>}
+            {streak >= 2 && <span title="Workout streak" style={{ fontSize: 14, marginLeft: 8, color: 'var(--orange-hot)', fontWeight: 800 }}>🔥 {streak}</span>}
+            {trackingStreak >= 2 && <span title="Food + steps logging streak" style={{ fontSize: 14, marginLeft: 8, color: 'var(--green)', fontWeight: 800 }}>📋 {trackingStreak}</span>}
           </h1>
           <p className="muted" style={{ fontSize: 13, marginTop: 2, textTransform: 'capitalize' }}>
             Phase: {profile?.phase}
@@ -169,6 +194,19 @@ export default function ClientHome() {
               </div>
             </>
           ) : <strong style={{ fontSize: 14, color: 'var(--green)' }}>Thank you! 🙌</strong>}
+        </div>
+      )}
+
+      {(!hasFoodToday || !hasStepsToday) && (
+        <div className="card" style={{ borderLeft: '3px solid var(--orange)' }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--orange-hot)' }}>
+            {!hasFoodToday && !hasStepsToday ? "Log today's food & steps" : !hasFoodToday ? "Log today's food" : "Log today's steps"}
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Keeps your coach in the loop and your streak alive</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            {!hasFoodToday && <Link to="/app/nutrition" className="btn" style={{ display: 'inline-block', textDecoration: 'none', padding: '7px 14px', fontSize: 12 }}>Log food</Link>}
+            {!hasStepsToday && <Link to="/app/progress" className="btn" style={{ display: 'inline-block', textDecoration: 'none', padding: '7px 14px', fontSize: 12 }}>Log steps</Link>}
+          </div>
         </div>
       )}
 
