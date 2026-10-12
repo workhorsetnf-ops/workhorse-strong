@@ -76,6 +76,48 @@ export function setTargetsFor(wt, base) {
 }
 
 const GRID_COLS = '34px minmax(0, 1fr) 62px 50px 44px 42px'
+// Up to `max` most recent sessions before today, per exercise, newest first:
+// { exId: [{ date, sets: { [setNumber]: {weight, reps} } }] }
+export function buildHistory(logs, today, max = 3) {
+  const out = {}
+  for (const l of logs) {
+    if (!l.weight && !l.reps) continue
+    const day = l.logged_date || (l.logged_at || '').slice(0, 10)
+    if (!day || day >= today) continue
+    const list = out[l.exercise_id] || (out[l.exercise_id] = [])
+    let sess = list.find(s => s.date === day)
+    if (!sess) {
+      if (list.length >= max) continue
+      sess = { date: day, sets: {} }
+      list.push(sess)
+    }
+    if (!sess.sets[l.set_number]) sess.sets[l.set_number] = { weight: l.weight || '', reps: l.reps || '' }
+  }
+  for (const k of Object.keys(out)) out[k].sort((a, b) => (a.date < b.date ? 1 : -1))
+  return out
+}
+
+// The coach types rest however they like: "150s", "90", "2:30", "2 min", "90 sec".
+export function parseRest(text) {
+  const t = String(text || '').toLowerCase()
+  let m = t.match(/(\d+)\s*:\s*(\d{1,2})/)
+  if (m) return +m[1] * 60 + +m[2]
+  m = t.match(/(\d+(?:\.\d+)?)\s*(?:m\b|min)/)
+  if (m) return Math.round(+m[1] * 60)
+  m = t.match(/(\d+)/)
+  return m ? +m[1] : 0
+}
+
+export function fmtClock(s) {
+  const m = Math.floor(s / 60), r = s % 60
+  return `${m}:${r < 10 ? '0' : ''}${r}`
+}
+
+const GRID_COLS_BIG ='34px minmax(0, 1fr) 70px 58px 50px 46px'
+const cellStyleBig = {
+  width: '100%', height: 50, boxSizing: 'border-box', padding: '0 4px', borderRadius: 11,
+  fontSize: 18, fontWeight: 700, textAlign: 'center', fontVariantNumeric: 'tabular-nums',
+}
 const cellStyle = {
   width: '100%', height: 42, boxSizing: 'border-box', padding: '0 4px', borderRadius: 9,
   fontSize: 16, fontWeight: 600, textAlign: 'center', fontVariantNumeric: 'tabular-nums',
@@ -117,6 +159,39 @@ export default function ClientTraining() {
   // every logging input, keyed `${exId}|${setIndex}|${field}`, so Enter can hop to
   // the next cell the way Tab moves across a spreadsheet row
   const cellRefs = useRef({})
+
+  // ---- focus mode: overview → one exercise (or superset) per screen → done ----
+  const [viewMode, setViewModeState] = useState(() => {
+    try { return localStorage.getItem('ws_train_view') === 'list' ? 'list' : 'focus' } catch { return 'focus' }
+  })
+  function setViewMode(v) {
+    setViewModeState(v)
+    try { localStorage.setItem('ws_train_view', v) } catch { /* not remembered, that's all */ }
+  }
+  const [screen, setScreen] = useState('overview') // 'overview' | 'focus' | 'done'
+  const [step, setStep] = useState(0)
+  const [rest, setRest] = useState(null)           // { ends, total, buzzed }
+  const [now, setNow] = useState(() => Date.now())
+  const [history, setHistory] = useState({})
+  const [histOpen, setHistOpen] = useState({})
+  const touchStart = useRef(null)
+  const steps = chunkGroups(exercises)
+
+  // a new workout always opens on its overview
+  useEffect(() => { setScreen('overview'); setStep(0); setRest(null) }, [activeDay?.id])
+
+  // tick while a rest is running; buzz once when it hits zero
+  useEffect(() => {
+    if (!rest || rest.buzzed) return
+    const t = setInterval(() => setNow(Date.now()), 500)
+    return () => clearInterval(t)
+  }, [rest])
+  useEffect(() => {
+    if (rest && !rest.buzzed && now >= rest.ends) {
+      try { navigator.vibrate?.(300) } catch { /* not supported */ }
+      setRest(r => (r ? { ...r, buzzed: true } : r))
+    }
+  }, [now, rest])
 
   useEffect(() => {
     if (!profile) return
@@ -216,7 +291,41 @@ export default function ClientTraining() {
     const rows = log[ex.id] || []
     const filled = fillSet(ex, i, rows)
     setLog(l => ({ ...l, [ex.id]: (l[ex.id] || []).map((s, j) => j === i ? filled : s) }))
-    if (filled.weight || filled.reps) setDoneSets(d => new Set(d).add(key))
+    if (filled.weight || filled.reps) {
+      setDoneSets(d => new Set(d).add(key))
+      maybeStartRest(ex)
+    }
+  }
+
+  // In focus mode, ticking a set starts the rest timer — but in a superset only
+  // the LAST exercise of the round does, so A1 → A2 runs back to back.
+  function maybeStartRest(ex) {
+    if (viewMode !== 'focus' || screen !== 'focus') return
+    const st = steps[step]
+    const lastLift = st && [...st.items].reverse().find(e => e.kind !== 'conditioning')
+    if (!lastLift || lastLift.id !== ex.id) return
+    const secs = parseRest(ex.rest)
+    if (secs) { setRest({ ends: Date.now() + secs * 1000, total: secs }); setNow(Date.now()) }
+  }
+
+  function goStep(n) {
+    if (n >= steps.length) {
+      saveWorkout()
+      setRest(null)
+      setScreen('done')
+    } else {
+      setStep(Math.max(0, n))
+      setScreen('focus')
+    }
+    try { window.scrollTo({ top: 0 }) } catch { /* jsdom etc. */ }
+  }
+
+  function exDoneCount(ex) {
+    if (ex.kind === 'conditioning') return { done: (results[ex.id] || '').toString().trim() ? 1 : 0, total: 1 }
+    const total = (log[ex.id] || []).length
+    let done = 0
+    for (let i = 1; i <= total; i++) if (doneSets.has(`${ex.id}-${i}`)) done++
+    return { done, total }
   }
 
   // Enter moves weight → reps → RIR → next set's weight → next exercise
@@ -275,8 +384,11 @@ export default function ClientTraining() {
           supabase.from('workout_logs').select('exercise_id, set_number, weight, reps, rir, logged_date, logged_at')
             .eq('client_id', profile.id).in('exercise_id', ids)
             .order('logged_at', { ascending: false }).limit(600)
-            .then(({ data: logs }) => setLastSession(buildLastSession(logs || [], todayStr())))
-        } else setLastSession({})
+            .then(({ data: logs }) => {
+              setLastSession(buildLastSession(logs || [], todayStr()))
+              setHistory(buildHistory(logs || [], todayStr(), 3))
+            })
+        } else { setLastSession({}); setHistory({}) }
 
         // rehydrate anything ALREADY saved for TODAY — so switching away and back
         // shows what was actually saved, not a blank form
@@ -417,6 +529,401 @@ export default function ClientTraining() {
     if (!error) { setSaved(true); setTimeout(() => setSaved(false), 2500) }
   }
 
+  // ---- pieces shared by the list view and focus mode ----
+  function renderExtras(ex) {
+    return (
+      <>
+          {flaggedIds.has(ex.id) && flagging !== ex.id && (
+            <p style={{ fontSize: 11.5, color: 'var(--red)', margin: '2px 0 0' }}>⚠️ Flagged for your coach — they'll follow up.</p>
+          )}
+          {flagging === ex.id && (
+            <div style={{ background: 'rgba(214,69,69,0.12)', border: '1px solid var(--red)', borderRadius: 8, padding: 10, margin: '6px 0' }}>
+              <span className="eyebrow" style={{ fontSize: 10, color: 'var(--red)' }}>What's bothering you?</span>
+              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <input placeholder="e.g. sharp pinch in left shoulder on the way up" value={flagNote} onChange={e => setFlagNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitFlag(ex.id)} style={{ padding: '6px 8px', fontSize: 12.5 }} />
+                <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12, borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => submitFlag(ex.id)}>Flag</button>
+              </div>
+            </div>
+          )}
+          {openComments === ex.id && (
+            <div style={{ background: 'var(--steel)', borderRadius: 8, padding: 10, margin: '6px 0' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
+                {(comments[ex.id] || []).map(c => (
+                  <div key={c.id} style={{ fontSize: 12.5 }}>
+                    <strong>{c.author_id === profile.id ? 'You' : 'Coach'}: </strong>{c.body}
+                    <span className="muted" style={{ fontSize: 10.5, marginLeft: 6 }}>{new Date(c.created_at).toLocaleDateString()}</span>
+                  </div>
+                ))}
+                {(comments[ex.id] || []).length === 0 && <p className="muted" style={{ fontSize: 12 }}>No notes on this exercise yet.</p>}
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                <input placeholder="Add a note or question…" value={commentText} onChange={e => setCommentText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendExerciseComment(ex.id)} style={{ padding: '6px 8px', fontSize: 12.5 }} />
+                <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => sendExerciseComment(ex.id)}>Send</button>
+              </div>
+            </div>
+          )}
+      </>
+    )
+  }
+
+  function renderConditioning(ex) {
+    return (
+      <>
+          {ex.kind === 'conditioning' && ex.description && (
+            <p style={{ fontSize: 13.5, margin: '4px 0 8px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{ex.description}</p>
+          )}
+          {ex.kind === 'conditioning' && !ex.tracking_type && (
+            <input placeholder="Result (time, rounds, notes)" value={results[ex.id] || ''}
+              onChange={e => updateResult(ex.id, e.target.value, ex.name)} style={{ marginTop: 4 }} />
+          )}
+          {ex.kind === 'conditioning' && ex.tracking_type === 'count' && (
+            <input inputMode="numeric" placeholder="Count" value={results[ex.id] || ''}
+              onChange={e => updateResult(ex.id, e.target.value, ex.name)} style={{ marginTop: 4 }} />
+          )}
+          {ex.kind === 'conditioning' && ex.tracking_type === 'time' && (
+            <input type="time" value={results[ex.id] || ''}
+              onChange={e => updateResult(ex.id, e.target.value, ex.name)} style={{ marginTop: 4 }} />
+          )}
+          {ex.kind === 'conditioning' && ex.tracking_type === 'yesno' && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              {['Yes', 'No'].map(v => (
+                <button key={v} type="button" className={results[ex.id] === v ? 'btn' : 'btn-ghost'}
+                  style={{ flex: 1, padding: '10px 0', fontSize: 13 }}
+                  onClick={() => updateResult(ex.id, v, ex.name)}>{v}</button>
+              ))}
+            </div>
+          )}
+          {ex.kind === 'conditioning' && ex.tracking_type === 'scale' && (
+            <div style={{ marginTop: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+                <span>Quality</span><span style={{ color: 'var(--orange-hot)' }}>{results[ex.id] || 5}/10</span>
+              </div>
+              <input type="range" min="1" max="10" value={results[ex.id] || 5}
+                onChange={e => updateResult(ex.id, e.target.value, ex.name)}
+                style={{ accentColor: 'var(--orange)', padding: 0 }} />
+            </div>
+          )}
+      </>
+    )
+  }
+
+  // The set-by-set logging grid. `big` is the focus-mode size.
+  function renderSetGrid(ex, big = false) {
+            const rows = log[ex.id] || []
+            const targets = exSetTargets(ex)
+            const last = lastSession[ex.id]
+            const repsHead = ex.metric === 'time' ? 'Secs' : ex.metric === 'distance' ? 'Dist' : 'Reps'
+            const effortHead = ex.progression_type === 'rpe' ? 'RPE' : 'RIR'
+            const plateWeight = [...rows].reverse().find(r => r.weight)?.weight || ''
+            const anyLast = last && Object.keys(last.sets).length > 0
+            const cols = big ? GRID_COLS_BIG : GRID_COLS
+            const cStyle = big ? cellStyleBig : cellStyle
+            return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, padding: '0 2px 2px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>
+                <div>Set</div>
+                <div>Last</div>
+                <div style={{ textAlign: 'center' }}>Lbs</div>
+                <div style={{ textAlign: 'center' }}>{repsHead}</div>
+                <div style={{ textAlign: 'center' }}>{effortHead}</div>
+                <div />
+              </div>
+              {rows.map((s, i) => {
+                const key = `${ex.id}-${i + 1}`
+                const isSaving = savingSets.has(key)
+                const isDone = doneSets.has(key)
+                const prev = last?.sets?.[i + 1]
+                const up = beatLast(s, prev)
+                const t = targets[i] || {}
+                const label = `${ex.name} set ${i + 1}`
+                const cell = field => ({
+                  ref: el => { cellRefs.current[`${ex.id}|${i}|${field}`] = el },
+                  value: s[field],
+                  placeholder: suggestion(ex, i, field),
+                  enterKeyHint: 'next',
+                  onChange: e => updateSet(ex.id, i, field, e.target.value),
+                  onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); focusNext(ex.id, i, field) } },
+                  style: cStyle,
+                })
+                return (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, alignItems: 'center', padding: '5px 2px', borderRadius: 10, background: isDone ? 'rgba(255,90,0,0.10)' : 'transparent', transition: 'background 0.2s' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
+                      <span style={{ fontSize: big ? 17 : 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 2 }}>
+                        {i + 1}
+                        {up && <span title="Beat last time" aria-label="Beat last time" style={{ color: 'var(--orange-hot)', fontSize: 12 }}>▲</span>}
+                      </span>
+                      {t.reps != null && t.reps !== '' && <span className="muted" style={{ fontSize: 10.5 }}>{t.reps}</span>}
+                    </div>
+                    <div className="muted" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {prev ? `${prev.weight || '–'} × ${prev.reps || '–'}` : '—'}
+                      {isSaving && <div style={{ fontSize: 10 }}>Saving…</div>}
+                    </div>
+                    <input inputMode="decimal" aria-label={`${label} weight`} {...cell('weight')} />
+                    <input inputMode="numeric" aria-label={`${label} ${repsHead.toLowerCase()}`} {...cell('reps')} />
+                    <input inputMode="decimal" aria-label={`${label} ${effortHead}`} {...cell('rir')} />
+                    <button type="button" onClick={() => toggleDone(ex, i)}
+                      aria-label={`${isDone ? 'Unmark' : 'Mark'} ${label} done`} aria-pressed={isDone}
+                      style={{ width: big ? 46 : 42, height: big ? 46 : 42, padding: 0, borderRadius: 23, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 900, cursor: 'pointer',
+                        background: isDone ? 'var(--orange)' : 'transparent', color: isDone ? '#140A02' : 'var(--muted)',
+                        border: isDone ? '1px solid var(--orange)' : '1.5px solid #3A3A40' }}>
+                      ✓
+                    </button>
+                  </div>
+                )
+              })}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', marginTop: 4, flexWrap: 'wrap' }}>
+                {anyLast
+                  ? <button type="button" className="btn-ghost" onClick={() => copyLastWeek(ex)} style={{ padding: '8px 12px', fontSize: 12.5 }}>⧉ Copy last session</button>
+                  : <span className="muted" style={{ fontSize: 11.5 }}>First time logging this one</span>}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <PlateCalc weight={plateWeight} />
+                  {!big && <RestTimer restText={ex.rest} />}
+                </div>
+              </div>
+            </div>
+            )
+  }
+
+  function renderCard(ex, grouped) {
+    return (
+        <div className="card" key={ex.id} style={grouped ? { border: 'none', borderRadius: 8 } : undefined}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+            {ex.icon_url && <img className="thumb" src={ex.icon_url} alt="" style={{ width: 42, height: 42, borderRadius: 8, objectFit: 'cover', marginRight: -2 }} />}
+            <strong style={{ fontSize: 15 }}>{ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter}) </span>}{ex.name}</strong>
+            <button onClick={() => setFlagging(flagging === ex.id ? null : ex.id)} className="btn-ghost"
+              style={{ padding: '3px 9px', fontSize: 11, marginLeft: 'auto', color: flaggedIds.has(ex.id) ? 'var(--red)' : undefined, borderColor: flaggedIds.has(ex.id) ? 'var(--red)' : undefined }}
+              title="Flag pain or discomfort">⚠️</button>
+            <button onClick={() => openExerciseComments(ex.id)} className="btn-ghost" style={{ padding: '3px 9px', fontSize: 11 }}>
+              💬 {commentCounts[ex.id] > 0 ? commentCounts[ex.id] : ''}
+            </button>
+            {ex.kind !== 'conditioning' && <span style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700 }}>{targetText(ex)}</span>}
+          </div>
+          {renderExtras(ex)}
+          {ex.kind !== 'conditioning' && ex.progression_type === 'percent' && !maxes[(ex.based_on_lift || ex.name).toLowerCase()] && (
+            <p className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>No max on file for {ex.based_on_lift || ex.name} — ask your coach to set it.</p>
+          )}
+          {ex.notes && <p className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>{ex.notes}</p>}
+          {ex.video_url && (
+            <a href={ex.video_url} target="_blank" rel="noreferrer"
+              style={{ display: 'inline-block', fontSize: 12.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+              ▶ Watch demo
+            </a>
+          )}
+          {ex.kind === 'conditioning' && renderConditioning(ex)}
+          {ex.kind !== 'conditioning' && renderSetGrid(ex)}
+        </div>
+    )
+  }
+
+  // ---------------- focus mode screens ----------------
+  function renderFocus() {
+    if (!exercises.length) return null
+    const lifts = exercises.filter(e => e.kind !== 'conditioning')
+    const totalSets = lifts.reduce((n, e) => n + (log[e.id] || []).length, 0)
+    const doneCount = lifts.reduce((n, e) => n + exDoneCount(e).done, 0)
+    const anyDone = doneCount > 0 || exercises.some(e => e.kind === 'conditioning' && exDoneCount(e).done)
+
+    if (screen === 'overview') {
+      const firstOpen = steps.findIndex(st => st.items.some(e => { const c = exDoneCount(e); return c.done < c.total }))
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div>
+            <div className="eyebrow">Week {week}{totalSets ? ` · ${exercises.length} exercises · ${totalSets} sets` : ''}</div>
+            <h2 style={{ fontSize: 34, lineHeight: 1, marginTop: 4, textTransform: 'uppercase' }}>{activeDay.day_label}</h2>
+          </div>
+          {steps.map((st, si) => (
+            <button key={si} type="button" onClick={() => goStep(si)} className="card"
+              style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 9, width: '100%', color: 'inherit', font: 'inherit' }}>
+              {st.grouped && (
+                <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--orange-hot)' }}>
+                  {st.items.length === 2 ? 'Superset' : 'Circuit'} {st.prefix} · alternate each round
+                </span>
+              )}
+              {st.items.map(ex => {
+                const c = exDoneCount(ex)
+                const full = c.total > 0 && c.done >= c.total
+                return (
+                  <span key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {ex.icon_url
+                      ? <img className="thumb" src={ex.icon_url} alt="" style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover', flexShrink: 0 }} />
+                      : <span style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 9, background: 'rgba(255,90,0,0.12)', color: 'var(--orange-hot)', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{ex.letter || '•'}</span>}
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <strong style={{ display: 'block', fontSize: 15 }}>{ex.name}</strong>
+                      <span className="muted" style={{ fontSize: 12 }}>{ex.kind === 'conditioning' ? 'Conditioning' : targetText(ex)}</span>
+                    </span>
+                    <span style={{ flexShrink: 0, minWidth: 44, height: 28, padding: '0 9px', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800,
+                      background: full ? 'var(--orange)' : c.done ? 'rgba(255,90,0,0.14)' : 'var(--steel)', color: full ? '#140A02' : c.done ? 'var(--orange-hot)' : 'var(--muted)' }}>
+                      {full ? 'Done' : ex.kind === 'conditioning' ? '—' : `${c.done}/${c.total}`}
+                    </span>
+                  </span>
+                )
+              })}
+            </button>
+          ))}
+          <button className="btn" style={{ height: 56, fontSize: 17, marginTop: 4 }}
+            onClick={() => goStep(anyDone && firstOpen >= 0 ? firstOpen : 0)}>
+            {anyDone ? 'Continue workout' : 'Start workout'}
+          </button>
+          <button type="button" className="btn-ghost" style={{ padding: '8px 12px', fontSize: 12.5, alignSelf: 'center' }} onClick={() => setViewMode('list')}>
+            Show everything on one page instead
+          </button>
+        </div>
+      )
+    }
+
+    if (screen === 'done') {
+      let beat = 0
+      for (const ex of lifts) (log[ex.id] || []).forEach((s, i) => {
+        if (doneSets.has(`${ex.id}-${i + 1}`) && beatLast(s, lastSession[ex.id]?.sets?.[i + 1])) beat++
+      })
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', textAlign: 'center', paddingTop: 24 }}>
+          <div style={{ width: 84, height: 84, borderRadius: 42, background: 'var(--orange)', color: '#140A02', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 42, fontWeight: 900 }}>✓</div>
+          <h2 style={{ fontSize: 38, lineHeight: 1, textTransform: 'uppercase' }}>Workout done</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, width: '100%' }}>
+            <div className="card" style={{ padding: '16px 10px' }}>
+              <div style={{ fontSize: 34, fontWeight: 800, color: 'var(--orange-hot)', lineHeight: 1 }}>{doneCount}/{totalSets}</div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Sets logged</div>
+            </div>
+            <div className="card" style={{ padding: '16px 10px' }}>
+              <div style={{ fontSize: 34, fontWeight: 800, color: 'var(--orange-hot)', lineHeight: 1 }}>{beat}</div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Sets beat last time</div>
+            </div>
+          </div>
+          {activeDay.cooldown && (
+            <div className="card" style={{ borderLeft: '3px solid var(--orange)', textAlign: 'left', width: '100%', boxSizing: 'border-box' }}>
+              <span className="eyebrow" style={{ fontSize: 10 }}>Cooldown</span>
+              <p style={{ fontSize: 13.5, marginTop: 3, lineHeight: 1.5 }}>
+                {activeDay.cooldown}
+                {activeDay.cooldown_video && <a href={activeDay.cooldown_video} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ demo</a>}
+              </p>
+            </div>
+          )}
+          <p className="muted" style={{ fontSize: 13.5 }}>{savingSets.size ? 'Saving…' : "Everything's saved. Your coach can see it now."}</p>
+          <button className="btn-ghost" style={{ width: '100%', padding: '14px 0', fontSize: 14 }} onClick={() => setScreen('overview')}>Back to overview</button>
+        </div>
+      )
+    }
+
+    // ---- one step: a single exercise, or a whole superset/circuit ----
+    const st = steps[Math.min(step, steps.length - 1)]
+    const lastLift = [...st.items].reverse().find(e => e.kind !== 'conditioning')
+    const defaultRest = parseRest(lastLift?.rest)
+    const left = rest ? Math.max(0, Math.ceil((rest.ends - now) / 1000)) : 0
+    const resting = !!rest && left > 0
+    const nextSt = steps[step + 1]
+    const nextLabel = !nextSt ? 'Finish workout'
+      : nextSt.grouped ? `Next: ${nextSt.items.length === 2 ? 'Superset' : 'Circuit'} ${nextSt.prefix}`
+      : `Next: ${nextSt.items[0].name}`
+
+    return (
+      <div
+        onTouchStart={e => { const t = e.touches?.[0]; touchStart.current = t ? { x: t.clientX, y: t.clientY, tag: e.target?.tagName } : null }}
+        onTouchEnd={e => {
+          const s = touchStart.current; touchStart.current = null
+          const t = e.changedTouches?.[0]
+          if (!s || !t || s.tag === 'INPUT') return
+          const dx = t.clientX - s.x, dy = t.clientY - s.y
+          if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx)) return
+          if (dx < 0) goStep(step + 1)
+          else if (step > 0) goStep(step - 1)
+        }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+        <div style={{ position: 'sticky', top: 0, zIndex: 5, background: 'rgba(11,11,12,0.94)', backdropFilter: 'blur(6px)', padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <button type="button" className="btn-ghost" aria-label="Back to workout overview" onClick={() => setScreen('overview')}
+              style={{ width: 44, height: 44, padding: 0, fontSize: 18 }}>☰</button>
+            <button type="button" onClick={() => {
+                if (resting) setRest(null)
+                else { const secs = defaultRest || 90; setRest({ ends: Date.now() + secs * 1000, total: secs }); setNow(Date.now()) }
+              }}
+              aria-label={resting ? 'Resting — tap to skip' : 'Start rest timer'}
+              style={{ height: 44, padding: '0 18px', borderRadius: 22, fontSize: 16, fontWeight: 800, fontVariantNumeric: 'tabular-nums', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+                background: resting ? 'var(--orange)' : rest ? 'rgba(255,90,0,0.14)' : 'var(--steel)',
+                color: resting ? '#140A02' : rest ? 'var(--orange-hot)' : 'inherit',
+                border: resting || rest ? '1px solid var(--orange)' : '1px solid var(--line)' }}>
+              ⏱ {resting ? fmtClock(left) : rest ? 'Rest over · go' : defaultRest ? `Rest ${fmtClock(defaultRest)}` : 'Rest timer'}
+            </button>
+            <span className="muted" style={{ width: 44, textAlign: 'right', fontSize: 13, fontWeight: 800 }}>{step + 1} / {steps.length}</span>
+          </div>
+          <div aria-hidden="true" style={{ display: 'flex', gap: 5 }}>
+            {steps.map((_, i) => (
+              <span key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i < step ? 'var(--orange)' : i === step ? 'var(--orange-hot)' : 'var(--steel)' }} />
+            ))}
+          </div>
+        </div>
+
+        {st.grouped && (
+          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--orange-hot)' }}>
+            {st.items.length === 2 ? 'Superset' : 'Circuit'} {st.prefix} · one set of each, then rest
+          </span>
+        )}
+
+        {st.items.map(ex => ex.kind === 'conditioning' ? renderCard(ex, false) : (
+          <div key={ex.id} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              {ex.icon_url
+                ? <img className="thumb" src={ex.icon_url} alt="" style={{ width: 52, height: 52, borderRadius: 12, objectFit: 'cover', flexShrink: 0 }} />
+                : <span style={{ width: 52, height: 52, flexShrink: 0, borderRadius: 12, background: 'rgba(255,90,0,0.12)', color: 'var(--orange-hot)', fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{ex.letter || '•'}</span>}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h2 style={{ fontSize: 28, lineHeight: 1, textTransform: 'uppercase' }}>
+                  {ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter} · </span>}{ex.name}
+                </h2>
+                <div style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700, marginTop: 4 }}>{targetText(ex)}</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {ex.video_url && (
+                <a href={ex.video_url} target="_blank" rel="noreferrer" className="btn-ghost"
+                  style={{ padding: '8px 12px', fontSize: 12.5, fontWeight: 700, textDecoration: 'none' }}>▶ Demo</a>
+              )}
+              {history[ex.id]?.length > 0 && (
+                <button type="button" className={histOpen[ex.id] ? 'btn' : 'btn-ghost'} aria-expanded={!!histOpen[ex.id]}
+                  onClick={() => setHistOpen(h => ({ ...h, [ex.id]: !h[ex.id] }))} style={{ padding: '8px 12px', fontSize: 12.5 }}>↺ History</button>
+              )}
+              <button type="button" className="btn-ghost" onClick={() => openExerciseComments(ex.id)} style={{ padding: '8px 12px', fontSize: 12.5 }}>
+                💬 {commentCounts[ex.id] > 0 ? commentCounts[ex.id] : 'Notes'}
+              </button>
+              <button type="button" className="btn-ghost" onClick={() => setFlagging(flagging === ex.id ? null : ex.id)} title="Flag pain or discomfort"
+                style={{ padding: '8px 12px', fontSize: 12.5, color: flaggedIds.has(ex.id) ? 'var(--red)' : undefined, borderColor: flaggedIds.has(ex.id) ? 'var(--red)' : undefined }}>⚠️</button>
+            </div>
+
+            {renderExtras(ex)}
+            {ex.progression_type === 'percent' && !maxes[(ex.based_on_lift || ex.name).toLowerCase()] && (
+              <p className="muted" style={{ fontSize: 12.5 }}>No max on file for {ex.based_on_lift || ex.name} — ask your coach to set it.</p>
+            )}
+            {ex.notes && <p className="muted" style={{ fontSize: 12.5 }}>{ex.notes}</p>}
+
+            {histOpen[ex.id] && (
+              <div className="card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {(history[ex.id] || []).map(h => (
+                  <div key={h.date} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12.5 }}>
+                    <span className="muted">{new Date(h.date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
+                      {Object.keys(h.sets).sort((a, b) => a - b).map(n => `${h.sets[n].weight || '–'}×${h.sets[n].reps || '–'}`).join(' · ')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {renderSetGrid(ex, true)}
+          </div>
+        ))}
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+          <button type="button" className="btn-ghost" aria-label="Previous exercise" disabled={step === 0} onClick={() => goStep(step - 1)}
+            style={{ width: 56, height: 56, padding: 0, fontSize: 20, opacity: step === 0 ? 0.35 : 1 }}>‹</button>
+          <button type="button" className="btn" onClick={() => goStep(step + 1)} style={{ flex: 1, height: 56, fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {nextLabel}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (!program) return (
     <div className="card">
       <h2 style={{ fontSize: 18 }}>No program yet</h2>
@@ -424,8 +931,13 @@ export default function ClientTraining() {
     </div>
   )
 
+  // in focus mode, once a workout is underway the page is just the workout
+  const immersive = viewMode === 'focus' && !!activeDay && !calMode && !awayMode && screen !== 'overview' && exercises.length > 0
+  const showList = viewMode === 'list' || exercises.length === 0
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {!immersive && <>
       <header>
         <div className="eyebrow">
           Training · {block?.name || 'Block 1'} · Week {week} of {blockWeeks}
@@ -440,6 +952,13 @@ export default function ClientTraining() {
           onClick={() => setCalMode(!calMode)}>📅</button>
         <button className={awayMode ? 'btn' : 'btn-ghost'} style={{ padding: '10px 14px', fontSize: 13 }}
           onClick={() => setAwayMode(!awayMode)} title="Traveling / no equipment">✈️</button>
+        {activeDay && !calMode && !awayMode && (
+          <button className="btn-ghost" style={{ padding: '10px 14px', fontSize: 12.5 }}
+            onClick={() => setViewMode(viewMode === 'focus' ? 'list' : 'focus')}
+            title={viewMode === 'focus' ? 'Show the whole workout on one page' : 'One exercise at a time'}>
+            {viewMode === 'focus' ? '☰ List' : '▣ Focus'}
+          </button>
+        )}
         {!calMode && days.filter(d => (d.track || 'exercise') === 'exercise' && dayShowsInWeek(d, rotations, week)).map(d => (
           <button key={d.id} className={activeDay?.id === d.id ? 'btn' : 'btn-ghost'}
             style={{ padding: '10px 16px', fontSize: 13 }}
@@ -451,8 +970,9 @@ export default function ClientTraining() {
             onClick={() => setActiveDay(d)}>{d.day_label}</button>
         ))}
       </div>
+      </>}
 
-      {!calMode && !awayMode && activeDay && (() => {
+      {!calMode && !awayMode && activeDay && showList && (() => {
         const total = exercises.filter(e => e.kind !== 'conditioning').reduce((n, e) => n + (log[e.id] || []).length, 0)
         if (!total) return null
         const done = Math.min(doneSets.size, total)
@@ -569,7 +1089,7 @@ export default function ClientTraining() {
         )
       })()}
 
-      {!calMode && !awayMode && activeDay && (activeDay.notes || activeDay.video_note || activeDay.warmup) && (
+      {!calMode && !awayMode && activeDay && (showList || screen === 'overview') && (activeDay.notes || activeDay.video_note || activeDay.warmup) && (
         <div className="card">
           {activeDay.notes && <p style={{ fontSize: 13.5, lineHeight: 1.5 }}>{activeDay.notes}</p>}
           {activeDay.video_note && (loomEmbed(activeDay.video_note)
@@ -587,169 +1107,11 @@ export default function ClientTraining() {
         </div>
       )}
 
-      {!calMode && !awayMode && activeDay && chunkGroups(exercises).map((g, gi) => {
+      {!calMode && !awayMode && activeDay && !showList && renderFocus()}
+
+      {!calMode && !awayMode && activeDay && showList && chunkGroups(exercises).map((g, gi) => {
         const color = GROUP_COLORS[((g.prefix.charCodeAt(0) || 65) - 65) % GROUP_COLORS.length]
-        const inner = g.items.map(ex => (
-        <div className="card" key={ex.id} style={g.grouped ? { border: 'none', borderRadius: 8 } : undefined}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-            {ex.icon_url && <img className="thumb" src={ex.icon_url} alt="" style={{ width: 42, height: 42, borderRadius: 8, objectFit: 'cover', marginRight: -2 }} />}
-            <strong style={{ fontSize: 15 }}>{ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter}) </span>}{ex.name}</strong>
-            <button onClick={() => setFlagging(flagging === ex.id ? null : ex.id)} className="btn-ghost"
-              style={{ padding: '3px 9px', fontSize: 11, marginLeft: 'auto', color: flaggedIds.has(ex.id) ? 'var(--red)' : undefined, borderColor: flaggedIds.has(ex.id) ? 'var(--red)' : undefined }}
-              title="Flag pain or discomfort">⚠️</button>
-            <button onClick={() => openExerciseComments(ex.id)} className="btn-ghost" style={{ padding: '3px 9px', fontSize: 11 }}>
-              💬 {commentCounts[ex.id] > 0 ? commentCounts[ex.id] : ''}
-            </button>
-            {ex.kind !== 'conditioning' && <span style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700 }}>{targetText(ex)}</span>}
-          </div>
-          {flaggedIds.has(ex.id) && flagging !== ex.id && (
-            <p style={{ fontSize: 11.5, color: 'var(--red)', margin: '2px 0 0' }}>⚠️ Flagged for your coach — they'll follow up.</p>
-          )}
-          {flagging === ex.id && (
-            <div style={{ background: 'rgba(214,69,69,0.12)', border: '1px solid var(--red)', borderRadius: 8, padding: 10, margin: '6px 0' }}>
-              <span className="eyebrow" style={{ fontSize: 10, color: 'var(--red)' }}>What's bothering you?</span>
-              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                <input placeholder="e.g. sharp pinch in left shoulder on the way up" value={flagNote} onChange={e => setFlagNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitFlag(ex.id)} style={{ padding: '6px 8px', fontSize: 12.5 }} />
-                <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12, borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => submitFlag(ex.id)}>Flag</button>
-              </div>
-            </div>
-          )}
-          {openComments === ex.id && (
-            <div style={{ background: 'var(--steel)', borderRadius: 8, padding: 10, margin: '6px 0' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
-                {(comments[ex.id] || []).map(c => (
-                  <div key={c.id} style={{ fontSize: 12.5 }}>
-                    <strong>{c.author_id === profile.id ? 'You' : 'Coach'}: </strong>{c.body}
-                    <span className="muted" style={{ fontSize: 10.5, marginLeft: 6 }}>{new Date(c.created_at).toLocaleDateString()}</span>
-                  </div>
-                ))}
-                {(comments[ex.id] || []).length === 0 && <p className="muted" style={{ fontSize: 12 }}>No notes on this exercise yet.</p>}
-              </div>
-              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                <input placeholder="Add a note or question…" value={commentText} onChange={e => setCommentText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendExerciseComment(ex.id)} style={{ padding: '6px 8px', fontSize: 12.5 }} />
-                <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => sendExerciseComment(ex.id)}>Send</button>
-              </div>
-            </div>
-          )}
-          {ex.kind === 'conditioning' && ex.description && (
-            <p style={{ fontSize: 13.5, margin: '4px 0 8px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{ex.description}</p>
-          )}
-          {ex.kind !== 'conditioning' && ex.progression_type === 'percent' && !maxes[(ex.based_on_lift || ex.name).toLowerCase()] && (
-            <p className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>No max on file for {ex.based_on_lift || ex.name} — ask your coach to set it.</p>
-          )}
-          {ex.notes && <p className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>{ex.notes}</p>}
-          {ex.video_url && (
-            <a href={ex.video_url} target="_blank" rel="noreferrer"
-              style={{ display: 'inline-block', fontSize: 12.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-              ▶ Watch demo
-            </a>
-          )}
-          {ex.kind === 'conditioning' && !ex.tracking_type && (
-            <input placeholder="Result (time, rounds, notes)" value={results[ex.id] || ''}
-              onChange={e => updateResult(ex.id, e.target.value, ex.name)} style={{ marginTop: 4 }} />
-          )}
-          {ex.kind === 'conditioning' && ex.tracking_type === 'count' && (
-            <input inputMode="numeric" placeholder="Count" value={results[ex.id] || ''}
-              onChange={e => updateResult(ex.id, e.target.value, ex.name)} style={{ marginTop: 4 }} />
-          )}
-          {ex.kind === 'conditioning' && ex.tracking_type === 'time' && (
-            <input type="time" value={results[ex.id] || ''}
-              onChange={e => updateResult(ex.id, e.target.value, ex.name)} style={{ marginTop: 4 }} />
-          )}
-          {ex.kind === 'conditioning' && ex.tracking_type === 'yesno' && (
-            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-              {['Yes', 'No'].map(v => (
-                <button key={v} type="button" className={results[ex.id] === v ? 'btn' : 'btn-ghost'}
-                  style={{ flex: 1, padding: '10px 0', fontSize: 13 }}
-                  onClick={() => updateResult(ex.id, v, ex.name)}>{v}</button>
-              ))}
-            </div>
-          )}
-          {ex.kind === 'conditioning' && ex.tracking_type === 'scale' && (
-            <div style={{ marginTop: 6 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
-                <span>Quality</span><span style={{ color: 'var(--orange-hot)' }}>{results[ex.id] || 5}/10</span>
-              </div>
-              <input type="range" min="1" max="10" value={results[ex.id] || 5}
-                onChange={e => updateResult(ex.id, e.target.value, ex.name)}
-                style={{ accentColor: 'var(--orange)', padding: 0 }} />
-            </div>
-          )}
-          {ex.kind !== 'conditioning' && (() => {
-            const rows = log[ex.id] || []
-            const targets = exSetTargets(ex)
-            const last = lastSession[ex.id]
-            const repsHead = ex.metric === 'time' ? 'Secs' : ex.metric === 'distance' ? 'Dist' : 'Reps'
-            const effortHead = ex.progression_type === 'rpe' ? 'RPE' : 'RIR'
-            const plateWeight = [...rows].reverse().find(r => r.weight)?.weight || ''
-            const anyLast = last && Object.keys(last.sets).length > 0
-            return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: GRID_COLS, gap: 6, padding: '0 2px 2px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>
-                <div>Set</div>
-                <div>Last</div>
-                <div style={{ textAlign: 'center' }}>Lbs</div>
-                <div style={{ textAlign: 'center' }}>{repsHead}</div>
-                <div style={{ textAlign: 'center' }}>{effortHead}</div>
-                <div />
-              </div>
-              {rows.map((s, i) => {
-                const key = `${ex.id}-${i + 1}`
-                const isSaving = savingSets.has(key)
-                const isDone = doneSets.has(key)
-                const prev = last?.sets?.[i + 1]
-                const up = beatLast(s, prev)
-                const t = targets[i] || {}
-                const label = `${ex.name} set ${i + 1}`
-                const cell = field => ({
-                  ref: el => { cellRefs.current[`${ex.id}|${i}|${field}`] = el },
-                  value: s[field],
-                  placeholder: suggestion(ex, i, field),
-                  enterKeyHint: 'next',
-                  onChange: e => updateSet(ex.id, i, field, e.target.value),
-                  onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); focusNext(ex.id, i, field) } },
-                  style: cellStyle,
-                })
-                return (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: GRID_COLS, gap: 6, alignItems: 'center', padding: '5px 2px', borderRadius: 10, background: isDone ? 'rgba(255,90,0,0.10)' : 'transparent', transition: 'background 0.2s' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
-                      <span style={{ fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 2 }}>
-                        {i + 1}
-                        {up && <span title="Beat last time" aria-label="Beat last time" style={{ color: 'var(--orange-hot)', fontSize: 12 }}>▲</span>}
-                      </span>
-                      {t.reps != null && t.reps !== '' && <span className="muted" style={{ fontSize: 10.5 }}>{t.reps}</span>}
-                    </div>
-                    <div className="muted" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {prev ? `${prev.weight || '–'} × ${prev.reps || '–'}` : '—'}
-                      {isSaving && <div style={{ fontSize: 10 }}>Saving…</div>}
-                    </div>
-                    <input inputMode="decimal" aria-label={`${label} weight`} {...cell('weight')} />
-                    <input inputMode="numeric" aria-label={`${label} ${repsHead.toLowerCase()}`} {...cell('reps')} />
-                    <input inputMode="decimal" aria-label={`${label} ${effortHead}`} {...cell('rir')} />
-                    <button type="button" onClick={() => toggleDone(ex, i)}
-                      aria-label={`${isDone ? 'Unmark' : 'Mark'} ${label} done`} aria-pressed={isDone}
-                      style={{ width: 42, height: 42, padding: 0, borderRadius: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 900, cursor: 'pointer',
-                        background: isDone ? 'var(--orange)' : 'transparent', color: isDone ? '#140A02' : 'var(--muted)',
-                        border: isDone ? '1px solid var(--orange)' : '1.5px solid #3A3A40' }}>
-                      ✓
-                    </button>
-                  </div>
-                )
-              })}
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', marginTop: 4, flexWrap: 'wrap' }}>
-                {anyLast
-                  ? <button type="button" className="btn-ghost" onClick={() => copyLastWeek(ex)} style={{ padding: '8px 12px', fontSize: 12.5 }}>⧉ Copy last session</button>
-                  : <span className="muted" style={{ fontSize: 11.5 }}>First time logging this one</span>}
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <PlateCalc weight={plateWeight} />
-                  <RestTimer restText={ex.rest} />
-                </div>
-              </div>
-            </div>
-            )
-          })()}
-        </div>
-        ))
+        const inner = g.items.map(ex => renderCard(ex, g.grouped))
         return g.grouped ? (
           <div key={gi} style={{ border: `1px solid ${color}`, borderLeft: `4px solid ${color}`, borderRadius: 10, padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color, padding: '2px 2px 0' }}>
@@ -760,7 +1122,7 @@ export default function ClientTraining() {
         ) : inner
       })}
 
-      {!calMode && !awayMode && activeDay && activeDay.cooldown && (
+      {!calMode && !awayMode && activeDay && showList && activeDay.cooldown && (
         <div className="card" style={{ borderLeft: '3px solid var(--orange)' }}>
           <span className="eyebrow" style={{ fontSize: 10 }}>Cooldown</span>
           <p style={{ fontSize: 13.5, marginTop: 3, lineHeight: 1.5 }}>
@@ -770,10 +1132,10 @@ export default function ClientTraining() {
         </div>
       )}
 
-      {!calMode && !awayMode && activeDay && exercises.length > 0 && (
+      {!calMode && !awayMode && activeDay && showList && exercises.length > 0 && (
         <button className="btn" onClick={saveWorkout}>{saved ? 'Workout saved ✓' : 'Save workout'}</button>
       )}
-      {!calMode && !awayMode && activeDay && exercises.length > 0 && (
+      {!calMode && !awayMode && activeDay && showList && exercises.length > 0 && (
         <p className="muted" style={{ fontSize: 11, textAlign: 'center', marginTop: -8 }}>Every set saves automatically a moment after you enter it — this button is just a final confirmation.</p>
       )}
     </div>
