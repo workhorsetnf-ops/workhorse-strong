@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { resolveAssignment, rotationForWeek, dayShowsInWeek, daysBetween, resolveBlockWeek, setTargets, hasVariedSets, repsSummary, targetSummary } from '../../lib/weeks'
+import { resolveAssignment, rotationForWeek, dayShowsInWeek, daysBetween, resolveBlockWeek } from '../../lib/weeks'
 import { useAuth } from '../../context/AuthContext'
 import RestTimer from '../../lib/RestTimer'
 import PlateCalc from '../../lib/PlateCalc'
@@ -40,10 +39,50 @@ const BODYWEIGHT_SUBS = [
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
 
+// Rows arrive newest first. For each exercise, the first day we meet that isn't
+// today (and has a real value) is "last session"; we keep every set from that day.
+export function buildLastSession(logs, today) {
+  const out = {}
+  for (const l of logs) {
+    if (!l.weight && !l.reps) continue
+    const day = l.logged_date || (l.logged_at || '').slice(0, 10)
+    if (!day || day >= today) continue
+    const cur = out[l.exercise_id]
+    if (!cur) out[l.exercise_id] = { date: day, sets: {} }
+    else if (cur.date !== day) continue
+    const sets = out[l.exercise_id].sets
+    if (!sets[l.set_number]) sets[l.set_number] = { weight: l.weight || '', reps: l.reps || '', rir: l.rir || '' }
+  }
+  return out
+}
+
+// More weight than last time, or the same weight for more reps.
+export function beatLast(cur, last) {
+  if (!cur || !last) return false
+  const w = parseFloat(cur.weight), r = parseFloat(cur.reps)
+  const lw = parseFloat(last.weight), lr = parseFloat(last.reps)
+  if (isNaN(w) || isNaN(r) || isNaN(lw) || isNaN(lr)) return false
+  return w > lw || (w === lw && r > lr)
+}
+
+// Per-set targets for one week: setRows (per-set programming) where present,
+// padded from the week's base values and cut to the set count.
+export function setTargetsFor(wt, base) {
+  const rows = Array.isArray(wt?.setRows) ? wt.setRows : []
+  return Array.from({ length: base.sets || 0 }, (_, i) => ({
+    reps: rows[i]?.reps ?? base.reps,
+    target: rows[i]?.target ?? rows[i]?.rir ?? base.target,
+  }))
+}
+
+const GRID_COLS = '34px minmax(0, 1fr) 62px 50px 44px 42px'
+const cellStyle = {
+  width: '100%', height: 42, boxSizing: 'border-box', padding: '0 4px', borderRadius: 9,
+  fontSize: 16, fontWeight: 600, textAlign: 'center', fontVariantNumeric: 'tabular-nums',
+}
+
 export default function ClientTraining() {
   const { profile } = useAuth()
-  const location = useLocation()
-  const navigate = useNavigate()
   const [program, setProgram] = useState(null)
   const [allBlocks, setAllBlocks] = useState([])
   const [block, setBlock] = useState(null)
@@ -58,7 +97,10 @@ export default function ClientTraining() {
   const [maxes, setMaxes] = useState({})
   const [log, setLog] = useState({})
   const [results, setResults] = useState({})
-  const [lastLogged, setLastLogged] = useState({})   // exerciseId -> {weight, reps, date}
+  // exerciseId -> { date, sets: { [setNumber]: {weight, reps, rir} } } — the most
+  // recent session BEFORE today, so each row can show what that set did last time
+  const [lastSession, setLastSession] = useState({})
+  const [doneSets, setDoneSets] = useState(new Set()) // `${exId}-${setNumber}` the client has ticked off
   const [openComments, setOpenComments] = useState(null)
   const [comments, setComments] = useState({})
   const [commentText, setCommentText] = useState('')
@@ -72,6 +114,9 @@ export default function ClientTraining() {
 
   // debounce timers for auto-save, keyed per set (or per conditioning result)
   const saveTimers = useRef({})
+  // every logging input, keyed `${exId}|${setIndex}|${field}`, so Enter can hop to
+  // the next cell the way Tab moves across a spreadsheet row
+  const cellRefs = useRef({})
 
   useEffect(() => {
     if (!profile) return
@@ -84,24 +129,12 @@ export default function ClientTraining() {
         setStartDate(data.start_date || null)
         const { data: bs } = await supabase.from('program_blocks').select('*').eq('program_id', data.program_id).order('position')
         setAllBlocks(bs || [])
-
-        // Arriving from the Calendar tab ("open this day's workout") jumps
-        // straight to that specific block/week instead of whatever week
-        // resolveAssignment would otherwise land on.
-        const target = location.state
-        let activeBlock, activeWeek
-        if (target?.targetBlockId) {
-          activeBlock = (bs || []).find(b => b.id === target.targetBlockId) || null
-          activeWeek = target.targetWeek || 1
-        } else {
-          // On 'auto' this walks the start date forward on its own; on 'manual' it's
-          // whatever the coach last set. Either way one helper decides, so the day
-          // tabs and the calendar below can't disagree about what week it is.
-          const pos = resolveAssignment(data, bs || [])
-          activeBlock = pos.block
-          activeWeek = pos.weekInBlock
-        }
-        setWeek(activeWeek)
+        // On 'auto' this walks the start date forward on its own; on 'manual' it's
+        // whatever the coach last set. Either way one helper decides, so the day
+        // tabs and the calendar below can't disagree about what week it is.
+        const pos = resolveAssignment(data, bs || [])
+        const activeBlock = pos.block
+        setWeek(pos.weekInBlock)
         setBlock(activeBlock || null)
         if (activeBlock) {
           const [{ data: d }, { data: r }] = await Promise.all([
@@ -110,14 +143,6 @@ export default function ClientTraining() {
           ])
           setDays(d || [])
           setRotations(r || [])
-          if (target?.targetDayNumber != null) {
-            const inRotation = (d || []).find(x => x.day_number === target.targetDayNumber && dayShowsInWeek(x, r || [], activeWeek))
-            const anyMatch = inRotation || (d || []).find(x => x.day_number === target.targetDayNumber)
-            if (anyMatch) setActiveDay(anyMatch)
-            // clear the one-time navigation state so a later visit via the bottom
-            // nav (or a browser refresh) falls back to the normal "current" day
-            navigate(location.pathname, { replace: true, state: null })
-          }
         }
       })
     supabase.from('client_maxes').select('*').eq('client_id', profile.id)
@@ -134,41 +159,89 @@ export default function ClientTraining() {
       sets: wt?.sets ?? ex.sets,
       reps: wt?.reps ?? ex.reps,
       target: wt?.target ?? ex.rir,
-      entry: wt,
     }
   }
 
-  // One resolved target per set, so set 1 can be a heavy 4-9 while sets 2-3 are
-  // 6-12. Exercises with no per-set data return the same value for every set.
-  function setTargetsFor(ex) {
-    const { entry, sets, reps, target } = weekTarget(ex)
-    return setTargets(entry ? { ...entry, sets } : { sets, reps, target }, ex)
+  function exSetTargets(ex) {
+    const wt = Array.isArray(ex.week_targets) ? ex.week_targets[week - 1] : null
+    return setTargetsFor(wt, weekTarget(ex))
   }
 
-  // The load a given set is aiming at, for percent-based work.
-  function setLoad(ex, pct) {
-    if (ex.progression_type !== 'percent') return null
+  // Load for a %-based set, from the client's max on file
+  function percentLoad(ex, target) {
+    if (ex.progression_type !== 'percent') return ''
     const max = maxes[(ex.based_on_lift || ex.name).toLowerCase()]
-    if (!max || !pct) return null
-    return roundTo5(max * (+pct / 100))
+    return max && target ? String(roundTo5(max * (+target / 100))) : ''
+  }
+
+  // What a blank cell should suggest: last session's value for that set, else the program target
+  function suggestion(ex, i, field) {
+    const last = lastSession[ex.id]?.sets?.[i + 1]
+    if (last?.[field]) return String(last[field])
+    const t = exSetTargets(ex)[i] || {}
+    if (field === 'weight') return percentLoad(ex, t.target)
+    if (field === 'reps') return t.reps ? String(t.reps).split('-')[0] : ''
+    if (field === 'rir') return ex.progression_type === 'percent' ? '' : (t.target ?? '').toString()
+    return ''
+  }
+
+  // Fill a set's EMPTY cells (never overwrites what they typed) with real numbers only:
+  // last session's value for that set, or a %-based prescribed load. A rep range
+  // alone is never turned into a guessed number. Then save it.
+  function fillSet(ex, i, rows) {
+    const s = rows[i]
+    const last = lastSession[ex.id]?.sets?.[i + 1] || {}
+    const t = exSetTargets(ex)[i] || {}
+    const filled = {
+      weight: s.weight || (last.weight ? String(last.weight) : percentLoad(ex, t.target)),
+      reps: s.reps || (last.reps ? String(last.reps) : ''),
+      rir: s.rir || (last.rir ? String(last.rir) : ''),
+    }
+    autoSaveSet(ex.id, i + 1, filled, ex.name)
+    return filled
+  }
+
+  function copyLastWeek(ex) {
+    const rows = log[ex.id] || []
+    const next = rows.map((_, i) => fillSet(ex, i, rows))
+    setLog(l => ({ ...l, [ex.id]: next }))
+  }
+
+  function toggleDone(ex, i) {
+    const key = `${ex.id}-${i + 1}`
+    if (doneSets.has(key)) {
+      setDoneSets(d => { const n = new Set(d); n.delete(key); return n })
+      return
+    }
+    const rows = log[ex.id] || []
+    const filled = fillSet(ex, i, rows)
+    setLog(l => ({ ...l, [ex.id]: (l[ex.id] || []).map((s, j) => j === i ? filled : s) }))
+    if (filled.weight || filled.reps) setDoneSets(d => new Set(d).add(key))
+  }
+
+  // Enter moves weight → reps → RIR → next set's weight → next exercise
+  function focusNext(exId, i, field) {
+    const order = ['weight', 'reps', 'rir']
+    const keys = []
+    for (const ex of exercises) {
+      if (ex.kind === 'conditioning') continue
+      ;(log[ex.id] || []).forEach((_, j) => order.forEach(f => keys.push(`${ex.id}|${j}|${f}`)))
+    }
+    const at = keys.indexOf(`${exId}|${i}|${field}`)
+    const nextEl = at >= 0 ? cellRefs.current[keys[at + 1]] : null
+    if (nextEl) nextEl.focus()
+    else document.activeElement?.blur()
   }
 
   function targetText(ex) {
-    const { sets, reps, target, entry } = weekTarget(ex)
-    const wt = entry ? { ...entry, sets } : { sets, reps, target }
-    const repsPart = repsSummary(wt, ex)
-    const targetPart = targetSummary(wt, ex)
-    const rest = ex.rest ? ` · rest ${ex.rest}` : ''
+    const { sets, reps, target } = weekTarget(ex)
     if (ex.progression_type === 'percent') {
-      // with mixed loads a single computed weight would be a lie, so only show
-      // the arrow when every set is pulling from the same percentage
       const max = maxes[(ex.based_on_lift || ex.name).toLowerCase()]
-      const single = !targetPart.includes('/')
-      const load = max && single ? ` → ${roundTo5(max * (+targetPart / 100))} lbs` : ''
-      return `${repsPart} @ ${targetPart}%${load}${rest}`
+      const load = max ? ` → ${roundTo5(max * (+target / 100))} lbs` : ''
+      return `${sets} × ${reps} @ ${target}%${load}${ex.rest ? ` · rest ${ex.rest}` : ''}`
     }
-    if (ex.progression_type === 'rpe') return `${repsPart} @ RPE ${targetPart}${rest}`
-    return `${repsPart} @ RIR ${targetPart}${rest}`
+    if (ex.progression_type === 'rpe') return `${sets} × ${reps} @ RPE ${target}${ex.rest ? ` · rest ${ex.rest}` : ''}`
+    return `${sets} × ${reps} @ RIR ${target}${ex.rest ? ` · rest ${ex.rest}` : ''}`
   }
 
   // If the week moves (calendar jump, or auto mode rolling over) and the day
@@ -192,22 +265,18 @@ export default function ClientTraining() {
         }
         setLog(init)
         setResults({})
+        setDoneSets(new Set())
         const ids = (data || []).map(ex => ex.id)
 
-        // pull most recent PRIOR logged set per exercise, for the "last time" hint
+        // last session per exercise, set by set: the newest day before today that
+        // has anything logged, and every set from that day. Older rows from before
+        // logged_date existed fall back to the date part of logged_at.
         if (ids.length) {
-          supabase.from('workout_logs').select('exercise_id, weight, reps, rir, logged_at')
-            .in('exercise_id', ids).order('logged_at', { ascending: false }).limit(200)
-            .then(({ data: logs }) => {
-              const seen = {}
-              for (const l of logs || []) {
-                if (!seen[l.exercise_id] && (l.weight || l.reps)) {
-                  seen[l.exercise_id] = { weight: l.weight, reps: l.reps, rir: l.rir, date: l.logged_at }
-                }
-              }
-              setLastLogged(seen)
-            })
-        } else setLastLogged({})
+          supabase.from('workout_logs').select('exercise_id, set_number, weight, reps, rir, logged_date, logged_at')
+            .eq('client_id', profile.id).in('exercise_id', ids)
+            .order('logged_at', { ascending: false }).limit(600)
+            .then(({ data: logs }) => setLastSession(buildLastSession(logs || [], todayStr())))
+        } else setLastSession({})
 
         // rehydrate anything ALREADY saved for TODAY — so switching away and back
         // shows what was actually saved, not a blank form
@@ -228,6 +297,8 @@ export default function ClientTraining() {
                 }
                 return next
               })
+              // anything already saved today counts as done, so the ticks survive a refresh
+              setDoneSets(new Set(todayLogs.filter(r => r.weight || r.reps).map(r => `${r.exercise_id}-${r.set_number}`)))
               const resultsInit = {}
               for (const row of todayLogs) if (row.result_text) resultsInit[row.exercise_id] = row.result_text
               if (Object.keys(resultsInit).length) setResults(r => ({ ...r, ...resultsInit }))
@@ -381,6 +452,23 @@ export default function ClientTraining() {
         ))}
       </div>
 
+      {!calMode && !awayMode && activeDay && (() => {
+        const total = exercises.filter(e => e.kind !== 'conditioning').reduce((n, e) => n + (log[e.id] || []).length, 0)
+        if (!total) return null
+        const done = Math.min(doneSets.size, total)
+        return (
+          <div className="card" style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 13.5 }}>
+              <strong>{done} of {total} sets done</strong>
+              <span className="muted" style={{ fontSize: 11.5 }}>{savingSets.size ? 'Saving…' : 'Auto-saved'}</span>
+            </div>
+            <div style={{ height: 6, borderRadius: 3, background: 'var(--steel)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${Math.round(done / total * 100)}%`, background: 'var(--orange)', borderRadius: 3, transition: 'width 0.25s' }} />
+            </div>
+          </div>
+        )
+      })()}
+
       {awayMode && (
         <div className="card" style={{ borderLeft: '3px solid var(--orange)' }}>
           <div className="eyebrow" style={{ fontSize: 10, marginBottom: 4 }}>Away from the gym</div>
@@ -514,11 +602,6 @@ export default function ClientTraining() {
             </button>
             {ex.kind !== 'conditioning' && <span style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700 }}>{targetText(ex)}</span>}
           </div>
-          {ex.kind !== 'conditioning' && lastLogged[ex.id] && (
-            <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
-              Last time: {lastLogged[ex.id].weight ? `${lastLogged[ex.id].weight} × ` : ''}{lastLogged[ex.id].reps}{lastLogged[ex.id].rir ? ` @ ${lastLogged[ex.id].rir}` : ''}
-            </p>
-          )}
           {flaggedIds.has(ex.id) && flagging !== ex.id && (
             <p style={{ fontSize: 11.5, color: 'var(--red)', margin: '2px 0 0' }}>⚠️ Flagged for your coach — they'll follow up.</p>
           )}
@@ -592,46 +675,79 @@ export default function ClientTraining() {
                 style={{ accentColor: 'var(--orange)', padding: 0 }} />
             </div>
           )}
-          {ex.kind !== 'conditioning' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-            {(() => {
-              const perSet = setTargetsFor(ex)
-              const varied = hasVariedSets(
-                (Array.isArray(ex.week_targets) ? { ...ex.week_targets[week - 1], sets: perSet.length } : null)
-                  || { sets: perSet.length, reps: ex.reps, target: ex.rir }, ex)
-              return (log[ex.id] || []).map((s, i) => {
-              const isSaving = savingSets.has(`${ex.id}-${i + 1}`)
-              const t = perSet[i] || {}
-              const load = setLoad(ex, t.target)
-              return (
-              <div key={i}>
-                {/* Only label sets individually when they actually differ —
-                    on a straight 3×8-12 this would just be noise on every row. */}
-                {varied && (
-                  <p className="muted" style={{ fontSize: 10.5, margin: '0 0 2px 36px', letterSpacing: 0.2 }}>
-                    target {t.reps}
-                    {ex.progression_type === 'percent'
-                      ? ` @ ${t.target}%${load ? ` → ${load} lbs` : ''}`
-                      : ex.progression_type === 'rpe' ? ` @ RPE ${t.target}` : ` @ RIR ${t.target}`}
-                  </p>
-                )}
-                <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr auto', gap: 6, alignItems: 'center' }}>
-                  <span className="muted" style={{ fontSize: 12, fontWeight: 800 }}>S{i + 1}</span>
-                  <input inputMode="decimal" placeholder={load ? String(load) : 'lbs'} value={s.weight} onChange={e => updateSet(ex.id, i, 'weight', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
-                  <input inputMode="numeric" placeholder={ex.metric === 'time' ? 'secs' : ex.metric === 'distance' ? 'dist' : (t.reps || 'reps')} value={s.reps} onChange={e => updateSet(ex.id, i, 'reps', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
-                  <input inputMode="numeric" placeholder={(ex.progression_type === 'rpe' ? 'RPE' : 'RIR') + (t.target ? ` ${t.target}` : '')} value={s.rir} onChange={e => updateSet(ex.id, i, 'rir', e.target.value)} style={{ padding: '8px 10px', fontSize: 14 }} />
-                  <PlateCalc weight={s.weight} />
-                </div>
-                {isSaving && <p className="muted" style={{ fontSize: 10.5, margin: '2px 0 0 36px' }}>Saving…</p>}
+          {ex.kind !== 'conditioning' && (() => {
+            const rows = log[ex.id] || []
+            const targets = exSetTargets(ex)
+            const last = lastSession[ex.id]
+            const repsHead = ex.metric === 'time' ? 'Secs' : ex.metric === 'distance' ? 'Dist' : 'Reps'
+            const effortHead = ex.progression_type === 'rpe' ? 'RPE' : 'RIR'
+            const plateWeight = [...rows].reverse().find(r => r.weight)?.weight || ''
+            const anyLast = last && Object.keys(last.sets).length > 0
+            return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: GRID_COLS, gap: 6, padding: '0 2px 2px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>
+                <div>Set</div>
+                <div>Last</div>
+                <div style={{ textAlign: 'center' }}>Lbs</div>
+                <div style={{ textAlign: 'center' }}>{repsHead}</div>
+                <div style={{ textAlign: 'center' }}>{effortHead}</div>
+                <div />
               </div>
-              )
-            })
-            })()}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 2 }}>
-              <RestTimer restText={ex.rest} />
+              {rows.map((s, i) => {
+                const key = `${ex.id}-${i + 1}`
+                const isSaving = savingSets.has(key)
+                const isDone = doneSets.has(key)
+                const prev = last?.sets?.[i + 1]
+                const up = beatLast(s, prev)
+                const t = targets[i] || {}
+                const label = `${ex.name} set ${i + 1}`
+                const cell = field => ({
+                  ref: el => { cellRefs.current[`${ex.id}|${i}|${field}`] = el },
+                  value: s[field],
+                  placeholder: suggestion(ex, i, field),
+                  enterKeyHint: 'next',
+                  onChange: e => updateSet(ex.id, i, field, e.target.value),
+                  onKeyDown: e => { if (e.key === 'Enter') { e.preventDefault(); focusNext(ex.id, i, field) } },
+                  style: cellStyle,
+                })
+                return (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: GRID_COLS, gap: 6, alignItems: 'center', padding: '5px 2px', borderRadius: 10, background: isDone ? 'rgba(255,90,0,0.10)' : 'transparent', transition: 'background 0.2s' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
+                      <span style={{ fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 2 }}>
+                        {i + 1}
+                        {up && <span title="Beat last time" aria-label="Beat last time" style={{ color: 'var(--orange-hot)', fontSize: 12 }}>▲</span>}
+                      </span>
+                      {t.reps != null && t.reps !== '' && <span className="muted" style={{ fontSize: 10.5 }}>{t.reps}</span>}
+                    </div>
+                    <div className="muted" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {prev ? `${prev.weight || '–'} × ${prev.reps || '–'}` : '—'}
+                      {isSaving && <div style={{ fontSize: 10 }}>Saving…</div>}
+                    </div>
+                    <input inputMode="decimal" aria-label={`${label} weight`} {...cell('weight')} />
+                    <input inputMode="numeric" aria-label={`${label} ${repsHead.toLowerCase()}`} {...cell('reps')} />
+                    <input inputMode="decimal" aria-label={`${label} ${effortHead}`} {...cell('rir')} />
+                    <button type="button" onClick={() => toggleDone(ex, i)}
+                      aria-label={`${isDone ? 'Unmark' : 'Mark'} ${label} done`} aria-pressed={isDone}
+                      style={{ width: 42, height: 42, padding: 0, borderRadius: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 900, cursor: 'pointer',
+                        background: isDone ? 'var(--orange)' : 'transparent', color: isDone ? '#140A02' : 'var(--muted)',
+                        border: isDone ? '1px solid var(--orange)' : '1.5px solid #3A3A40' }}>
+                      ✓
+                    </button>
+                  </div>
+                )
+              })}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', marginTop: 4, flexWrap: 'wrap' }}>
+                {anyLast
+                  ? <button type="button" className="btn-ghost" onClick={() => copyLastWeek(ex)} style={{ padding: '8px 12px', fontSize: 12.5 }}>⧉ Copy last session</button>
+                  : <span className="muted" style={{ fontSize: 11.5 }}>First time logging this one</span>}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <PlateCalc weight={plateWeight} />
+                  <RestTimer restText={ex.rest} />
+                </div>
+              </div>
             </div>
-          </div>
-          )}
+            )
+          })()}
         </div>
         ))
         return g.grouped ? (
