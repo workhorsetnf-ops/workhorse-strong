@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets } from '../../lib/weeks'
 import { parseProgramText } from '../../lib/parse'
@@ -27,6 +27,343 @@ function chunkGroups(exList) {
     else out.push({ prefix: pfx, grouped: isNumbered(ex.letter), items: [ex] })
   }
   return out.map(g => ({ ...g, grouped: g.grouped && g.items.length > 1 }))
+}
+
+// ---------------------------------------------------------------------------
+// Table view: the same program data as the card builder, laid out like a
+// spreadsheet. Each workout is a table, each week a column group of
+// Sets / Reps / Target. It reads and writes program_exercises.week_targets
+// exactly the way the card editor does, so the two views can be swapped freely.
+// ---------------------------------------------------------------------------
+
+// Every week the block has, falling back to the exercise's base values for any
+// week that was never filled in (older exercises, or a block lengthened later).
+export function weekTargetsFor(ex, weeks) {
+  const wt = Array.isArray(ex.week_targets) ? ex.week_targets : []
+  return Array.from({ length: weeks }, (_, i) => wt[i]
+    ? { ...wt[i], ...(Array.isArray(wt[i].setRows) ? { setRows: wt[i].setRows.map(r => ({ ...r })) } : {}) }
+    : { sets: ex.sets ?? 3, reps: String(ex.reps ?? ''), target: String(ex.rir ?? '2') })
+}
+
+// The database patch for one edited cell. Week 1 also writes the top-level
+// sets/reps/rir, because older screens read those as the exercise's default.
+export function cellPatch(ex, weeks, weekIdx, field, raw) {
+  const wts = weekTargetsFor(ex, weeks)
+  const value = String(raw ?? '').trim()
+  const cur = wts[weekIdx]
+  if (field === 'sets') {
+    const n = parseInt(value, 10)
+    if (!n || n < 1) return null           // blank or 0 sets is never saved
+    cur.sets = Math.min(n, 20)
+    // keep per-set rows the same length as the set count: extra sets copy the
+    // last row (usually the back-off pattern), fewer sets drop from the end
+    if (Array.isArray(cur.setRows) && cur.setRows.length) {
+      const last = cur.setRows[cur.setRows.length - 1]
+      cur.setRows = Array.from({ length: cur.sets }, (_, i) => ({ ...(cur.setRows[i] || last) }))
+    }
+  } else if (field === 'reps') {
+    cur.reps = value
+  } else if (field === 'target') {
+    cur.target = value
+  } else return null
+  const patch = { week_targets: wts }
+  if (weekIdx === 0) {
+    patch.sets = +wts[0].sets || 3
+    patch.reps = String(wts[0].reps ?? '')
+    patch.rir = String(wts[0].target ?? '')
+  }
+  return patch
+}
+
+// Copy one week's numbers (including any per-set rows) into another week.
+export function copyWeekPatch(ex, weeks, fromIdx, toIdx) {
+  const wts = weekTargetsFor(ex, weeks)
+  const src = wts[fromIdx]
+  wts[toIdx] = { ...src, ...(Array.isArray(src.setRows) ? { setRows: src.setRows.map(r => ({ ...r })) } : {}) }
+  const patch = { week_targets: wts }
+  if (toIdx === 0) {
+    patch.sets = +wts[0].sets || 3
+    patch.reps = String(wts[0].reps ?? '')
+    patch.rir = String(wts[0].target ?? '')
+  }
+  return patch
+}
+
+const TARGET_LABEL = { rir: 'RIR', rpe: 'RPE', percent: '%' }
+
+function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, setPreviewWeek, onPatch, onAdd, onDelete, onOpenCards }) {
+  const weeks = block.weeks || 4
+  const [draft, setDraft] = useState({})       // `${exId}|${weekIdx}|${field}` -> text being typed
+  const [selEx, setSelEx] = useState(null)     // { dayId, exId } shown in the preview
+  const [adding, setAdding] = useState({})     // dayId -> new exercise name
+  const [busy, setBusy] = useState(0)
+  const cells = useRef({})
+
+  const allEx = dayList.flatMap(d => (exercisesByDay[d.id] || []).map(ex => ({ d, ex })))
+  const current = allEx.find(x => x.ex.id === selEx?.exId) || allEx.find(x => x.ex.kind !== 'conditioning') || null
+
+  async function commit(dayId, ex, weekIdx, field) {
+    const key = `${ex.id}|${weekIdx}|${field}`
+    if (!(key in draft)) return
+    const raw = draft[key]
+    setDraft(dr => { const n = { ...dr }; delete n[key]; return n })
+    const before = weekTargetsFor(ex, weeks)[weekIdx]?.[field]
+    if (String(before ?? '') === String(raw).trim()) return
+    const patch = cellPatch(ex, weeks, weekIdx, field, raw)
+    if (!patch) return
+    setBusy(b => b + 1)
+    await onPatch(dayId, ex.id, patch)
+    setBusy(b => b - 1)
+  }
+
+  async function commitName(dayId, ex) {
+    const key = `${ex.id}|name`
+    if (!(key in draft)) return
+    const name = String(draft[key]).trim()
+    setDraft(dr => { const n = { ...dr }; delete n[key]; return n })
+    if (!name || name === ex.name) return
+    setBusy(b => b + 1)
+    await onPatch(dayId, ex.id, { name })
+    setBusy(b => b - 1)
+  }
+
+  async function copyForward(dayId, weekNum) {
+    const at = runWeeks.indexOf(weekNum)
+    const to = runWeeks[at + 1]
+    if (!to) return
+    setBusy(b => b + 1)
+    for (const ex of (exercisesByDay[dayId] || []).filter(e => e.kind !== 'conditioning')) {
+      await onPatch(dayId, ex.id, copyWeekPatch(ex, weeks, weekNum - 1, to - 1))
+    }
+    setBusy(b => b - 1)
+  }
+
+  // Enter moves DOWN to the same column on the next row, like a spreadsheet;
+  // Tab already moves right on its own.
+  function moveDown(dayId, exIdx, col) {
+    const list = (exercisesByDay[dayId] || []).filter(e => e.kind !== 'conditioning')
+    const next = list[exIdx + 1]
+    const el = next && cells.current[`${next.id}|${col}`]
+    if (el) el.focus()
+    else document.activeElement?.blur()
+  }
+
+  const cellInput = (dayId, ex, exIdx, weekIdx, field, value, opts = {}) => {
+    const key = `${ex.id}|${weekIdx}|${field}`
+    return (
+      <input
+        ref={el => { cells.current[`${ex.id}|${weekIdx}|${field}`] = el }}
+        className="pt-cell"
+        aria-label={`${ex.name} week ${weekIdx + 1} ${field}`}
+        inputMode={field === 'sets' ? 'numeric' : undefined}
+        value={key in draft ? draft[key] : String(value ?? '')}
+        readOnly={opts.readOnly}
+        title={opts.title}
+        onFocus={() => { setSelEx({ dayId, exId: ex.id }); setPreviewWeek(weekIdx + 1) }}
+        onChange={e => setDraft(dr => ({ ...dr, [key]: e.target.value }))}
+        onBlur={() => commit(dayId, ex, weekIdx, field)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); moveDown(dayId, exIdx, `${weekIdx}|${field}`) } }}
+        style={opts.readOnly ? { color: 'var(--muted)', fontStyle: 'italic' } : undefined}
+      />
+    )
+  }
+
+  const gridCols = `30px minmax(190px, 1.4fr) repeat(${runWeeks.length}, minmax(168px, 1fr)) 34px`
+  const minW = 30 + 190 + runWeeks.length * 168 + 34
+
+  // ---- preview of what the client sees for the selected exercise ----
+  let preview = null
+  if (current && current.ex.kind !== 'conditioning') {
+    const ex = current.ex
+    const wk = Math.min(Math.max(previewWeek, 1), weeks)
+    const t = weekTargetsFor(ex, weeks)[wk - 1]
+    const n = Math.max(0, Math.min(12, +t.sets || 0))
+    const rows = Array.from({ length: n }, (_, i) => ({
+      reps: t.setRows?.[i]?.reps ?? t.reps,
+      target: t.setRows?.[i]?.target ?? t.target,
+    }))
+    const label = TARGET_LABEL[ex.progression_type || 'rir']
+    preview = { ex, wk, t, rows, label }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+      <style>{`
+        .pt-cell{width:100%;min-width:0;height:34px;box-sizing:border-box;padding:0 6px;border:1px solid transparent;border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:14px;font-weight:500;text-align:center;font-variant-numeric:tabular-nums}
+        .pt-cell:hover{border-color:var(--line);background:var(--steel)}
+        .pt-cell:focus{outline:none;border-color:var(--orange);background:rgba(255,90,0,0.10)}
+        .pt-name{text-align:left;font-weight:600}
+      `}</style>
+
+      <div style={{ flex: '999 1 640px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span className="muted" style={{ fontSize: 12.5 }}>
+            Click a cell and type. Tab moves right, Enter moves down. Changes save when you leave the cell.
+          </span>
+          <span className="muted" style={{ fontSize: 12 }}>{busy > 0 ? 'Saving…' : 'All changes saved'}</span>
+        </div>
+
+        {dayList.length === 0 && (
+          <p className="muted" style={{ fontSize: 13 }}>No workouts in this view yet. Switch to Cards to add a workout to a day.</p>
+        )}
+
+        {dayList.map(d => {
+          const list = exercisesByDay[d.id] || []
+          const lifts = list.filter(e => e.kind !== 'conditioning')
+          const firstWk = runWeeks[0] || 1
+          const totalSets = lifts.reduce((s, e) => s + (+weekTargetsFor(e, weeks)[firstWk - 1]?.sets || 0), 0)
+          return (
+            <section key={d.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                <strong style={{ fontSize: 15, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--orange-hot)' }}>{d.day_label}</strong>
+                <span className="muted" style={{ fontSize: 12.5 }}>Day {d.day_number} · {lifts.length} exercises · {totalSets} sets in week {firstWk}</span>
+              </div>
+              <div style={{ overflowX: 'auto', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--coal)' }}>
+                <div style={{ minWidth: minW }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: gridCols, borderBottom: '1px solid var(--line)', alignItems: 'end' }}>
+                    <div />
+                    <div className="eyebrow" style={{ fontSize: 10, padding: '8px 8px' }}>Exercise</div>
+                    {runWeeks.map((wk, wi) => (
+                      <div key={wk} style={{ borderLeft: '1px solid var(--line)', background: wk === previewWeek ? 'rgba(255,90,0,0.07)' : undefined }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 8px 2px', gap: 6 }}>
+                          <button type="button" onClick={() => setPreviewWeek(wk)}
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: wk === previewWeek ? 'var(--orange-hot)' : 'inherit', fontSize: 12.5, fontWeight: 800 }}>
+                            Week {wk}
+                          </button>
+                          {wi < runWeeks.length - 1 && lifts.length > 0 && (
+                            <button type="button" className="btn-ghost" title={`Copy week ${wk} into week ${runWeeks[wi + 1]}`}
+                              onClick={() => copyForward(d.id, wk)} style={{ padding: '2px 8px', fontSize: 11 }}>
+                              Copy →
+                            </button>
+                          )}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.3fr 1fr', fontSize: 9.5, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)', textAlign: 'center', padding: '0 6px 6px' }}>
+                          <span>Sets</span><span>Reps</span><span>Target</span>
+                        </div>
+                      </div>
+                    ))}
+                    <div />
+                  </div>
+
+                  {list.map(ex => {
+                    const isCond = ex.kind === 'conditioning'
+                    const exIdx = lifts.indexOf(ex)
+                    const on = current?.ex.id === ex.id
+                    const wts = weekTargetsFor(ex, weeks)
+                    const nameKey = `${ex.id}|name`
+                    return (
+                      <div key={ex.id} style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center', borderBottom: '1px solid var(--line)', background: on ? 'rgba(255,90,0,0.06)' : undefined, boxShadow: on ? 'inset 3px 0 0 var(--orange)' : undefined }}>
+                        <span className="muted" style={{ fontSize: 12, fontWeight: 700, textAlign: 'center' }}>{ex.letter || '·'}</span>
+                        <div style={{ padding: '3px 4px', minWidth: 0 }}>
+                          <input className="pt-cell pt-name" aria-label={`Exercise name, ${ex.name}`}
+                            ref={el => { cells.current[`${ex.id}|name`] = el }}
+                            value={nameKey in draft ? draft[nameKey] : ex.name}
+                            onFocus={() => setSelEx({ dayId: d.id, exId: ex.id })}
+                            onChange={e => setDraft(dr => ({ ...dr, [nameKey]: e.target.value }))}
+                            onBlur={() => commitName(d.id, ex)}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }} />
+                          <div className="muted" style={{ fontSize: 10.5, padding: '0 6px' }}>
+                            {isCond ? 'Conditioning · edit in Cards' : `Target = ${TARGET_LABEL[ex.progression_type || 'rir']}${ex.rest ? ` · rest ${ex.rest}` : ''}`}
+                          </div>
+                        </div>
+                        {runWeeks.map(wk => {
+                          const wi = wk - 1
+                          const t = wts[wi]
+                          const perSet = Array.isArray(t.setRows)
+                          return (
+                            <div key={wk} style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.3fr 1fr', gap: 2, padding: '3px 5px', borderLeft: '1px solid var(--line)', background: wk === previewWeek ? 'rgba(255,90,0,0.035)' : undefined }}>
+                              {isCond ? (
+                                <span className="muted" style={{ gridColumn: '1 / -1', textAlign: 'center', fontSize: 12 }}>—</span>
+                              ) : (
+                                <>
+                                  {cellInput(d.id, ex, exIdx, wi, 'sets', t.sets)}
+                                  {perSet
+                                    ? cellInput(d.id, ex, exIdx, wi, 'reps', t.setRows.map(r => r.reps).join(', '), { readOnly: true, title: 'Per-set reps. Edit these in Cards view.' })
+                                    : cellInput(d.id, ex, exIdx, wi, 'reps', t.reps)}
+                                  {perSet
+                                    ? cellInput(d.id, ex, exIdx, wi, 'target', t.setRows.map(r => r.target).join(', '), { readOnly: true, title: 'Per-set targets. Edit these in Cards view.' })
+                                    : cellInput(d.id, ex, exIdx, wi, 'target', t.target)}
+                                </>
+                              )}
+                            </div>
+                          )
+                        })}
+                        <button type="button" aria-label={`Remove ${ex.name}`} title="Remove exercise"
+                          onClick={() => { if (window.confirm(`Remove ${ex.name} from ${d.day_label}?`)) onDelete(d.id, ex.id) }}
+                          style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13, height: 34 }}>✕</button>
+                      </div>
+                    )
+                  })}
+
+                  <div style={{ padding: '6px 8px', display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input placeholder="+ Add exercise (type a name, press Enter)" value={adding[d.id] || ''}
+                      onChange={e => setAdding(a => ({ ...a, [d.id]: e.target.value }))}
+                      onKeyDown={async e => {
+                        if (e.key !== 'Enter') return
+                        const name = (adding[d.id] || '').trim()
+                        if (!name) return
+                        setAdding(a => ({ ...a, [d.id]: '' }))
+                        await onAdd(d.id, name)
+                      }}
+                      style={{ padding: '7px 9px', fontSize: 12.5, maxWidth: 320 }} />
+                  </div>
+                </div>
+              </div>
+            </section>
+          )
+        })}
+        <p className="muted" style={{ fontSize: 11.5 }}>
+          Supersets, video links, icons, rest times and per-set targets are still edited in{' '}
+          <button type="button" onClick={onOpenCards} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--orange-hot)', cursor: 'pointer', fontSize: 11.5, fontWeight: 700 }}>Cards view</button>.
+        </p>
+      </div>
+
+      <aside aria-label="Client preview" style={{ flex: '1 1 300px', maxWidth: 360, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--coal)', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, position: 'sticky', top: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <strong style={{ fontSize: 13.5 }}>Client preview</strong>
+          <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+            {runWeeks.map(wk => (
+              <button key={wk} type="button" className={wk === previewWeek ? 'btn' : 'btn-ghost'} onClick={() => setPreviewWeek(wk)}
+                style={{ padding: '3px 8px', fontSize: 11.5 }}>W{wk}</button>
+            ))}
+          </div>
+        </div>
+        {!preview && <p className="muted" style={{ fontSize: 12.5 }}>Click any exercise to see how the client will log it.</p>}
+        {preview && (
+          <div style={{ border: '8px solid var(--steel)', borderRadius: 30, padding: '16px 12px 20px', display: 'flex', flexDirection: 'column', gap: 9, background: 'var(--black, #0B0B0C)' }}>
+            <div className="eyebrow" style={{ fontSize: 10, textAlign: 'center' }}>Week {preview.wk}</div>
+            <div>
+              <strong style={{ fontSize: 15 }}>{preview.ex.name}</strong>
+              <div style={{ fontSize: 12, color: 'var(--orange-hot)', fontWeight: 700, marginTop: 2 }}>
+                {preview.t.setRows
+                  ? preview.rows.map(r => r.reps).join(', ')
+                  : `${preview.t.sets} × ${preview.t.reps}`}
+                {preview.label === '%' ? ` @ ${preview.t.target}%` : ` @ ${preview.label} ${preview.t.target}`}
+                {preview.ex.rest ? ` · rest ${preview.ex.rest}` : ''}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '28px minmax(0,1fr) 48px 40px 36px 28px', gap: 4, fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>
+              <span>Set</span><span>Last</span><span style={{ textAlign: 'center' }}>Lbs</span><span style={{ textAlign: 'center' }}>Reps</span><span style={{ textAlign: 'center' }}>{preview.label === '%' ? 'RIR' : preview.label}</span><span />
+            </div>
+            {preview.rows.map((r, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '28px minmax(0,1fr) 48px 40px 36px 28px', gap: 4, alignItems: 'center' }}>
+                <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+                  <strong style={{ fontSize: 13 }}>{i + 1}</strong>
+                  <span className="muted" style={{ fontSize: 9.5 }}>{r.reps}</span>
+                </span>
+                <span className="muted" style={{ fontSize: 11 }}>—</span>
+                <span style={{ height: 30, border: '1px solid var(--line)', borderRadius: 6 }} />
+                <span style={{ height: 30, border: '1px solid var(--line)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--muted)' }}>{String(r.reps ?? '').split('-')[0]}</span>
+                <span style={{ height: 30, border: '1px solid var(--line)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--muted)' }}>{preview.label === '%' ? '' : r.target}</span>
+                <span style={{ width: 24, height: 24, borderRadius: 12, border: '1.5px solid var(--line)' }} />
+              </div>
+            ))}
+            <p className="muted" style={{ fontSize: 10.5, textAlign: 'center', marginTop: 2 }}>The client's own last-session numbers fill the Last column.</p>
+          </div>
+        )}
+      </aside>
+    </div>
+  )
 }
 
 export default function CoachPrograms() {
@@ -63,6 +400,30 @@ export default function CoachPrograms() {
   const [exComments, setExComments] = useState({})
   const [exCommentText, setExCommentText] = useState('')
   const [coachUserId, setCoachUserId] = useState(null)
+  // 'cards' (the original builder) or 'table' (spreadsheet view); remembered on this device
+  const [layout, setLayoutState] = useState(() => {
+    try { return localStorage.getItem('ws_program_layout') === 'table' ? 'table' : 'cards' } catch { return 'cards' }
+  })
+  function setLayout(v) {
+    setLayoutState(v)
+    try { localStorage.setItem('ws_program_layout', v) } catch { /* private mode etc. — just don't remember */ }
+  }
+
+  // Table view saves one cell at a time: show the change straight away, then write it.
+  // If the write fails, reload that day so the screen never shows something unsaved.
+  async function patchExercise(dayId, exId, patch) {
+    setExercises(prev => ({ ...prev, [dayId]: (prev[dayId] || []).map(e => e.id === exId ? { ...e, ...patch } : e) }))
+    const { error } = await supabase.from('program_exercises').update(patch).eq('id', exId)
+    if (error) { alert('Save failed: ' + error.message); loadDay(dayId) }
+    return !error
+  }
+
+  // Adding from the table reuses the card builder's insert, picking up the
+  // library entry's video/icon when the typed name matches one exactly.
+  async function addFromTable(block, dayId, name) {
+    const lib = library.find(l => l.name.trim().toLowerCase() === name.toLowerCase())
+    await quickAddExercise(block, dayId, lib || { name })
+  }
 
   async function load() {
     const [{ data: p }, { data: c }, { data: a }] = await Promise.all([
@@ -879,6 +1240,10 @@ export default function CoachPrograms() {
                                     onClick={() => runs && setViewWeek(wk)}>{wk}</button>
                                 )
                               })}
+                              <span role="group" aria-label="Builder layout" style={{ display: 'inline-flex', gap: 4, marginLeft: 14 }}>
+                                <button className={layout === 'cards' ? 'btn' : 'btn-ghost'} aria-pressed={layout === 'cards'} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setLayout('cards')}>Cards</button>
+                                <button className={layout === 'table' ? 'btn' : 'btn-ghost'} aria-pressed={layout === 'table'} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setLayout('table')}>Table</button>
+                              </span>
                               <span style={{ display: 'inline-flex', gap: 4, marginLeft: 14 }}>
                                 <button className={track === 'exercise' ? 'btn' : 'btn-ghost'} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setTrack('exercise')}>Exercise</button>
                                 <button className={track === 'lifestyle' ? 'btn' : 'btn-ghost'} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setTrack('lifestyle')}>Lifestyle</button>
@@ -892,6 +1257,32 @@ export default function CoachPrograms() {
                         )
                       })()}
 
+                      {layout === 'table' ? (() => {
+                        const rots = rotations[activeBlock.id] || []
+                        const runWeeks = rots.length
+                          ? weeksForRotation(rots, activeRot, activeBlock.weeks || 4)
+                          : Array.from({ length: activeBlock.weeks || 4 }, (_, i) => i + 1)
+                        // same filter as the card columns: this track, and this rotation
+                        // (every-week days show under every rotation tab)
+                        const dayList = (days[activeBlock.id] || [])
+                          .filter(d => (d.track || 'exercise') === track && (!rots.length || !d.rotation_id || d.rotation_id === activeRot))
+                          .sort((a, b) => (a.day_number - b.day_number) || ((a.position ?? 0) - (b.position ?? 0)))
+                        return (
+                          <ProgramTable
+                            key={`${activeBlock.id}-${activeRot || 'all'}-${track}`}
+                            block={activeBlock}
+                            dayList={dayList}
+                            exercisesByDay={exercises}
+                            runWeeks={runWeeks.length ? runWeeks : [1]}
+                            previewWeek={viewWeek}
+                            setPreviewWeek={setViewWeek}
+                            onPatch={patchExercise}
+                            onAdd={(dayId, name) => addFromTable(activeBlock, dayId, name)}
+                            onDelete={deleteExercise}
+                            onOpenCards={() => setLayout('cards')}
+                          />
+                        )
+                      })() : (
                       <div style={{ overflowX: 'auto' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(215px, 1fr))', gap: 8, minWidth: 1520 }}>
                           {[1, 2, 3, 4, 5, 6, 7].map(dn => (
@@ -1064,6 +1455,7 @@ export default function CoachPrograms() {
                           ))}
                         </div>
                       </div>
+                      )}
                     </>
                   )}
                 </div>
