@@ -1310,3 +1310,34 @@ create table tracking_reminders_sent (
 );
 alter table tracking_reminders_sent enable row level security;
 create policy "coach reads reminder log" on tracking_reminders_sent for select using (is_coach());
+
+-- ===== DAILY TRACKING + AUTO WEEKLY AVERAGES (Update 85) =====
+-- Clients log each day; the weekly check-in averages those days instead of
+-- asking the client to estimate. Safe to re-run.
+
+-- 1) More daily fields alongside the existing weight / steps / readiness
+alter table daily_logs add column if not exists sleep_hours   numeric check (sleep_hours between 0 and 24);
+alter table daily_logs add column if not exists nutrition_hit boolean;
+alter table daily_logs add column if not exists trained       boolean;
+alter table daily_logs add column if not exists cardio_min    int check (cardio_min between 0 and 600);
+alter table daily_logs add column if not exists energy        int check (energy between 1 and 10);
+alter table daily_logs add column if not exists hunger        int check (hunger between 1 and 10);
+alter table daily_logs add column if not exists stress        int check (stress between 1 and 10);
+alter table daily_logs add column if not exists digestion     int check (digestion between 1 and 10);
+
+-- 2) Check-ins store the computed week, not a guess
+alter table checkins add column if not exists period_start  date;
+alter table checkins add column if not exists period_end    date;
+alter table checkins add column if not exists days_logged   int;
+alter table checkins add column if not exists days_weighed  int;
+alter table checkins add column if not exists adherence     numeric;   -- 0..1, share of logged days on plan
+alter table checkins add column if not exists sessions      int;
+alter table checkins add column if not exists cardio_min    int;
+alter table checkins add column if not exists stress        numeric;
+alter table checkins add column if not exists digestion     numeric;
+alter table checkins add column if not exists daily_summary jsonb default '[]';
+
+-- Energy / hunger become weekly AVERAGES (e.g. 7.7), so they can't stay whole numbers.
+-- The existing 1–10 check constraints still apply to the new type.
+alter table checkins alter column energy type numeric using energy::numeric;
+alter table checkins alter column hunger type numeric using hunger::numeric;

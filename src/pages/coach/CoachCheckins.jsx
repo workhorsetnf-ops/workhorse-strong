@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { WeekTable } from '../client/ClientProgress'
 
 const EMPTY_LOG = { client_id: '', weight: '', waist: '', sleep_avg: '', energy: 7, hunger: 5, notes: '' }
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -100,6 +101,49 @@ function StatusBadge({ status }) {
   )
 }
 
+// Check-ins submitted after Update 85 carry the averaged week plus a snapshot of
+// every day, so the coach sees how the number was built — 7/7 weigh-ins is a
+// real average, 2/7 is a guess with extra steps.
+function AutoWeek({ c, open, onToggle }) {
+  const stat = (label, value, warn) => value === null || value === undefined || value === '' ? null : (
+    <div style={{ background: 'var(--steel)', borderRadius: 8, padding: '7px 10px', border: warn ? '1px solid var(--red)' : '1px solid transparent' }}>
+      <div className="muted" style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 800, marginTop: 1, color: warn ? 'var(--red)' : 'var(--white)' }}>{value}</div>
+    </div>
+  )
+  const range = `${new Date(c.period_start + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${new Date(c.period_end + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' })}`
+  const summary = {
+    daily: Array.isArray(c.daily_summary) ? c.daily_summary : [],
+    weight: c.weight, steps: c.steps, sleep_avg: c.sleep_avg, adherence: c.adherence, sessions: c.sessions,
+    cardio_min: c.cardio_min, energy: c.energy, hunger: c.hunger, stress: c.stress, digestion: c.digestion,
+  }
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div className="muted" style={{ fontSize: 11.5, marginBottom: 6 }}>7-day averages from the client's daily log · {range}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 6 }}>
+        {stat('Weight avg', c.weight != null ? `${c.weight} lbs` : null)}
+        {stat('Weigh-ins', `${c.days_weighed ?? 0}/7`, (c.days_weighed ?? 0) < 5)}
+        {stat('On plan', c.adherence != null ? `${Math.round(c.adherence * 100)}%` : null, c.adherence != null && c.adherence < 0.85)}
+        {stat('Sessions', c.sessions)}
+        {stat('Steps avg', c.steps != null ? Number(c.steps).toLocaleString() : null)}
+        {stat('Sleep avg', c.sleep_avg != null ? `${c.sleep_avg}h` : null)}
+        {stat('Cardio', c.cardio_min != null ? `${c.cardio_min} min` : null)}
+        {stat('Waist', c.waist != null ? `${c.waist}"` : null)}
+        {stat('Energy', c.energy != null ? `${c.energy}/10` : null)}
+        {stat('Hunger', c.hunger != null ? `${c.hunger}/10` : null)}
+        {stat('Stress', c.stress != null ? `${c.stress}/10` : null, c.stress != null && c.stress >= 7)}
+        {stat('Digestion', c.digestion != null ? `${c.digestion}/10` : null)}
+      </div>
+      {summary.daily.length > 0 && (
+        <button className="btn-ghost" style={{ marginTop: 8, padding: '5px 10px', fontSize: 12 }} onClick={onToggle}>
+          {open ? 'Hide daily breakdown' : 'Show daily breakdown'}
+        </button>
+      )}
+      {open && <div style={{ marginTop: 8 }}><WeekTable summary={summary} /></div>}
+    </div>
+  )
+}
+
 export default function CoachCheckins() {
   const [checkins, setCheckins] = useState([])
   const [clients, setClients] = useState([])
@@ -117,6 +161,7 @@ export default function CoachCheckins() {
   const [expanded, setExpanded] = useState(() => new Set())
   const [search, setSearch] = useState('')
   const [onlyNeedsReview, setOnlyNeedsReview] = useState(true)
+  const [showDaily, setShowDaily] = useState(() => new Set())   // checkin ids with the 7-day table open
 
   async function load() {
     const [{ data: c }, { data: p }] = await Promise.all([
@@ -372,12 +417,17 @@ export default function CoachCheckins() {
                           <span className="muted" style={{ fontSize: 13 }}>{new Date(c.submitted_at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                           {!c.coach_feedback && <span style={{ color: 'var(--orange-hot)', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Needs review</span>}
                         </div>
-                        <div className="muted" style={{ fontSize: 13.5, marginTop: 8 }}>
-                          {c.weight && <>Weight <strong style={{ color: 'var(--white)' }}>{c.weight}</strong> · </>}
-                          {c.waist && <>Waist <strong style={{ color: 'var(--white)' }}>{c.waist}</strong> · </>}
-                          {c.sleep_avg && <>Sleep <strong style={{ color: 'var(--white)' }}>{c.sleep_avg}h</strong> · </>}
-                          Energy <strong style={{ color: 'var(--white)' }}>{c.energy}/10</strong> · Hunger <strong style={{ color: 'var(--white)' }}>{c.hunger}/10</strong>
-                        </div>
+                        {c.period_start
+                          ? <AutoWeek c={c} open={showDaily.has(c.id)} onToggle={() => setShowDaily(prev => {
+                              const next = new Set(prev); if (next.has(c.id)) next.delete(c.id); else next.add(c.id); return next
+                            })} />
+                          : <div className="muted" style={{ fontSize: 13.5, marginTop: 8 }}>
+                              {c.weight && <>Weight <strong style={{ color: 'var(--white)' }}>{c.weight}</strong> · </>}
+                              {c.waist && <>Waist <strong style={{ color: 'var(--white)' }}>{c.waist}</strong> · </>}
+                              {c.sleep_avg && <>Sleep <strong style={{ color: 'var(--white)' }}>{c.sleep_avg}h</strong> · </>}
+                              {c.energy != null && <>Energy <strong style={{ color: 'var(--white)' }}>{c.energy}/10</strong> · </>}
+                              {c.hunger != null && <>Hunger <strong style={{ color: 'var(--white)' }}>{c.hunger}/10</strong></>}
+                            </div>}
                         {c.notes && <p style={{ fontSize: 14, marginTop: 8, lineHeight: 1.5 }}>{c.notes}</p>}
 
                         {Array.isArray(c.form_responses) && c.form_responses.length > 0 && (

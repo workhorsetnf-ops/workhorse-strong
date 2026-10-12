@@ -162,3 +162,75 @@ export function compactSetRows(weekEntry) {
   const { setRows, ...rest } = weekEntry
   return rest
 }
+
+// ---------------------------------------------------------------------------
+// Daily tracking → weekly averages (Update 85)
+//
+// Clients log each day; the check-in summarises the last 7 days so nothing is
+// estimated from memory. Dates are always LOCAL Y-M-D strings — toISOString()
+// is UTC and turns "tonight" into tomorrow for anyone west of London.
+// ---------------------------------------------------------------------------
+
+export function localDateStr(d = new Date()) {
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+// The n calendar days ending on `end` (a Y-M-D string), oldest first.
+export function lastNDays(n = 7, end = localDateStr()) {
+  const [y, m, d] = end.split('-').map(Number)
+  return Array.from({ length: n }, (_, i) => localDateStr(new Date(y, m - 1, d - (n - 1 - i))))
+}
+
+export const DAILY_FIELDS = ['weight', 'steps', 'sleep_hours', 'nutrition_hit', 'trained', 'cardio_min', 'energy', 'hunger', 'stress', 'digestion']
+
+const num = v => (v === '' || v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v))
+const round = (v, dp) => (v === null ? null : Math.round(v * 10 ** dp) / 10 ** dp)
+function avg(values, dp) {
+  const xs = values.map(num).filter(v => v !== null)
+  return xs.length ? round(xs.reduce((a, b) => a + b, 0) / xs.length, dp) : null
+}
+
+// True when a row has anything the client actually entered (readiness alone
+// comes from a different widget and doesn't count as logging the day).
+export function dayHasData(row) {
+  if (!row) return false
+  return DAILY_FIELDS.some(k => (typeof row[k] === 'boolean' ? true : num(row[k]) !== null))
+}
+
+// days: Y-M-D strings. logsByDate: { 'Y-M-D': daily_logs row }.
+// workoutDates: Set of Y-M-D strings with at least one logged set — counts as
+// trained even if they never ticked the box, because the log is the evidence.
+export function summarizeWeek(days, logsByDate = {}, workoutDates = new Set()) {
+  const rows = days.map(d => logsByDate[d] || null)
+  const pick = k => rows.map(r => (r ? r[k] : null))
+  const hits = rows.filter(r => r && r.nutrition_hit === true).length
+  const misses = rows.filter(r => r && r.nutrition_hit === false).length
+  const trainedDays = days.filter((d, i) => workoutDates.has(d) || rows[i]?.trained === true)
+  const cardio = pick('cardio_min').map(num).filter(v => v !== null)
+  const daily = days.map((d, i) => {
+    const r = rows[i] || {}
+    const out = { date: d }
+    for (const k of DAILY_FIELDS) out[k] = typeof r[k] === 'boolean' ? r[k] : num(r[k])
+    out.trained = workoutDates.has(d) || r.trained === true ? true : (r.trained === false ? false : null)
+    out.workout_logged = workoutDates.has(d)
+    return out
+  })
+  return {
+    period_start: days[0],
+    period_end: days[days.length - 1],
+    days_logged: days.filter((d, i) => dayHasData(rows[i]) || workoutDates.has(d)).length,
+    days_weighed: pick('weight').filter(v => num(v) !== null).length,
+    weight: avg(pick('weight'), 1),
+    steps: avg(pick('steps'), 0),
+    sleep_avg: avg(pick('sleep_hours'), 1),
+    adherence: hits + misses ? round(hits / (hits + misses), 3) : null,
+    sessions: trainedDays.length,
+    cardio_min: cardio.length ? cardio.reduce((a, b) => a + b, 0) : null,
+    energy: avg(pick('energy'), 1),
+    hunger: avg(pick('hunger'), 1),
+    stress: avg(pick('stress'), 1),
+    digestion: avg(pick('digestion'), 1),
+    daily,
+  }
+}

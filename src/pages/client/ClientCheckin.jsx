@@ -1,10 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { localDateStr, lastNDays, summarizeWeek } from '../../lib/weeks'
+import { WeekTable } from './ClientProgress'
 
 export default function ClientCheckin() {
   const { profile } = useAuth()
-  const [form, setForm] = useState({ weight: '', waist: '', sleep_avg: '', energy: 7, hunger: 5, notes: '' })
+  // Weight, sleep, steps, energy, hunger etc. are no longer typed here — they're
+  // averaged from the Daily Log, so the client can't estimate them from memory.
+  const [form, setForm] = useState({ waist: '', notes: '' })
+  const [dailyRows, setDailyRows] = useState([])
+  const [workoutDates, setWorkoutDates] = useState(new Set())
   const [customForm, setCustomForm] = useState(null)     // { id, name }
   const [questions, setQuestions] = useState([])
   const [answers, setAnswers] = useState({})
@@ -18,9 +25,20 @@ export default function ClientCheckin() {
       .eq('client_id', profile.id).order('submitted_at', { ascending: false }).limit(6)
     setHistory(data || [])
   }
+  async function loadWeek() {
+    const days = lastNDays(7)
+    const [{ data: dl }, { data: wl }] = await Promise.all([
+      supabase.from('daily_logs').select('*').eq('client_id', profile.id).gte('log_date', days[0]).lte('log_date', days[6]),
+      supabase.from('workout_logs').select('logged_at').eq('client_id', profile.id)
+        .gte('logged_at', new Date(Date.now() - 9 * 864e5).toISOString()),
+    ])
+    setDailyRows(dl || [])
+    setWorkoutDates(new Set((wl || []).map(w => localDateStr(new Date(w.logged_at)))))
+  }
   useEffect(() => {
     if (!profile) return
     load()
+    loadWeek()
     supabase.from('checkin_form_assignments').select('form_id, checkin_forms(id, name)')
       .eq('client_id', profile.id).maybeSingle()
       .then(({ data }) => {
@@ -32,7 +50,15 @@ export default function ClientCheckin() {
       })
   }, [profile])
 
+  const week = lastNDays(7)
+  const summary = useMemo(
+    () => summarizeWeek(week, Object.fromEntries(dailyRows.map(r => [r.log_date, r])), workoutDates),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dailyRows, workoutDates, week.join()])
+  const fewWeighIns = summary.days_weighed < 5
+
   async function submit() {
+    if (fewWeighIns && !window.confirm(`Only ${summary.days_weighed} of 7 weigh-ins are logged, so your weekly average won't be accurate. Submit anyway?`)) return
     setBusy(true)
     const photoRows = []
     for (const [label, file] of Object.entries(photos)) {
@@ -47,15 +73,20 @@ export default function ClientCheckin() {
       .filter(r => String(r.value).trim() !== '')
     const { error } = await supabase.from('checkins').insert({
       client_id: profile.id,
-      weight: +form.weight || null, waist: +form.waist || null, sleep_avg: +form.sleep_avg || null,
-      energy: +form.energy, hunger: +form.hunger, notes: form.notes, photo_urls: urls,
+      weight: summary.weight, waist: +form.waist || null, sleep_avg: summary.sleep_avg,
+      energy: summary.energy, hunger: summary.hunger, steps: summary.steps,
+      adherence: summary.adherence, sessions: summary.sessions, cardio_min: summary.cardio_min,
+      stress: summary.stress, digestion: summary.digestion,
+      period_start: summary.period_start, period_end: summary.period_end,
+      days_logged: summary.days_logged, days_weighed: summary.days_weighed, daily_summary: summary.daily,
+      notes: form.notes, photo_urls: urls,
       photos: photoRows,
       form_responses, form_name: customForm?.name || ''
     })
     setBusy(false)
     if (!error) {
       setDone(true)
-      setForm({ weight: '', waist: '', sleep_avg: '', energy: 7, hunger: 5, notes: '' })
+      setForm({ waist: '', notes: '' })
       setAnswers({})
       setPhotos({ Front: null, Side: null, Back: null })
       load()
@@ -70,21 +101,26 @@ export default function ClientCheckin() {
         <h1 style={{ fontSize: 24, marginTop: 4 }}>Check-in</h1>
       </header>
 
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          <input inputMode="decimal" placeholder="Weight" value={form.weight} onChange={e => setForm({ ...form, weight: e.target.value })} />
-          <input inputMode="decimal" placeholder="Waist" value={form.waist} onChange={e => setForm({ ...form, waist: e.target.value })} />
-          <input inputMode="decimal" placeholder="Sleep hrs" value={form.sleep_avg} onChange={e => setForm({ ...form, sleep_avg: e.target.value })} />
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+          <div className="eyebrow" style={{ fontSize: 10 }}>Your last 7 days</div>
+          <span className="muted" style={{ fontSize: 11.5 }}>Auto from your Daily Log</span>
         </div>
-        {[['Energy', 'energy'], ['Hunger', 'hunger']].map(([label, key]) => (
-          <div key={key}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
-              <span>{label}</span><span style={{ color: 'var(--orange-hot)' }}>{form[key]}/10</span>
-            </div>
-            <input type="range" min="1" max="10" value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })}
-              style={{ accentColor: 'var(--orange)', padding: 0 }} />
-          </div>
-        ))}
+        <WeekTable summary={summary} />
+        <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, fontSize: 13,
+          background: fewWeighIns ? 'rgba(214,69,69,0.15)' : 'var(--steel)', border: '1px solid ' + (fewWeighIns ? 'var(--red)' : 'transparent') }}>
+          {fewWeighIns
+            ? <>Only <strong>{summary.days_weighed} of 7</strong> weigh-ins logged. Fill in any days you missed so your average is right.</>
+            : <><strong>{summary.days_weighed} of 7</strong> weigh-ins logged. Nice.</>}
+          {' '}<Link to="/app/progress" style={{ color: 'var(--orange-hot)', fontWeight: 700 }}>Open Daily Log →</Link>
+        </div>
+      </div>
+
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div>
+          <label className="muted" style={{ fontSize: 12 }}>Waist (in) — measure at the navel</label>
+          <input inputMode="decimal" placeholder="e.g. 36.5" value={form.waist} onChange={e => setForm({ ...form, waist: e.target.value })} />
+        </div>
         {questions.map(q => (
           <div key={q.id}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
@@ -140,7 +176,7 @@ export default function ClientCheckin() {
             <div className="card" key={c.id} style={{ marginBottom: 10, padding: '14px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, fontWeight: 700 }}>
                 <span>{new Date(c.submitted_at).toLocaleDateString()}</span>
-                <span className="muted">{c.weight ? `${c.weight} lbs` : ''}</span>
+                <span className="muted">{c.weight ? `${c.weight} lbs${c.period_start ? ' (7-day avg)' : ''}` : ''}</span>
               </div>
               {c.coach_feedback && (
                 <div style={{ marginTop: 8, borderLeft: '3px solid var(--orange)', paddingLeft: 10, fontSize: 13.5 }}>
