@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { localDateStr, logDate } from '../../lib/weeks'
 
 export default function ClientRecap() {
   const { profile } = useAuth()
@@ -11,11 +12,11 @@ export default function ClientRecap() {
     const since = new Date(); since.setDate(since.getDate() - 30)
     const sinceStr = since.toISOString()
     Promise.all([
-      supabase.from('workout_logs').select('logged_at, weight, reps').eq('client_id', profile.id).gte('logged_at', sinceStr),
-      supabase.from('daily_logs').select('log_date, weight, steps').eq('client_id', profile.id).gte('log_date', since.toISOString().slice(0,10)).order('log_date'),
+      supabase.from('workout_logs').select('logged_at, weight, reps, logged_date').eq('client_id', profile.id).gte('logged_at', sinceStr),
+      supabase.from('daily_logs').select('log_date, weight, steps').eq('client_id', profile.id).gte('log_date', localDateStr(since)).order('log_date'),
       supabase.from('checkins').select('submitted_at').eq('client_id', profile.id).gte('submitted_at', sinceStr),
     ]).then(([{ data: logs }, { data: daily }, { data: checkins }]) => {
-      const days = new Set((logs || []).map(l => l.logged_at.slice(0,10)))
+      const days = new Set((logs || []).map(l => logDate(l)))
       const totalVolume = (logs || []).reduce((s, l) => s + ((+l.weight || 0) * (+l.reps || 0)), 0)
       const weighed = (daily || []).filter(d => d.weight)
       const weightChange = weighed.length >= 2 ? weighed[weighed.length-1].weight - weighed[0].weight : null

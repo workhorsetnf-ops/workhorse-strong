@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CheckSquare, Square, Plus, Repeat, Trash2, MessageCircle, ClipboardList, MoreVertical, Target } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { localDateStr, logDate } from '../../lib/weeks'
 
 function startOfWeek(d = new Date()) {
   const day = (d.getDay() + 6) % 7 // Monday = 0
@@ -43,7 +44,7 @@ export default function CoachHome() {
   const [showAddTask, setShowAddTask] = useState(false)
   const [newTask, setNewTask] = useState({ title: '', recurring: false, due_date: '' })
   const [pipeline, setPipeline] = useState(null)   // null until loaded; widget hides if empty
-  const todayStr = new Date().toISOString().slice(0,10)
+  const todayStr = localDateStr()
 
   // Pipeline summary for the Home widget. Deliberately its own small query —
   // the coach dashboard already loads plenty and leads are unrelated to clients.
@@ -135,7 +136,7 @@ export default function CoachHome() {
     const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }, { data: ratingsData }, { data: flagsData }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, protein_g, calories, created_at').eq('role', 'client').order('full_name'),
       supabase.from('program_assignments').select('*'),
-      supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text').order('logged_at', { ascending: false }).limit(600),
+      supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text, logged_date').order('logged_at', { ascending: false }).limit(600),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(400),
       supabase.from('checkins').select('client_id, submitted_at, notes, weight').order('submitted_at', { ascending: false }).limit(100),
       supabase.from('messages').select('sender_id, recipient_id, created_at'),
@@ -162,7 +163,7 @@ export default function CoachHome() {
     const sessionCounts = {}
     for (const w of workoutLogs || []) {
       const key = w.client_id
-      ;(sessionCounts[key] ||= new Set()).add(w.logged_at.slice(0,10))
+      ;(sessionCounts[key] ||= new Set()).add(logDate(w))
     }
     setSessions(Object.fromEntries(Object.entries(sessionCounts).map(([k,v]) => [k, v.size])))
 
@@ -178,7 +179,7 @@ export default function CoachHome() {
       const consultDue = !lastContact[c.id] || daysAgo(lastContact[c.id]) >= 5
 
       const last14Days = new Set(
-        (workoutLogs || []).filter(w => w.client_id === c.id && daysAgo(w.logged_at) <= 14).map(w => w.logged_at.slice(0, 10))
+        (workoutLogs || []).filter(w => w.client_id === c.id && daysAgo(w.logged_at) <= 14).map(w => logDate(w))
       ).size
       const compliancePct = hasAssignment ? Math.round((last14Days / 8) * 100) : null // ~4x/wk expected over 2 weeks
 
@@ -189,7 +190,7 @@ export default function CoachHome() {
     // per-client expanded-view stats: last-28-day compliance grid, totals, streak, 30d percentages
     const cs = {}
     for (const c of cl || []) {
-      const workoutDates = new Set((workoutLogs || []).filter(w => w.client_id === c.id).map(w => w.logged_at.slice(0, 10)))
+      const workoutDates = new Set((workoutLogs || []).filter(w => w.client_id === c.id).map(w => logDate(w)))
       const lifestyleDates = new Set((dailyLogs || []).filter(d => d.client_id === c.id).map(d => d.log_date))
 
       const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -202,8 +203,8 @@ export default function CoachHome() {
         const row = []
         for (let day = 0; day < 7; day++) {
           const d = new Date(gridStart); d.setDate(gridStart.getDate() + week * 7 + day)
-          const iso = d.toISOString().slice(0, 10)
-          row.push({ date: iso, isToday: iso === today.toISOString().slice(0,10), isFuture: d > today, hit: workoutDates.has(iso) })
+          const iso = localDateStr(d)
+          row.push({ date: iso, isToday: iso === localDateStr(today), isFuture: d > today, hit: workoutDates.has(iso) })
         }
         grid.push(row)
       }
@@ -212,13 +213,13 @@ export default function CoachHome() {
       let streak = 0
       for (let i = 0; i < 90; i++) {
         const d = new Date(today); d.setDate(today.getDate() - i)
-        if (workoutDates.has(d.toISOString().slice(0, 10))) streak++
+        if (workoutDates.has(localDateStr(d))) streak++
         else break
       }
 
       const last7Hit = [...Array(7)].filter((_, i) => {
         const d = new Date(today); d.setDate(today.getDate() - i)
-        return workoutDates.has(d.toISOString().slice(0, 10))
+        return workoutDates.has(localDateStr(d))
       }).length
 
       const last30Workouts = [...workoutDates].filter(iso => daysAgo(iso) <= 30).length
@@ -290,7 +291,7 @@ export default function CoachHome() {
       }
 
       // training consistency: this week vs last week (distinct days logged)
-      const daysInRange = (arr, from, to) => new Set(arr.filter(w => { const d = (today - new Date(w.logged_at)) / 864e5; return d >= from && d < to }).map(w => w.logged_at.slice(0,10))).size
+      const daysInRange = (arr, from, to) => new Set(arr.filter(w => { const d = (today - new Date(w.logged_at)) / 864e5; return d >= from && d < to }).map(w => logDate(w))).size
       const thisWk = daysInRange(workouts, 0, 7), lastWk = daysInRange(workouts, 7, 14)
       if (thisWk >= 4) chips.push({ tone: 'good', text: 'Moving with great consistency this week!' })
       else if (lastWk > 0 && thisWk < lastWk) chips.push({ tone: 'warn', text: `Training days dropped from ${lastWk} to ${thisWk} this week` })
@@ -322,7 +323,7 @@ export default function CoachHome() {
     if (tab === 'exercises') {
       const byDay = {}
       for (const w of workoutLogs) {
-        const key = w.client_id + w.logged_at.slice(0,10)
+        const key = w.client_id + logDate(w)
         if (!byDay[key]) byDay[key] = { client_id: w.client_id, date: w.logged_at, items: [] }
         byDay[key].items.push(w.exercise_name)
       }

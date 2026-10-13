@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { localDateStr, logDate } from '../../lib/weeks'
 
 const METRIC_LABEL = { steps: 'Total steps', workouts: 'Workouts logged', weight_loss: 'Weight lost (%)' }
 
@@ -27,10 +28,10 @@ export default function ClientLeaderboard() {
             for (const l of logs || []) totals[l.client_id] = (totals[l.client_id] || 0) + (l.steps || 0)
             rows = ids.map(id => ({ id, name: nameOf(id), value: totals[id] || 0, display: (totals[id] || 0).toLocaleString() }))
           } else if (ch.metric === 'workouts') {
-            const { data: logs } = await supabase.from('workout_logs').select('client_id, logged_at')
+            const { data: logs } = await supabase.from('workout_logs').select('client_id, logged_at, logged_date')
               .in('client_id', ids).gte('logged_at', ch.start_date).lte('logged_at', ch.end_date + 'T23:59:59')
             const days = {}
-            for (const l of logs || []) (days[l.client_id] ||= new Set()).add(l.logged_at.slice(0,10))
+            for (const l of logs || []) (days[l.client_id] ||= new Set()).add(logDate(l))
             rows = ids.map(id => ({ id, name: nameOf(id), value: days[id]?.size || 0, display: `${days[id]?.size || 0} days` }))
           } else {
             const { data: logs } = await supabase.from('daily_logs').select('client_id, weight, log_date')
@@ -49,7 +50,7 @@ export default function ClientLeaderboard() {
       })
   }, [profile])
 
-  const today = new Date().toISOString().slice(0,10)
+  const today = localDateStr()
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

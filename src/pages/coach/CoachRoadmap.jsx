@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { localDateStr } from '../../lib/weeks'
 
 const TYPE_COLOR = { cut: '#FF5A00', build: '#4A6FA5', recomp: '#7C5CBF', maintain: '#3E8E7E', peak: '#FF6200' }
 const TYPE_LABEL = { cut: 'Cut', build: 'Build', recomp: 'Recomp', maintain: 'Maintain', peak: 'Peak' }
@@ -57,7 +58,7 @@ export default function CoachRoadmap() {
     loadPhases(clientId)
   }
 
-  const today = new Date().toISOString().slice(0,10)
+  const today = localDateStr()
 
   return (
     <div>

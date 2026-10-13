@@ -234,3 +234,12 @@ export function summarizeWeek(days, logsByDate = {}, workoutDates = new Set()) {
     daily,
   }
 }
+
+// The local day a workout set belongs to. logged_date is what the client's
+// screen saved it under; older rows only have logged_at (a UTC timestamp), so
+// convert that to the local calendar day rather than slicing the UTC string.
+export function logDate(row) {
+  if (!row) return null
+  if (row.logged_date) return row.logged_date
+  return row.logged_at ? localDateStr(new Date(row.logged_at)) : null
+}

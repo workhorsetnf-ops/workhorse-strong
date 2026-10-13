@@ -45,6 +45,11 @@ import { createClient } from '@supabase/supabase-js'
 const GHL_BASE = 'https://services.leadconnectorhq.com'
 const GHL_VERSION = '2021-07-28'
 
+// 'YYYY-MM-DD' for right now in the given IANA timezone (en-CA formats as Y-M-D).
+export function localDateIn(timeZone, now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
+}
+
 export default async function handler(req, res) {
   if (process.env.CRON_SECRET) {
     const auth = req.headers.authorization || ''
@@ -68,7 +73,11 @@ export default async function handler(req, res) {
 
   const foodTag = (GHL_FOOD_TAG || 'missed-food-today').trim()
   const stepsTag = (GHL_STEPS_TAG || 'missed-steps-today').trim()
-  const today = new Date().toISOString().slice(0, 10)
+  // The cron fires at 01:00 UTC (vercel.json) = 9pm Eastern, when the UTC date
+  // has already rolled to TOMORROW. Using it checked whether clients had logged
+  // tomorrow — nobody had — so everyone got tagged every night. Use the coach's
+  // timezone instead (override with COACH_TIMEZONE if that ever changes).
+  const today = localDateIn(process.env.COACH_TIMEZONE || 'America/New_York')
 
   function ghlHeaders() {
     return {
