@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import ClientMeasurements from './ClientMeasurements'
+import ClientPhotos from './ClientPhotos'
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { Home, Dumbbell, Utensils, ClipboardCheck, LineChart, Video, Trophy, MessageCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -80,6 +82,8 @@ export default function ClientApp() {
           <Route path="contracts" element={<ClientContracts />} />
           <Route path="contracts/print/:contractId" element={<ContractPrint />} />
           <Route path="documents" element={<ClientDocuments />} />
+          <Route path="measurements" element={<ClientMeasurements />} />
+          <Route path="photos" element={<ClientPhotos />} />
           <Route path="supplements" element={<ClientSupplements />} />
           <Route path="bloodwork" element={<ClientBloodwork />} />
           <Route path="cardio" element={<ClientCardio />} />

@@ -487,6 +487,7 @@ export default function CoachClients() {
                   <Link to={`/coach/health/${c.id}`} className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Supplements · Bloodwork · Cardio</Link>
                   <a href={`/coach/print/${c.id}`} target="_blank" rel="noreferrer" className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Print summary</a>
                   <button className="btn-ghost" onClick={() => resetPassword(c)}>Reset password</button>
+                  <Link to={`/coach/body/${c.id}`} className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Measurements · Photos</Link>
                   <button className="btn-ghost" onClick={() => togglePhotos(c.id)}>
                     {photosFor === c.id ? 'Hide photos' : 'Photos'}
                   </button>
