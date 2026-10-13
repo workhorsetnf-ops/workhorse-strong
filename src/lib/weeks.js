@@ -243,3 +243,15 @@ export function logDate(row) {
   if (row.logged_date) return row.logged_date
   return row.logged_at ? localDateStr(new Date(row.logged_at)) : null
 }
+
+// Monday of the week a Y-M-D falls in, and that week's 7 days (Mon→Sun).
+export function mondayOf(day = localDateStr()) {
+  const [y, m, d] = day.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7))
+  return localDateStr(dt)
+}
+export function weekDaysFrom(monday) {
+  const [y, m, d] = monday.split('-').map(Number)
+  return Array.from({ length: 7 }, (_, i) => localDateStr(new Date(y, m - 1, d + i)))
+}
