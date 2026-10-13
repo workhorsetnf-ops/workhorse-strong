@@ -20,6 +20,10 @@ import ClientCalendar from './ClientCalendar'
 import ClientIntakeForms from './ClientIntakeForms'
 import ClientContracts from './ClientContracts'
 import ClientDocuments from './ClientDocuments'
+import ClientSupplements from './ClientSupplements'
+import ClientBloodwork from './ClientBloodwork'
+import ClientCardio from './ClientCardio'
+import ClientHabits from './ClientHabits'
 import ContractPrint from '../ContractPrint'
 
 function Dot() {
@@ -77,6 +81,10 @@ export default function ClientApp() {
           <Route path="contracts" element={<ClientContracts />} />
           <Route path="contracts/print/:contractId" element={<ContractPrint />} />
           <Route path="documents" element={<ClientDocuments />} />
+          <Route path="supplements" element={<ClientSupplements />} />
+          <Route path="bloodwork" element={<ClientBloodwork />} />
+          <Route path="cardio" element={<ClientCardio />} />
+          <Route path="habits" element={<ClientHabits />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>
