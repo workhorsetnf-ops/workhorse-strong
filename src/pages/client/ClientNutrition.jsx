@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { localDateStr } from '../../lib/weeks'
 
 export default function ClientNutrition() {
   const { profile } = useAuth()
@@ -18,7 +19,7 @@ export default function ClientNutrition() {
   const [debugInfo, setDebugInfo] = useState('')
   const videoRef = useRef(null)
   const streamRef = useRef(null)
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDateStr()   // local, not UTC — see ClientTraining
 
   async function load() {
     const { data } = await supabase.from('meal_logs').select('*')
@@ -140,6 +141,7 @@ export default function ClientNutrition() {
       : `${selFood.name}${selFood.brand ? ` (${selFood.brand})` : ''} — ${grams}g`
     await supabase.from('meal_logs').insert({
       client_id: profile.id,
+      logged_on: localDateStr(),   // the DB default is the server's UTC date
       meal_name: label,
       protein_g: Math.round(selFood.p * factor),
       carbs_g: Math.round(selFood.c * factor),
@@ -152,7 +154,7 @@ export default function ClientNutrition() {
   async function addMeal() {
     if (!form.meal_name) return
     await supabase.from('meal_logs').insert({
-      client_id: profile.id, meal_name: form.meal_name,
+      client_id: profile.id, logged_on: localDateStr(), meal_name: form.meal_name,
       protein_g: +form.protein_g || 0, carbs_g: +form.carbs_g || 0, fat_g: +form.fat_g || 0
     })
     setForm({ meal_name: '', protein_g: '', carbs_g: '', fat_g: '' })

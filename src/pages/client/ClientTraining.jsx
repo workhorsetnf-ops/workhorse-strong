@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { resolveAssignment, rotationForWeek, dayShowsInWeek, daysBetween, resolveBlockWeek } from '../../lib/weeks'
+import { resolveAssignment, rotationForWeek, dayShowsInWeek, daysBetween, resolveBlockWeek, localDateStr } from '../../lib/weeks'
 import { useAuth } from '../../context/AuthContext'
 import RestTimer from '../../lib/RestTimer'
 import PlateCalc from '../../lib/PlateCalc'
@@ -37,7 +37,9 @@ const BODYWEIGHT_SUBS = [
   ['Conditioning', 'Bodyweight circuits, burpees, jump rope if available, hill sprints'],
 ]
 
-const todayStr = () => new Date().toISOString().slice(0, 10)
+// Local date. toISOString() is UTC, which filed every set logged after 8pm
+// Eastern under TOMORROW and threw off "last session" and weekly counts.
+const todayStr = () => localDateStr()
 
 // Rows arrive newest first. For each exercise, the first day we meet that isn't
 // today (and has a real value) is "last session"; we keep every set from that day.

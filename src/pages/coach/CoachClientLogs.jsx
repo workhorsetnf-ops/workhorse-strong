@@ -2,14 +2,78 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ChevronLeft, Utensils, Dumbbell } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { localDateStr, lastNDays } from '../../lib/weeks'
 
-function last7Dates() {
-  const out = []
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i)
-    out.push(d.toISOString().slice(0, 10))
+// Local dates throughout — toISOString() is UTC and moved evening logs onto the next day.
+function last7Dates() { return lastNDays(7) }
+
+// The date a set belongs to: logged_date when present (what the client's screen
+// saved it under), else the LOCAL date of logged_at for older rows.
+export function logDay(l) {
+  return l.logged_date || (l.logged_at ? localDateStr(new Date(l.logged_at)) : null)
+}
+
+// Monday of the week a Y-M-D falls in, as Y-M-D.
+export function weekStartStr(day) {
+  const [y, m, d] = day.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7))
+  return localDateStr(dt)
+}
+
+// Best set from a list of logged sets: heaviest load, reps breaking ties.
+// Bodyweight work (no load) is judged on reps; conditioning on its result text.
+export function bestSet(sets) {
+  let best = null
+  for (const s of sets) {
+    const w = parseFloat(s.weight), r = parseFloat(s.reps)
+    const hasW = !isNaN(w) && w > 0, hasR = !isNaN(r) && r > 0
+    if (!hasW && !hasR) continue
+    const cand = { weight: hasW ? w : 0, reps: hasR ? r : 0 }
+    if (!best || cand.weight > best.weight || (cand.weight === best.weight && cand.reps > best.reps)) best = cand
   }
-  return out
+  if (best) return { ...best, text: best.weight ? `${best.weight}×${best.reps || '–'}` : `BW×${best.reps}` }
+  const res = sets.find(s => (s.result_text || '').trim())
+  return res ? { weight: 0, reps: 0, text: res.result_text.trim(), result: true } : null
+}
+
+// { weeks: [Y-M-D mondays oldest→newest], rows: [{ name, cells: { monday: {text, trend} } }] }
+// trend: 'up' beat the previous logged week, 'down' went backwards, null otherwise.
+export function buildWeekGrid(logs, todayStr = localDateStr(), nWeeks = 6) {
+  const thisMon = weekStartStr(todayStr)
+  const weeks = Array.from({ length: nWeeks }, (_, i) => {
+    const [y, m, d] = thisMon.split('-').map(Number)
+    return localDateStr(new Date(y, m - 1, d - 7 * (nWeeks - 1 - i)))
+  })
+  const byEx = {}
+  const lastSeen = {}
+  for (const l of logs) {
+    const day = logDay(l)
+    if (!day || !l.exercise_name) continue
+    const wk = weekStartStr(day)
+    if (!weeks.includes(wk)) continue
+    ;((byEx[l.exercise_name] ||= {})[wk] ||= []).push(l)
+    if (!lastSeen[l.exercise_name] || day > lastSeen[l.exercise_name]) lastSeen[l.exercise_name] = day
+  }
+  const rows = Object.keys(byEx)
+    .sort((a, b) => (lastSeen[b] || '').localeCompare(lastSeen[a] || '') || a.localeCompare(b))
+    .map(name => {
+      const cells = {}
+      let prev = null
+      for (const wk of weeks) {
+        const b = byEx[name][wk] ? bestSet(byEx[name][wk]) : null
+        if (!b) continue
+        let trend = null
+        if (prev && !b.result && !prev.result) {
+          if (b.weight > prev.weight || (b.weight === prev.weight && b.reps > prev.reps)) trend = 'up'
+          else if (b.weight < prev.weight || (b.weight === prev.weight && b.reps < prev.reps)) trend = 'down'
+        }
+        cells[wk] = { text: b.text, trend }
+        prev = b
+      }
+      return { name, cells }
+    })
+  return { weeks, rows }
 }
 function fmtDate(iso) {
   return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
@@ -20,15 +84,17 @@ export default function CoachClientLogs() {
   const [profile, setProfile] = useState(null)
   const [mealsByDay, setMealsByDay] = useState({})
   const [workoutDays, setWorkoutDays] = useState([])
+  const [grid, setGrid] = useState({ weeks: [], rows: [] })
   const [openDay, setOpenDay] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const since30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)
+    const since30 = localDateStr(new Date(Date.now() - 30 * 864e5))
+    const since6wk = new Date(Date.now() - 44 * 864e5).toISOString()
     Promise.all([
       supabase.from('profiles').select('*').eq('id', clientId).single(),
       supabase.from('meal_logs').select('*').eq('client_id', clientId).gte('logged_on', last7Dates()[0]).order('logged_at', { ascending: true }),
-      supabase.from('workout_logs').select('*').eq('client_id', clientId).gte('logged_at', since30).order('logged_at', { ascending: false }),
+      supabase.from('workout_logs').select('*').eq('client_id', clientId).gte('logged_at', since6wk).order('logged_at', { ascending: false }),
     ]).then(([{ data: prof }, { data: meals }, { data: logs }]) => {
       setProfile(prof)
 
@@ -36,9 +102,11 @@ export default function CoachClientLogs() {
       for (const m of meals || []) (byDay[m.logged_on] ||= []).push(m)
       setMealsByDay(byDay)
 
+      setGrid(buildWeekGrid(logs || []))
       const byWorkoutDay = {}
       for (const l of logs || []) {
-        const day = l.logged_at.slice(0, 10)
+        const day = logDay(l)
+        if (!day || day < since30) continue
         if (!byWorkoutDay[day]) byWorkoutDay[day] = {}
         if (!byWorkoutDay[day][l.exercise_name]) byWorkoutDay[day][l.exercise_name] = []
         byWorkoutDay[day][l.exercise_name].push(l)
@@ -104,6 +172,52 @@ export default function CoachClientLogs() {
             )
           })}
         </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <Dumbbell size={17} strokeWidth={2} color="var(--orange-hot)" />
+          <strong style={{ fontSize: 15 }}>Best set by week</strong>
+        </div>
+        <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>Heaviest set each week (reps break ties). ▲ beat the week before, ▼ went backwards.</p>
+        {grid.rows.length === 0
+          ? <p className="muted" style={{ fontSize: 13.5 }}>No workouts logged in the last 6 weeks.</p>
+          : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', fontSize: 11, padding: '6px 8px', position: 'sticky', left: 0, background: 'var(--coal)', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Exercise</th>
+                    {grid.weeks.map((wk, i) => {
+                      const current = i === grid.weeks.length - 1
+                      return (
+                        <th key={wk} style={{ fontSize: 11, padding: '6px 6px', textAlign: 'center', whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '.04em',
+                          color: current ? '#000' : 'var(--muted)', background: current ? 'var(--orange)' : 'transparent', borderRadius: 6 }}>
+                          {current ? 'This wk' : 'Wk of'}<div style={{ fontWeight: 600, fontSize: 10.5 }}>{new Date(wk + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
+                        </th>
+                      )
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {grid.rows.map(r => (
+                    <tr key={r.name}>
+                      <td style={{ fontSize: 13, fontWeight: 700, padding: '8px', borderTop: '1px solid var(--line)', position: 'sticky', left: 0, background: 'var(--coal)', whiteSpace: 'nowrap' }}>{r.name}</td>
+                      {grid.weeks.map(wk => {
+                        const c = r.cells[wk]
+                        return (
+                          <td key={wk} style={{ fontSize: 13, textAlign: 'center', padding: '8px 6px', borderTop: '1px solid var(--line)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
+                            color: !c ? 'var(--muted)' : c.trend === 'up' ? 'var(--orange-hot)' : c.trend === 'down' ? 'var(--red)' : 'var(--white)', fontWeight: c?.trend === 'up' ? 800 : 600 }}>
+                            {c ? c.text : '—'}{c?.trend === 'up' && ' ▲'}{c?.trend === 'down' && ' ▼'}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
       </div>
 
       <div className="card">
