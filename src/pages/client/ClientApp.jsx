@@ -25,6 +25,9 @@ import ClientDocuments from './ClientDocuments'
 import ClientSupplements from './ClientSupplements'
 import ClientBloodwork from './ClientBloodwork'
 import ClientCardio from './ClientCardio'
+import ClientHabits from './ClientHabits'
+import ClientMealPlan from './ClientMealPlan'
+import ClientShopping from './ClientShopping'
 import ContractPrint from '../ContractPrint'
 
 function Dot() {
@@ -67,6 +70,8 @@ export default function ClientApp() {
           <Route index element={<ClientHome />} />
           <Route path="training" element={<ClientTraining />} />
           <Route path="nutrition" element={<ClientNutrition />} />
+          <Route path="nutrition/plan" element={<ClientMealPlan />} />
+          <Route path="nutrition/shopping" element={<ClientShopping />} />
           <Route path="messages" element={<ClientMessages />} />
           <Route path="checkin" element={<ClientCheckin />} />
           <Route path="progress" element={<ClientProgress />} />
@@ -87,6 +92,7 @@ export default function ClientApp() {
           <Route path="supplements" element={<ClientSupplements />} />
           <Route path="bloodwork" element={<ClientBloodwork />} />
           <Route path="cardio" element={<ClientCardio />} />
+          <Route path="habits" element={<ClientHabits />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>

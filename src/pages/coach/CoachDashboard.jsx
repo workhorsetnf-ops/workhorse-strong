@@ -21,6 +21,7 @@ import CoachPrintSummary from './CoachPrintSummary'
 import CoachTestimonials from './CoachTestimonials'
 import CoachClientLogs from './CoachClientLogs'
 import CoachHealth from './CoachHealth'
+import CoachNutrition from './CoachNutrition'
 import CoachHub from './CoachHub'
 import CoachCheckins from './CoachCheckins'
 import CoachMessages from './CoachMessages'
@@ -83,6 +84,7 @@ export default function CoachDashboard() {
           <Route path="logs/:clientId" element={<CoachClientLogs />} />
           <Route path="body/:clientId" element={<CoachBody />} />
           <Route path="health/:clientId" element={<CoachHealth />} />
+          <Route path="nutrition/:clientId" element={<CoachNutrition />} />
           <Route path="testimonials" element={<CoachTestimonials />} />
           <Route path="checkins" element={<CoachCheckins />} />
           <Route path="calls" element={<CoachCalls />} />
