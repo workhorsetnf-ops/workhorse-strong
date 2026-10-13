@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature, FileStack } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { localDateStr } from '../../lib/weeks'
+import { localDateStr, logDate } from '../../lib/weeks'
 
 export default function ClientHome() {
   const { profile, signOut } = useAuth()
@@ -41,7 +41,7 @@ export default function ClientHome() {
       .then(({ data }) => setHasStepsToday(data?.steps != null))
     // tracking streak — consecutive days (today optional, same rule as the workout streak below)
     // with BOTH a food entry and a steps entry logged
-    const since90 = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10)
+    const since90 = localDateStr(new Date(Date.now() - 90 * 864e5))
     Promise.all([
       supabase.from('meal_logs').select('logged_on').eq('client_id', profile.id).gte('logged_on', since90),
       supabase.from('daily_logs').select('log_date, steps').eq('client_id', profile.id).gte('log_date', since90),
@@ -51,7 +51,7 @@ export default function ClientHome() {
       let count = 0
       for (let back = 0; back < 90; back++) {
         const d = new Date(); d.setDate(d.getDate() - back)
-        const ds = d.toISOString().slice(0, 10)
+        const ds = localDateStr(d)
         if (foodDays.has(ds) && stepDays.has(ds)) count++
         else if (back > 0) break
       }
@@ -63,19 +63,19 @@ export default function ClientHome() {
     const weekDow = (nowForWeek.getDay() + 6) % 7 // 0=Mon..6=Sun
     const startOfWeek = new Date(nowForWeek); startOfWeek.setHours(0, 0, 0, 0); startOfWeek.setDate(nowForWeek.getDate() - weekDow)
     const weekStart = startOfWeek.toISOString()
-    supabase.from('workout_logs').select('logged_at')
+    supabase.from('workout_logs').select('logged_at, logged_date')
       .eq('client_id', profile.id).gte('logged_at', weekStart)
       .then(({ data }) => {
-        const days = new Set((data || []).map(l => l.logged_at.slice(0, 10)))
+        const days = new Set((data || []).map(l => logDate(l)))
         setWeekWorkouts(days.size)
       })
-    supabase.from('workout_logs').select('logged_at').eq('client_id', profile.id).order('logged_at', { ascending: false }).limit(60)
+    supabase.from('workout_logs').select('logged_at, logged_date').eq('client_id', profile.id).order('logged_at', { ascending: false }).limit(60)
       .then(({ data }) => {
-        const days = new Set((data || []).map(l => l.logged_at.slice(0,10)))
+        const days = new Set((data || []).map(l => logDate(l)))
         let count = 0
         for (let back = 0; back < 60; back++) {
           const d = new Date(); d.setDate(d.getDate() - back)
-          if (days.has(d.toISOString().slice(0,10))) count++
+          if (days.has(localDateStr(d))) count++
           else if (back > 0) break // allow today to be unlogged yet without breaking streak
         }
         setStreak(count)

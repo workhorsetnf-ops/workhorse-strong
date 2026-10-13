@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { localDateStr, logDate } from '../../lib/weeks'
 
 function daysAgo(dateStr) {
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / 864e5)
@@ -10,14 +11,14 @@ export default function CoachAlerts() {
 
   async function load() {
     const results = []
-    const since30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)
+    const since30 = localDateStr(new Date(Date.now() - 30 * 864e5))
     const [{ data: clients }, { data: assignments }, { data: blocksAll }, { data: checkins }, { data: dailyLogs }, { data: workoutLogs }, { data: daysAll }, { data: mealLogs }] = await Promise.all([
       supabase.from('profiles').select('*').eq('role', 'client'),
       supabase.from('program_assignments').select('*'),
       supabase.from('program_blocks').select('*'),
       supabase.from('checkins').select('client_id, submitted_at, weight').order('submitted_at', { ascending: false }),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }),
-      supabase.from('workout_logs').select('client_id, logged_at').order('logged_at', { ascending: false }),
+      supabase.from('workout_logs').select('client_id, logged_at, logged_date').order('logged_at', { ascending: false }),
       supabase.from('program_days').select('id, block_id, day_number, track'),
       supabase.from('meal_logs').select('client_id, logged_on').gte('logged_on', since30),
     ])
@@ -43,7 +44,7 @@ export default function CoachAlerts() {
         if (a.start_date && block) {
           const sd = new Date(a.start_date + 'T00:00:00')
           const today = new Date(); today.setHours(0,0,0,0)
-          const clientWorkoutDates = new Set((workoutLogs || []).filter(w => w.client_id === c.id).map(w => w.logged_at.slice(0,10)))
+          const clientWorkoutDates = new Set((workoutLogs || []).filter(w => w.client_id === c.id).map(w => logDate(w)))
           let missed = 0
           for (let back = 1; back <= 7; back++) {
             const d = new Date(today); d.setDate(d.getDate() - back)
@@ -51,7 +52,7 @@ export default function CoachAlerts() {
             if (diff < 0) continue
             const dn = (diff % 7) + 1
             const hasTrainingDay = (daysAll || []).some(day => day.block_id === a.current_block_id && day.day_number === dn && (day.track || 'exercise') === 'exercise')
-            if (hasTrainingDay && !clientWorkoutDates.has(d.toISOString().slice(0,10))) missed++
+            if (hasTrainingDay && !clientWorkoutDates.has(localDateStr(d))) missed++
           }
           if (missed >= 2) {
             results.push({ type: 'missed', severity: missed >= 3 ? 'high' : 'med', client: c, text: `${nameOf(c.id)} missed ${missed} training day(s) logged in the last week.` })
@@ -66,7 +67,7 @@ export default function CoachAlerts() {
       let missedFood = 0, missedSteps = 0
       for (let back = 1; back <= 3; back++) {
         const d = new Date(today0); d.setDate(d.getDate() - back)
-        const ds = d.toISOString().slice(0, 10)
+        const ds = localDateStr(d)
         if (!clientMealDays.has(ds)) missedFood++
         if (!clientStepDays.has(ds)) missedSteps++
       }
@@ -81,7 +82,7 @@ export default function CoachAlerts() {
       let trackStreak = 0
       for (let back = 0; back < 30; back++) {
         const d = new Date(today0); d.setDate(d.getDate() - back)
-        const ds = d.toISOString().slice(0, 10)
+        const ds = localDateStr(d)
         if (clientMealDays.has(ds) && clientStepDays.has(ds)) trackStreak++
         else if (back > 0) break
       }

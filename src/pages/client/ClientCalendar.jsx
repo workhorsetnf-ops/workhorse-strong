@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { localDateStr } from '../../lib/weeks'
 
 export default function ClientCalendar() {
   const { profile } = useAuth()
@@ -75,7 +76,7 @@ export default function ClientCalendar() {
   }
   function loggedThatDay(dayNum) {
     const date = new Date(y, m, dayNum)
-    return dailyLogDates.has(date.toISOString().slice(0,10))
+    return dailyLogDates.has(localDateStr(date))
   }
 
   const sel = selected ? daySessions(selected) : []

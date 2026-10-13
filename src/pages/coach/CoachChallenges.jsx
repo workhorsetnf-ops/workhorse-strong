@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { localDateStr, logDate } from '../../lib/weeks'
 
 const METRIC_LABEL = { steps: 'Total steps', workouts: 'Workouts logged', weight_loss: 'Weight lost (%)' }
 
@@ -28,7 +29,7 @@ export default function CoachChallenges() {
     if (!form.name.trim() || !form.end_date) return
     await supabase.from('challenges').insert({
       name: form.name.trim(), metric: form.metric,
-      start_date: form.start_date || new Date().toISOString().slice(0,10), end_date: form.end_date,
+      start_date: form.start_date || localDateStr(), end_date: form.end_date,
     })
     setForm({ name: '', metric: 'steps', start_date: '', end_date: '' })
     load()
@@ -62,10 +63,10 @@ export default function CoachChallenges() {
       for (const d of data || []) totals[d.client_id] = (totals[d.client_id] || 0) + (d.steps || 0)
       rows = ids.map(id => ({ clientId: id, value: totals[id] || 0, display: (totals[id] || 0).toLocaleString() }))
     } else if (challenge.metric === 'workouts') {
-      const { data } = await supabase.from('workout_logs').select('client_id, logged_at')
+      const { data } = await supabase.from('workout_logs').select('client_id, logged_at, logged_date')
         .in('client_id', ids).gte('logged_at', challenge.start_date).lte('logged_at', challenge.end_date + 'T23:59:59')
       const days = {}
-      for (const d of data || []) { (days[d.client_id] ||= new Set()).add(d.logged_at.slice(0,10)) }
+      for (const d of data || []) { (days[d.client_id] ||= new Set()).add(logDate(d)) }
       rows = ids.map(id => ({ clientId: id, value: days[id]?.size || 0, display: `${days[id]?.size || 0} days` }))
     } else if (challenge.metric === 'weight_loss') {
       const { data } = await supabase.from('daily_logs').select('client_id, weight, log_date')
@@ -89,7 +90,7 @@ export default function CoachChallenges() {
     computeScores(ch)
   }
 
-  const today = new Date().toISOString().slice(0,10)
+  const today = localDateStr()
 
   return (
     <div>

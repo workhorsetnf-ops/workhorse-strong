@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { localDateStr } from '../../lib/weeks'
 
 const TYPE_COLOR = { cut: '#FF5A00', build: '#4A6FA5', recomp: '#7C5CBF', maintain: '#3E8E7E', peak: '#FF6200' }
 const TYPE_LABEL = { cut: 'Cut', build: 'Build', recomp: 'Recomp', maintain: 'Maintain', peak: 'Peak' }
@@ -14,7 +15,7 @@ export default function ClientRoadmap() {
     supabase.from('client_phases').select('*').eq('client_id', profile.id).order('start_date').then(({ data }) => setPhases(data || []))
   }, [profile])
 
-  const today = new Date().toISOString().slice(0,10)
+  const today = localDateStr()
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
