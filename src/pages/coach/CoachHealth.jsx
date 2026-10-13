@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ChevronLeft, Pill, Droplet, Plus, Trash2 } from 'lucide-react'
+import { ChevronLeft, Pill, Droplet, Plus, Trash2, HeartPulse } from 'lucide-react'
+import CoachCardio from './CoachCardio'
 import { supabase } from '../../lib/supabase'
 import { localDateStr, mondayOf, weekDaysFrom } from '../../lib/weeks'
 import { MARKERS, CATEGORIES, MARKER_NOTES, rangeFor, statusOf, resultsByMarker, fmtRange } from '../../lib/bloodwork'
@@ -194,6 +195,7 @@ export default function CoachHealth() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={tab === 'supplements' ? 'btn' : 'btn-ghost'} onClick={() => setTab('supplements')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Pill size={15} /> Supplements</button>
         <button className={tab === 'bloodwork' ? 'btn' : 'btn-ghost'} onClick={() => setTab('bloodwork')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Droplet size={15} /> Bloodwork</button>
+        <button className={tab === 'cardio' ? 'btn' : 'btn-ghost'} onClick={() => setTab('cardio')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><HeartPulse size={15} /> Cardio</button>
       </div>
 
       {tab === 'supplements' && (
@@ -254,6 +256,8 @@ export default function CoachHealth() {
           </div>
         </div>
       )}
+
+      {tab === 'cardio' && <CoachCardio clientId={clientId} onBusy={d => setBusy(b => b + d)} />}
 
       {tab === 'bloodwork' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
