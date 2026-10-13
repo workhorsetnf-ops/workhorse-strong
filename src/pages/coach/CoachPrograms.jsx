@@ -89,15 +89,109 @@ export function copyWeekPatch(ex, weeks, fromIdx, toIdx) {
   return patch
 }
 
+// Per-set rows for one week (or every week it runs) as a database patch.
+// rows = [{reps, target}] or null to go back to one range. Rows are fitted to
+// each week's own set count, and setRows is dropped when nothing actually varies.
+export function setRowsPatch(ex, weeks, weekIdxs, rows) {
+  const wts = weekTargetsFor(ex, weeks)
+  for (const i of weekIdxs) {
+    if (!wts[i]) continue
+    if (!rows) { const { setRows, ...rest } = wts[i]; wts[i] = rest; continue }
+    const n = +wts[i].sets || rows.length || 1
+    const last = rows[rows.length - 1] || { reps: wts[i].reps, target: wts[i].target }
+    wts[i] = compactSetRows({ ...wts[i], setRows: Array.from({ length: n }, (_, k) => ({ ...(rows[k] || last) })) })
+  }
+  const patch = { week_targets: wts }
+  if (weekIdxs.includes(0)) {
+    patch.sets = +wts[0].sets || 3
+    patch.reps = String(wts[0].reps ?? '')
+    patch.rir = String(wts[0].target ?? '')
+  }
+  return patch
+}
+
+// Swap an exercise with its neighbour. Positions are renumbered 0..n-1 first so
+// rows that were saved with duplicate/blank positions can still move.
+export function reorderPatches(list, exId, dir) {
+  const sorted = [...list].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+  const i = sorted.findIndex(e => e.id === exId), j = i + dir
+  if (i < 0 || j < 0 || j >= sorted.length) return []
+  ;[sorted[i], sorted[j]] = [sorted[j], sorted[i]]
+  // only write the rows whose position actually changed
+  return sorted.map((e, k) => ({ id: e.id, position: k }))
+    .filter(x => (list.find(e => e.id === x.id).position ?? -1) !== x.position)
+}
+
 const TARGET_LABEL = { rir: 'RIR', rpe: 'RPE', percent: '%' }
 
-function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, setPreviewWeek, onPatch, onAdd, onDelete, onOpenCards }) {
+export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, setPreviewWeek, onPatch, onAdd, onDelete, onOpenCards, library = [], onReload }) {
   const weeks = block.weeks || 4
   const [draft, setDraft] = useState({})       // `${exId}|${weekIdx}|${field}` -> text being typed
   const [selEx, setSelEx] = useState(null)     // { dayId, exId } shown in the preview
   const [adding, setAdding] = useState({})     // dayId -> new exercise name
   const [busy, setBusy] = useState(0)
+  const [open, setOpen] = useState(null)       // exercise id with its detail strip open (per-set, order, video)
+  const [rowDraft, setRowDraft] = useState({}) // `${exId}|${weekIdx}` -> [{reps,target}] being edited
   const cells = useRef({})
+  const sortEx = arr => [...(arr || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+
+  // Plain fields on the exercise itself (letter, rest, video) save on blur.
+  async function commitField(dayId, ex, field, transform = v => v) {
+    const key = `${ex.id}|f|${field}`
+    if (!(key in draft)) return
+    const val = transform(String(draft[key]).trim())
+    setDraft(dr => { const n = { ...dr }; delete n[key]; return n })
+    if (val === String(ex[field] ?? '')) return
+    setBusy(b => b + 1)
+    await onPatch(dayId, ex.id, { [field]: val })
+    setBusy(b => b - 1)
+  }
+  const fieldInput = (dayId, ex, field, ph, width, transform) => {
+    const key = `${ex.id}|f|${field}`
+    return (
+      <input className="pt-mini" aria-label={`${ex.name} ${field}`} placeholder={ph} style={{ width }}
+        value={key in draft ? draft[key] : String(ex[field] ?? '')}
+        onFocus={() => setSelEx({ dayId, exId: ex.id })}
+        onChange={e => setDraft(dr => ({ ...dr, [key]: e.target.value }))}
+        onBlur={() => commitField(dayId, ex, field, transform)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }} />
+    )
+  }
+
+  // ---- per-set editing, inline ----
+  function rowsFor(ex, wi) {
+    const k = `${ex.id}|${wi}`
+    if (rowDraft[k]) return rowDraft[k]
+    const t = weekTargetsFor(ex, weeks)[wi]
+    const n = +t.sets || 1
+    return Array.from({ length: n }, (_, i) => ({ reps: String(t.setRows?.[i]?.reps ?? t.reps ?? ''), target: String(t.setRows?.[i]?.target ?? t.target ?? '') }))
+  }
+  function editSetRow(ex, wi, i, field, value) {
+    const rows = rowsFor(ex, wi).map((r, k) => (k === i ? { ...r, [field]: value } : r))
+    setRowDraft(d => ({ ...d, [`${ex.id}|${wi}`]: rows }))
+  }
+  async function saveSetRows(dayId, ex, wi, everyWeek = false) {
+    const k = `${ex.id}|${wi}`
+    const rows = rowsFor(ex, wi)
+    setRowDraft(d => { const n = { ...d }; delete n[k]; return n })
+    setBusy(b => b + 1)
+    await onPatch(dayId, ex.id, setRowsPatch(ex, weeks, everyWeek ? runWeeks.map(w => w - 1) : [wi], rows))
+    setBusy(b => b - 1)
+  }
+  async function clearSetRowsTable(dayId, ex, wi) {
+    setRowDraft(d => { const n = { ...d }; delete n[`${ex.id}|${wi}`]; return n })
+    setBusy(b => b + 1)
+    await onPatch(dayId, ex.id, setRowsPatch(ex, weeks, [wi], null))
+    setBusy(b => b - 1)
+  }
+  async function move(dayId, ex, dir) {
+    const patches = reorderPatches(exercisesByDay[dayId] || [], ex.id, dir)
+    if (!patches.length) return
+    setBusy(b => b + 1)
+    for (const pt of patches) await onPatch(dayId, pt.id, { position: pt.position })
+    setBusy(b => b - 1)
+    onReload?.(dayId)
+  }
 
   const allEx = dayList.flatMap(d => (exercisesByDay[d.id] || []).map(ex => ({ d, ex })))
   const current = allEx.find(x => x.ex.id === selEx?.exId) || allEx.find(x => x.ex.kind !== 'conditioning') || null
@@ -141,7 +235,7 @@ function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, s
   // Enter moves DOWN to the same column on the next row, like a spreadsheet;
   // Tab already moves right on its own.
   function moveDown(dayId, exIdx, col) {
-    const list = (exercisesByDay[dayId] || []).filter(e => e.kind !== 'conditioning')
+    const list = sortEx(exercisesByDay[dayId]).filter(e => e.kind !== 'conditioning')
     const next = list[exIdx + 1]
     const el = next && cells.current[`${next.id}|${col}`]
     if (el) el.focus()
@@ -193,12 +287,18 @@ function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, s
         .pt-cell:hover{border-color:var(--line);background:var(--steel)}
         .pt-cell:focus{outline:none;border-color:var(--orange);background:rgba(255,90,0,0.10)}
         .pt-name{text-align:left;font-weight:600}
+        .pt-mini{height:24px;box-sizing:border-box;padding:0 5px;border:1px solid var(--line);border-radius:5px;background:transparent;color:inherit;font:inherit;font-size:11.5px;text-align:center}
+        .pt-mini:focus{outline:none;border-color:var(--orange);background:rgba(255,90,0,0.10)}
+        .pt-mini::placeholder{color:var(--muted);opacity:.7}
       `}</style>
 
+      <datalist id="pt-library">
+        {library.filter(l => (l.kind || 'exercise') === 'exercise').map(l => <option key={l.id} value={l.name} />)}
+      </datalist>
       <div style={{ flex: '999 1 640px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span className="muted" style={{ fontSize: 12.5 }}>
-            Click a cell and type. Tab moves right, Enter moves down. Changes save when you leave the cell.
+            Click a cell and type. Tab moves right, Enter moves down. Changes save when you leave the cell. ▸ opens set-by-set targets.
           </span>
           <span className="muted" style={{ fontSize: 12 }}>{busy > 0 ? 'Saving…' : 'All changes saved'}</span>
         </div>
@@ -208,7 +308,7 @@ function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, s
         )}
 
         {dayList.map(d => {
-          const list = exercisesByDay[d.id] || []
+          const list = sortEx(exercisesByDay[d.id])
           const lifts = list.filter(e => e.kind !== 'conditioning')
           const firstWk = runWeeks[0] || 1
           const totalSets = lifts.reduce((s, e) => s + (+weekTargetsFor(e, weeks)[firstWk - 1]?.sets || 0), 0)
@@ -251,9 +351,15 @@ function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, s
                     const on = current?.ex.id === ex.id
                     const wts = weekTargetsFor(ex, weeks)
                     const nameKey = `${ex.id}|name`
+                    const isOpen = open === ex.id
                     return (
-                      <div key={ex.id} style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center', borderBottom: '1px solid var(--line)', background: on ? 'rgba(255,90,0,0.06)' : undefined, boxShadow: on ? 'inset 3px 0 0 var(--orange)' : undefined }}>
-                        <span className="muted" style={{ fontSize: 12, fontWeight: 700, textAlign: 'center' }}>{ex.letter || '·'}</span>
+                      <div key={ex.id}>
+                      <div style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center', borderBottom: isOpen ? 'none' : '1px solid var(--line)', background: on || isOpen ? 'rgba(255,90,0,0.06)' : undefined, boxShadow: on || isOpen ? 'inset 3px 0 0 var(--orange)' : undefined }}>
+                        <button type="button" onClick={() => { setOpen(isOpen ? null : ex.id); setSelEx({ dayId: d.id, exId: ex.id }) }}
+                          aria-expanded={isOpen} aria-label={`${isOpen ? 'Close' : 'Open'} details for ${ex.name}`} title="Per-set targets, order, video"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: isOpen ? 'var(--orange-hot)' : 'var(--muted)', fontSize: 11, fontWeight: 800, padding: 0, height: 34 }}>
+                          {isOpen ? '▾' : '▸'}<div style={{ fontSize: 11 }}>{ex.letter || '·'}</div>
+                        </button>
                         <div style={{ padding: '3px 4px', minWidth: 0 }}>
                           <input className="pt-cell pt-name" aria-label={`Exercise name, ${ex.name}`}
                             ref={el => { cells.current[`${ex.id}|name`] = el }}
@@ -262,9 +368,16 @@ function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, s
                             onChange={e => setDraft(dr => ({ ...dr, [nameKey]: e.target.value }))}
                             onBlur={() => commitName(d.id, ex)}
                             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }} />
-                          <div className="muted" style={{ fontSize: 10.5, padding: '0 6px' }}>
-                            {isCond ? 'Conditioning · edit in Cards' : `Target = ${TARGET_LABEL[ex.progression_type || 'rir']}${ex.rest ? ` · rest ${ex.rest}` : ''}`}
-                          </div>
+                          {isCond
+                            ? <div className="muted" style={{ fontSize: 10.5, padding: '0 6px' }}>Conditioning · edit in Cards</div>
+                            : <div style={{ display: 'flex', gap: 4, alignItems: 'center', padding: '1px 6px 3px', flexWrap: 'wrap' }}>
+                                {fieldInput(d.id, ex, 'letter', 'A1', 38, v => v.toUpperCase().replace(/\s+/g, ''))}
+                                {fieldInput(d.id, ex, 'rest', 'rest', 58)}
+                                <span className="muted" style={{ fontSize: 10.5 }}>{TARGET_LABEL[ex.progression_type || 'rir']}</span>
+                                {ex.video_url
+                                  ? <a href={ex.video_url} target="_blank" rel="noreferrer" title={ex.video_url} style={{ fontSize: 10.5, fontWeight: 800 }}>▶ video</a>
+                                  : <span className="muted" style={{ fontSize: 10.5 }}>no video</span>}
+                              </div>}
                         </div>
                         {runWeeks.map(wk => {
                           const wi = wk - 1
@@ -278,10 +391,12 @@ function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, s
                                 <>
                                   {cellInput(d.id, ex, exIdx, wi, 'sets', t.sets)}
                                   {perSet
-                                    ? cellInput(d.id, ex, exIdx, wi, 'reps', t.setRows.map(r => r.reps).join(', '), { readOnly: true, title: 'Per-set reps. Edit these in Cards view.' })
+                                    ? <button type="button" className="pt-cell" title="Per-set reps — click to edit" onClick={() => { setOpen(ex.id); setPreviewWeek(wk); setSelEx({ dayId: d.id, exId: ex.id }) }}
+                                        style={{ color: 'var(--orange-hot)', cursor: 'pointer', fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.setRows.map(r => r.reps).join(', ')}</button>
                                     : cellInput(d.id, ex, exIdx, wi, 'reps', t.reps)}
                                   {perSet
-                                    ? cellInput(d.id, ex, exIdx, wi, 'target', t.setRows.map(r => r.target).join(', '), { readOnly: true, title: 'Per-set targets. Edit these in Cards view.' })
+                                    ? <button type="button" className="pt-cell" title="Per-set targets — click to edit" onClick={() => { setOpen(ex.id); setPreviewWeek(wk); setSelEx({ dayId: d.id, exId: ex.id }) }}
+                                        style={{ color: 'var(--orange-hot)', cursor: 'pointer', fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.setRows.map(r => r.target).join('/')}</button>
                                     : cellInput(d.id, ex, exIdx, wi, 'target', t.target)}
                                 </>
                               )}
@@ -292,11 +407,57 @@ function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, s
                           onClick={() => { if (window.confirm(`Remove ${ex.name} from ${d.day_label}?`)) onDelete(d.id, ex.id) }}
                           style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13, height: 34 }}>✕</button>
                       </div>
+                      {isOpen && (
+                        <div style={{ borderBottom: '1px solid var(--line)', background: 'rgba(255,90,0,0.035)', padding: '8px 10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
+                            <button type="button" className="btn-ghost" disabled={list.indexOf(ex) === 0} onClick={() => move(d.id, ex, -1)} style={{ padding: '3px 9px', fontSize: 12 }}>↑ Up</button>
+                            <button type="button" className="btn-ghost" disabled={list.indexOf(ex) === list.length - 1} onClick={() => move(d.id, ex, 1)} style={{ padding: '3px 9px', fontSize: 12 }}>↓ Down</button>
+                            <span className="muted" style={{ marginLeft: 6 }}>Video link</span>
+                            {fieldInput(d.id, ex, 'video_url', 'Paste YouTube / Loom / Drive link', 280)}
+                            <span className="muted" style={{ fontSize: 11 }}>Superset: give exercises the same letter + a number (A1, A2).</span>
+                          </div>
+                          {!isCond && (
+                            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${runWeeks.length}, minmax(150px, 1fr))`, gap: 10, overflowX: 'auto' }}>
+                              {runWeeks.map(wk => {
+                                const wi = wk - 1
+                                const t = wts[wi]
+                                const perSet = Array.isArray(t.setRows)
+                                const dirty = !!rowDraft[`${ex.id}|${wi}`]
+                                const rows = rowsFor(ex, wi)
+                                return (
+                                  <div key={wk} style={{ border: '1px solid var(--line)', borderRadius: 8, padding: 8, background: 'var(--coal)' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                                      <strong style={{ fontSize: 12 }}>Week {wk}</strong>
+                                      <span className="muted" style={{ fontSize: 10.5 }}>{perSet ? 'set by set' : 'one range'}</span>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '26px 1fr 1fr', gap: 4, fontSize: 9.5, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 3 }}>
+                                      <span>Set</span><span style={{ textAlign: 'center' }}>Reps</span><span style={{ textAlign: 'center' }}>{TARGET_LABEL[ex.progression_type || 'rir']}</span>
+                                    </div>
+                                    {rows.map((r, i) => (
+                                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '26px 1fr 1fr', gap: 4, marginBottom: 3, alignItems: 'center' }}>
+                                        <span style={{ fontSize: 12, fontWeight: 800 }}>{i + 1}</span>
+                                        <input className="pt-mini" aria-label={`${ex.name} week ${wk} set ${i + 1} reps`} value={r.reps} onChange={e => editSetRow(ex, wi, i, 'reps', e.target.value)} />
+                                        <input className="pt-mini" aria-label={`${ex.name} week ${wk} set ${i + 1} target`} value={r.target} onChange={e => editSetRow(ex, wi, i, 'target', e.target.value)} />
+                                      </div>
+                                    ))}
+                                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+                                      <button type="button" className={dirty ? 'btn' : 'btn-ghost'} disabled={!dirty} onClick={() => saveSetRows(d.id, ex, wi)} style={{ padding: '3px 8px', fontSize: 11 }}>Save</button>
+                                      {runWeeks.length > 1 && <button type="button" className="btn-ghost" onClick={() => saveSetRows(d.id, ex, wi, true)} style={{ padding: '3px 8px', fontSize: 11 }} title="Use this set pattern in every week">Every week</button>}
+                                      {perSet && <button type="button" className="btn-ghost" onClick={() => clearSetRowsTable(d.id, ex, wi)} style={{ padding: '3px 8px', fontSize: 11 }}>One range</button>}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      </div>
                     )
                   })}
 
                   <div style={{ padding: '6px 8px', display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input placeholder="+ Add exercise (type a name, press Enter)" value={adding[d.id] || ''}
+                    <input list="pt-library" placeholder="+ Add exercise — start typing to search your library" value={adding[d.id] || ''}
                       onChange={e => setAdding(a => ({ ...a, [d.id]: e.target.value }))}
                       onKeyDown={async e => {
                         if (e.key !== 'Enter') return
@@ -305,7 +466,7 @@ function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, s
                         setAdding(a => ({ ...a, [d.id]: '' }))
                         await onAdd(d.id, name)
                       }}
-                      style={{ padding: '7px 9px', fontSize: 12.5, maxWidth: 320 }} />
+                      style={{ padding: '7px 9px', fontSize: 12.5, maxWidth: 360 }} />
                   </div>
                 </div>
               </div>
@@ -313,7 +474,7 @@ function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, s
           )
         })}
         <p className="muted" style={{ fontSize: 11.5 }}>
-          Supersets, video links, icons, rest times and per-set targets are still edited in{' '}
+          Click ▸ on a row for set-by-set targets, order and the video link. Icons, conditioning and comments are in{' '}
           <button type="button" onClick={onOpenCards} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--orange-hot)', cursor: 'pointer', fontSize: 11.5, fontWeight: 700 }}>Cards view</button>.
         </p>
       </div>
@@ -338,7 +499,11 @@ function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, s
                 {preview.t.setRows
                   ? preview.rows.map(r => r.reps).join(', ')
                   : `${preview.t.sets} × ${preview.t.reps}`}
-                {preview.label === '%' ? ` @ ${preview.t.target}%` : ` @ ${preview.label} ${preview.t.target}`}
+                {(() => {
+                  // per-set weeks show each set's target, not the base value they no longer use
+                  const tg = preview.t.setRows ? [...new Set(preview.rows.map(r => r.target))].join('/') : preview.t.target
+                  return preview.label === '%' ? ` @ ${tg}%` : ` @ ${preview.label} ${tg}`
+                })()}
                 {preview.ex.rest ? ` · rest ${preview.ex.rest}` : ''}
               </div>
             </div>
@@ -1280,6 +1445,8 @@ export default function CoachPrograms() {
                             onAdd={(dayId, name) => addFromTable(activeBlock, dayId, name)}
                             onDelete={deleteExercise}
                             onOpenCards={() => setLayout('cards')}
+                            library={library}
+                            onReload={loadDay}
                           />
                         )
                       })() : (
