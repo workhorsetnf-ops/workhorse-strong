@@ -23,6 +23,7 @@ import ClientDocuments from './ClientDocuments'
 import ClientSupplements from './ClientSupplements'
 import ClientBloodwork from './ClientBloodwork'
 import ClientCardio from './ClientCardio'
+import ClientHabits from './ClientHabits'
 import ContractPrint from '../ContractPrint'
 
 function Dot() {
@@ -83,6 +84,7 @@ export default function ClientApp() {
           <Route path="supplements" element={<ClientSupplements />} />
           <Route path="bloodwork" element={<ClientBloodwork />} />
           <Route path="cardio" element={<ClientCardio />} />
+          <Route path="habits" element={<ClientHabits />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>
