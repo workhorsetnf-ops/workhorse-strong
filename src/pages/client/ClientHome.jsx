@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature, FileStack } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { localDateStr } from '../../lib/weeks'
 
 export default function ClientHome() {
   const { profile, signOut } = useAuth()
@@ -26,7 +27,7 @@ export default function ClientHome() {
     if (!profile) return
     supabase.from('client_hub').select('booking_url').eq('id', 1).maybeSingle()
       .then(({ data }) => setBookingUrl(data?.booking_url || ''))
-    const today = new Date().toISOString().slice(0, 10)
+    const today = localDateStr()
     supabase.from('meal_logs').select('protein_g,carbs_g,fat_g')
       .eq('client_id', profile.id).eq('logged_on', today)
       .then(({ data }) => {
@@ -79,7 +80,7 @@ export default function ClientHome() {
         }
         setStreak(count)
       })
-    supabase.from('daily_logs').select('readiness').eq('client_id', profile.id).eq('log_date', new Date().toISOString().slice(0,10)).maybeSingle()
+    supabase.from('daily_logs').select('readiness').eq('client_id', profile.id).eq('log_date', localDateStr()).maybeSingle()
       .then(({ data }) => setReadiness(data?.readiness ?? null))
     supabase.from('checkins').select('submitted_at').eq('client_id', profile.id)
       .order('submitted_at', { ascending: false }).limit(1).maybeSingle()
@@ -155,7 +156,7 @@ export default function ClientHome() {
 
   async function saveReadiness(val) {
     setReadiness(val)
-    await supabase.from('daily_logs').upsert({ client_id: profile.id, log_date: new Date().toISOString().slice(0,10), readiness: val }, { onConflict: 'client_id,log_date' })
+    await supabase.from('daily_logs').upsert({ client_id: profile.id, log_date: localDateStr(), readiness: val }, { onConflict: 'client_id,log_date' })
     setReadinessSaved(true); setTimeout(() => setReadinessSaved(false), 1500)
   }
 
