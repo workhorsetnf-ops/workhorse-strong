@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature, FileStack, Pill, Droplet, HeartPulse } from 'lucide-react'
+import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature, FileStack, Pill, Droplet, HeartPulse, CalendarCheck } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr, logDate } from '../../lib/weeks'
@@ -281,6 +281,12 @@ export default function ClientHome() {
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
             <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><Pill size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Supplements</div>
+          </div>
+        </Link>
+        <Link to="/app/habits" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><CalendarCheck size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Habits</div>
           </div>
         </Link>
         <Link to="/app/cardio" style={{ textDecoration: 'none' }}>

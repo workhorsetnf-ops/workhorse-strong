@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import FoodLibrary from './FoodLibrary'
 
 const EMPTY_EX = { name: '', category: '', metric: 'reps', video_url: '', notes: '', icon_url: '' }
 const EMPTY_COND = { name: '', format: '', instructions: '', video_url: '' }
@@ -128,7 +129,10 @@ export default function CoachLibrary() {
         <button className={tab === 'exercises' ? 'btn' : 'btn-ghost'} onClick={() => { setTab('exercises'); setEditingId(null) }}>Exercises</button>
         <button className={tab === 'conditioning' ? 'btn' : 'btn-ghost'} onClick={() => { setTab('conditioning'); setEditingId(null) }}>Conditioning</button>
         <button className={tab === 'lifestyle' ? 'btn' : 'btn-ghost'} onClick={() => { setTab('lifestyle'); setEditingId(null) }}>Lifestyle</button>
+        <button className={tab === 'foods' ? 'btn' : 'btn-ghost'} onClick={() => { setTab('foods'); setEditingId(null) }}>Foods</button>
       </div>
+
+      {tab === 'foods' && <FoodLibrary />}
 
       {tab === 'exercises' && (
         <>
