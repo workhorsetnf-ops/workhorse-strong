@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr } from '../../lib/weeks'
+import NutritionTabs from './NutritionTabs'
 
 export default function ClientNutrition() {
   const { profile } = useAuth()
@@ -172,6 +173,7 @@ export default function ClientNutrition() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <NutritionTabs />
       <header>
         <div className="eyebrow">Nutrition</div>
         <h1 style={{ fontSize: 24, marginTop: 4 }}>Today</h1>
