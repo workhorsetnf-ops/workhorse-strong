@@ -2,13 +2,13 @@
 import { localDateStr } from './weeks'
 
 export const PHASE_TYPES = {
-  cut: { label: 'Cut', color: '#FF5A00' },
+  cut: { label: 'Cut', color: '#FF6A00' },
   diet_break: { label: 'Diet break', color: '#C9A227' },
   reverse: { label: 'Reverse', color: '#3E8E7E' },
   maintain: { label: 'Maintain', color: '#8E8E8E' },
   recomp: { label: 'Recomp', color: '#7C5CBF' },
   build: { label: 'Build', color: '#4A6FA5' },
-  peak: { label: 'Peak / Show prep', color: '#FF6200' },
+  peak: { label: 'Peak / Show prep', color: '#FF7A1A' },
 }
 export const typeOf = t => PHASE_TYPES[t] || { label: t, color: '#888' }
 

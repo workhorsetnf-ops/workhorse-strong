@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase'
 import { itemMacros, sumMacros, targetsFrom, STARTER_PLAN, fromFood, shoppingList, fmt0, fmt1 } from '../../lib/mealplan'
 import { PlanTargets, ShoppingTable } from './MealPlanView'
 
-const ANTON = "'Anton','Barlow Condensed',system-ui,sans-serif"
+const DISPLAY_FONT = "'Oswald','Barlow',system-ui,sans-serif"
 
 export default function CoachNutrition() {
   const { clientId } = useParams()
@@ -214,7 +214,7 @@ export default function CoachNutrition() {
                         <tr key={it.id} style={{ background: k % 2 ? 'var(--steel)' : 'transparent' }}>
                           {k === 0 && (
                             <td rowSpan={list.length + 2} style={{ ...td, background: 'var(--steel)', borderTop: '2px solid var(--orange)', borderRight: '1px solid var(--orange)', verticalAlign: 'middle' }}>
-                              <div style={{ fontFamily: ANTON, fontSize: 34, color: 'var(--orange-hot)', lineHeight: 1 }}>{mi + 1}</div>
+                              <div style={{ fontFamily: DISPLAY_FONT, fontSize: 34, color: 'var(--orange-hot)', lineHeight: 1 }}>{mi + 1}</div>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6, alignItems: 'center' }}>
                                 <button className="btn-ghost" aria-label={`Move ${m.label} up`} disabled={mi === 0} onClick={() => moveMeal(m, -1)} style={{ padding: '0 6px', fontSize: 11 }}>↑</button>
                                 <button className="btn-ghost" aria-label={`Move ${m.label} down`} disabled={mi === meals.length - 1} onClick={() => moveMeal(m, 1)} style={{ padding: '0 6px', fontSize: 11 }}>↓</button>
@@ -242,7 +242,7 @@ export default function CoachNutrition() {
                     <tr key={m.id + 'add'}>
                       {list.length === 0 && (
                         <td rowSpan={2} style={{ ...td, background: 'var(--steel)', borderTop: '2px solid var(--orange)', borderRight: '1px solid var(--orange)' }}>
-                          <div style={{ fontFamily: ANTON, fontSize: 34, color: 'var(--orange-hot)', lineHeight: 1 }}>{mi + 1}</div>
+                          <div style={{ fontFamily: DISPLAY_FONT, fontSize: 34, color: 'var(--orange-hot)', lineHeight: 1 }}>{mi + 1}</div>
                         </td>
                       )}
                       <td colSpan={9} style={{ ...td, textAlign: 'left', borderTop: list.length ? td.borderTop : '2px solid var(--orange)' }}>

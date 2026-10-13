@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 
 function StatusBadge({ status }) {
   const map = {
-    sent: { label: 'Needs your signature', bg: 'rgba(255,90,0,0.15)', color: 'var(--orange-hot)' },
+    sent: { label: 'Needs your signature', bg: 'rgba(255,106,0,0.15)', color: 'var(--orange-hot)' },
     signed: { label: 'Signed', bg: 'rgba(76,175,109,0.15)', color: 'var(--green)' },
     void: { label: 'Void', bg: 'var(--steel)', color: 'var(--muted)' },
   }

@@ -6,8 +6,8 @@
   --line: #4F4F4F;
   --white: #F5F3F0;
   --muted: #B8B2A8;
-  --orange: #FF5A00;
-  --orange-hot: #FF6200;
+  --orange: #FF6A00;
+  --orange-hot: #FF7A1A;
   --green: #4CAF6D;
   --red: #D64545;
 }
@@ -17,10 +17,10 @@
 html, body, #root { height: 100%; }
 
 body {
-  font-family: 'Barlow Condensed', system-ui, sans-serif;
+  font-family: 'Barlow', system-ui, sans-serif;
   background: var(--black);
   background-image:
-    radial-gradient(ellipse 900px 500px at 50% -10%, rgba(255,90,0,0.06), transparent 60%),
+    radial-gradient(ellipse 900px 500px at 50% -10%, rgba(255,106,0,0.06), transparent 60%),
     repeating-linear-gradient(115deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
   background-attachment: fixed;
   color: var(--white);
@@ -31,7 +31,7 @@ body {
 }
 
 h1, h2, h3, .display {
-  font-family: 'Anton', 'Barlow Condensed', system-ui, sans-serif;
+  font-family: 'Oswald', 'Barlow', system-ui, sans-serif;
   font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -82,10 +82,10 @@ a { color: var(--orange-hot); text-decoration: none; }
   font-size: 16px;
   padding: 15px 26px;
   border-radius: 8px;
-  box-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 4px 16px rgba(255,90,0,0.22);
+  box-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 4px 16px rgba(255,106,0,0.22);
   transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
 }
-.btn:hover { background: var(--orange-hot); box-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 6px 20px rgba(255,98,0,0.35); transform: translateY(-1px); }
+.btn:hover { background: var(--orange-hot); box-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 6px 20px rgba(255,122,26,0.35); transform: translateY(-1px); }
 .btn:active { transform: translateY(0); box-shadow: 0 1px 0 rgba(0,0,0,0.35); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn-ghost {
@@ -98,7 +98,7 @@ a { color: var(--orange-hot); text-decoration: none; }
   border-radius: 8px;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-.btn-ghost:hover { border-color: var(--orange); color: var(--orange-hot); background: rgba(255,90,0,0.06); }
+.btn-ghost:hover { border-color: var(--orange); color: var(--orange-hot); background: rgba(255,106,0,0.06); }
 
 .card {
   background: var(--coal);
@@ -109,7 +109,7 @@ a { color: var(--orange-hot); text-decoration: none; }
 }
 
 .eyebrow {
-  font-family: 'Anton', 'Barlow Condensed', system-ui, sans-serif;
+  font-family: 'Oswald', 'Barlow', system-ui, sans-serif;
   color: var(--orange-hot);
   font-size: 14.5px;
   font-weight: 400;
@@ -120,7 +120,7 @@ a { color: var(--orange-hot); text-decoration: none; }
 .muted { color: var(--muted); font-weight: 500; }
 
 .stat-num {
-  font-family: 'Anton', 'Barlow Condensed', system-ui, sans-serif;
+  font-family: 'Oswald', 'Barlow', system-ui, sans-serif;
   font-size: 44px;
   font-weight: 400;
   line-height: 1;
@@ -218,7 +218,7 @@ a { color: var(--orange-hot); text-decoration: none; }
 }
 
 .wordmark {
-  font-family: 'Anton', 'Barlow Condensed', system-ui, sans-serif;
+  font-family: 'Oswald', 'Barlow', system-ui, sans-serif;
   font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -233,7 +233,7 @@ a { color: var(--orange-hot); text-decoration: none; }
   content: '';
   position: absolute;
   inset: -40px;
-  background: radial-gradient(circle, rgba(255,98,0,0.28) 0%, rgba(255,90,0,0.08) 45%, transparent 72%);
+  background: radial-gradient(circle, rgba(255,122,26,0.28) 0%, rgba(255,106,0,0.08) 45%, transparent 72%);
   z-index: -1;
   pointer-events: none;
 }

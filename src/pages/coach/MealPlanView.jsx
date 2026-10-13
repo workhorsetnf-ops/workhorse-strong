@@ -1,6 +1,6 @@
 import { itemMacros, sumMacros, planStatus, fmt0, fmt1 } from '../../lib/mealplan'
 
-const ANTON = "'Anton','Barlow Condensed',system-ui,sans-serif"
+const DISPLAY_FONT = "'Oswald','Barlow',system-ui,sans-serif"
 
 export function StatusBadge({ status, small }) {
   if (!status) return null
@@ -26,7 +26,7 @@ export function PlanTargets({ targets, totals, compact }) {
       {tiles.map(([label, tgt, planned, unit, status, accent], i) => (
         <div key={label} style={{ gridColumn: compact && i === 0 ? '1 / -1' : undefined, background: 'var(--coal)', border: '1px solid var(--line)', borderTop: '3px solid var(--orange)', borderRadius: 10, padding: compact ? '8px 8px' : '10px 10px', textAlign: 'center', minWidth: 0 }}>
           <div className="muted" style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase' }}>Target {label}</div>
-          <div style={{ fontFamily: ANTON, fontSize: compact ? 24 : 30, lineHeight: 1.15, marginTop: 2, color: accent ? 'var(--orange-hot)' : 'var(--white)' }}>
+          <div style={{ fontFamily: DISPLAY_FONT, fontSize: compact ? 24 : 30, lineHeight: 1.15, marginTop: 2, color: accent ? 'var(--orange-hot)' : 'var(--white)' }}>
             {tgt ? `${fmt0(tgt)}${unit === 'g' ? ' g' : ''}` : '—'}
           </div>
           <div className="muted" style={{ fontSize: 11, margin: '2px 0 5px' }}>Planned: {fmt0(planned)} {unit}</div>
@@ -47,7 +47,7 @@ export function PlanCards({ meals, items }) {
         return (
           <div key={m.id} className="card" style={{ padding: 0, overflow: 'hidden', borderTop: '3px solid var(--orange)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--steel)' }}>
-              <span style={{ fontFamily: ANTON, fontSize: 28, lineHeight: 1, color: 'var(--orange-hot)', width: 24, textAlign: 'center' }}>{i + 1}</span>
+              <span style={{ fontFamily: DISPLAY_FONT, fontSize: 28, lineHeight: 1, color: 'var(--orange-hot)', width: 24, textAlign: 'center' }}>{i + 1}</span>
               <strong style={{ fontSize: 15, textTransform: 'uppercase', letterSpacing: '.04em', flex: 1 }}>{m.label}</strong>
               <span style={{ fontWeight: 800, color: 'var(--orange-hot)', fontSize: 14 }}>{fmt0(t.kcal)} kcal</span>
             </div>

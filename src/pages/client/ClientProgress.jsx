@@ -44,7 +44,7 @@ export function WeekTable({ summary, selected, onPick }) {
   // scrolled off a phone screen; the days follow and can scroll if needed.
   const th = { padding: '5px 2px', fontSize: 10.5, fontWeight: 800, textAlign: 'center', whiteSpace: 'nowrap' }
   const td = { padding: '7px 2px', fontSize: 12, textAlign: 'center', borderTop: '1px solid var(--line)', whiteSpace: 'nowrap' }
-  const weekCell = { background: 'rgba(255,90,0,0.10)', borderLeft: '1px solid var(--line)', borderRight: '1px solid var(--line)' }
+  const weekCell = { background: 'rgba(255,106,0,0.10)', borderLeft: '1px solid var(--line)', borderRight: '1px solid var(--line)' }
   return (
     <div style={{ overflowX: 'auto', margin: '0 -6px' }}>
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -276,7 +276,7 @@ export default function ClientProgress() {
 
       <div className="card">
         <div className="eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>Weight trend</div>
-        <Sparkline data={weightData} color="#FF5A00" unit=" lbs" />
+        <Sparkline data={weightData} color="#FF6A00" unit=" lbs" />
       </div>
 
       <div className="card">

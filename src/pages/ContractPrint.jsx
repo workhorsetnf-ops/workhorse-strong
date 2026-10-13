@@ -28,12 +28,12 @@ export default function ContractPrint() {
       `}</style>
 
       <div className="no-print" style={{ marginBottom: 16 }}>
-        <button onClick={() => window.print()} style={{ padding: '8px 16px', background: '#FF5A00', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, cursor: 'pointer' }}>Print / Save as PDF</button>
+        <button onClick={() => window.print()} style={{ padding: '8px 16px', background: '#FF6A00', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, cursor: 'pointer' }}>Print / Save as PDF</button>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '3px solid #0A0A0A', paddingBottom: 8 }}>
         <div>
-          <div style={{ fontSize: 11, color: '#FF5A00', fontWeight: 700, letterSpacing: '0.1em' }}>WORKHORSE TRAINING &amp; NUTRITION</div>
+          <div style={{ fontSize: 11, color: '#FF6A00', fontWeight: 700, letterSpacing: '0.1em' }}>WORKHORSE TRAINING &amp; NUTRITION</div>
           <h1 style={{ fontSize: 24, margin: '4px 0 0' }}>{contract.title}</h1>
         </div>
         <div style={{ fontSize: 12, color: '#666', textAlign: 'right' }}>

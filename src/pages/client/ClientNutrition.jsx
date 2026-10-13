@@ -233,7 +233,7 @@ export default function ClientNutrition() {
               return (
                 <button key={m.id} type="button" onClick={() => (done && !window.confirm(`${m.label} is already logged today. Log it again?`) ? null : logPlanMeal(m))}
                   style={{ textAlign: 'left', padding: '10px 10px', borderRadius: 10, cursor: 'pointer', font: 'inherit', color: 'inherit',
-                    border: '1px solid ' + (done ? 'var(--orange)' : 'var(--line)'), background: done ? 'rgba(255,90,0,0.14)' : 'var(--steel)' }}>
+                    border: '1px solid ' + (done ? 'var(--orange)' : 'var(--line)'), background: done ? 'rgba(255,106,0,0.14)' : 'var(--steel)' }}>
                   <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--orange-hot)' }}>{i + 1} · {done ? 'LOGGED ✓' : 'TAP TO LOG'}</div>
                   <div style={{ fontWeight: 800, fontSize: 14, marginTop: 2 }}>{m.label}</div>
                   <div className="muted" style={{ fontSize: 11.5 }}>{k.toLocaleString()} kcal</div>

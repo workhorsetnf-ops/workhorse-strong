@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { localDateStr } from '../../lib/weeks'
 import { MEASURES, HOW_TO, withComposition, changeOf, latestOf, firstOf, signed } from '../../lib/measurements'
 
-const ANTON = "'Anton','Barlow Condensed',system-ui,sans-serif"
+const DISPLAY_FONT = "'Oswald','Barlow',system-ui,sans-serif"
 const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })
 const pct = v => (v === null || v === undefined ? '—' : `${(v * 100).toFixed(1)}%`)
 
@@ -12,7 +12,7 @@ function Tile({ label, value, sub, accent }) {
   return (
     <div style={{ background: 'var(--coal)', border: '1px solid var(--line)', borderTop: '3px solid var(--orange)', borderRadius: 10, padding: '10px 8px', textAlign: 'center', minWidth: 0 }}>
       <div className="muted" style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase' }}>{label}</div>
-      <div style={{ fontFamily: ANTON, fontSize: 26, lineHeight: 1.15, marginTop: 3, color: accent ? 'var(--orange-hot)' : 'var(--white)' }}>{value}</div>
+      <div style={{ fontFamily: DISPLAY_FONT, fontSize: 26, lineHeight: 1.15, marginTop: 3, color: accent ? 'var(--orange-hot)' : 'var(--white)' }}>{value}</div>
       {sub && <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{sub}</div>}
     </div>
   )

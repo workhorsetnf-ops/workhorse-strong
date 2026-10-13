@@ -95,7 +95,7 @@ function StatusBadge({ status }) {
     <span style={{
       fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em',
       padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap',
-      background: done ? 'rgba(76,175,109,0.15)' : 'rgba(255,90,0,0.15)',
+      background: done ? 'rgba(76,175,109,0.15)' : 'rgba(255,106,0,0.15)',
       color: done ? 'var(--green)' : 'var(--orange-hot)',
     }}>{done ? 'Done' : 'Pending'}</span>
   )

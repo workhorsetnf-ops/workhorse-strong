@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets } from '../../lib/weeks'
 import { parseProgramText } from '../../lib/parse'
 
-const GROUP_COLORS = ['#FF5A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
+const GROUP_COLORS = ['#FF6A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
 const prefixOf = l => (l || '').replace(/[0-9]/g, '')
 const isNumbered = l => /^[A-Z]+\d+$/.test(l || '')
 
@@ -285,10 +285,10 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
       <style>{`
         .pt-cell{width:100%;min-width:0;height:34px;box-sizing:border-box;padding:0 6px;border:1px solid transparent;border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:14px;font-weight:500;text-align:center;font-variant-numeric:tabular-nums}
         .pt-cell:hover{border-color:var(--line);background:var(--steel)}
-        .pt-cell:focus{outline:none;border-color:var(--orange);background:rgba(255,90,0,0.10)}
+        .pt-cell:focus{outline:none;border-color:var(--orange);background:rgba(255,106,0,0.10)}
         .pt-name{text-align:left;font-weight:600}
         .pt-mini{height:24px;box-sizing:border-box;padding:0 5px;border:1px solid var(--line);border-radius:5px;background:transparent;color:inherit;font:inherit;font-size:11.5px;text-align:center}
-        .pt-mini:focus{outline:none;border-color:var(--orange);background:rgba(255,90,0,0.10)}
+        .pt-mini:focus{outline:none;border-color:var(--orange);background:rgba(255,106,0,0.10)}
         .pt-mini::placeholder{color:var(--muted);opacity:.7}
       `}</style>
 
@@ -324,7 +324,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                     <div />
                     <div className="eyebrow" style={{ fontSize: 10, padding: '8px 8px' }}>Exercise</div>
                     {runWeeks.map((wk, wi) => (
-                      <div key={wk} style={{ borderLeft: '1px solid var(--line)', background: wk === previewWeek ? 'rgba(255,90,0,0.07)' : undefined }}>
+                      <div key={wk} style={{ borderLeft: '1px solid var(--line)', background: wk === previewWeek ? 'rgba(255,106,0,0.07)' : undefined }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 8px 2px', gap: 6 }}>
                           <button type="button" onClick={() => setPreviewWeek(wk)}
                             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: wk === previewWeek ? 'var(--orange-hot)' : 'inherit', fontSize: 12.5, fontWeight: 800 }}>
@@ -354,7 +354,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                     const isOpen = open === ex.id
                     return (
                       <div key={ex.id}>
-                      <div style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center', borderBottom: isOpen ? 'none' : '1px solid var(--line)', background: on || isOpen ? 'rgba(255,90,0,0.06)' : undefined, boxShadow: on || isOpen ? 'inset 3px 0 0 var(--orange)' : undefined }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center', borderBottom: isOpen ? 'none' : '1px solid var(--line)', background: on || isOpen ? 'rgba(255,106,0,0.06)' : undefined, boxShadow: on || isOpen ? 'inset 3px 0 0 var(--orange)' : undefined }}>
                         <button type="button" onClick={() => { setOpen(isOpen ? null : ex.id); setSelEx({ dayId: d.id, exId: ex.id }) }}
                           aria-expanded={isOpen} aria-label={`${isOpen ? 'Close' : 'Open'} details for ${ex.name}`} title="Per-set targets, order, video"
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: isOpen ? 'var(--orange-hot)' : 'var(--muted)', fontSize: 11, fontWeight: 800, padding: 0, height: 34 }}>
@@ -384,7 +384,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                           const t = wts[wi]
                           const perSet = Array.isArray(t.setRows)
                           return (
-                            <div key={wk} style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.3fr 1fr', gap: 2, padding: '3px 5px', borderLeft: '1px solid var(--line)', background: wk === previewWeek ? 'rgba(255,90,0,0.035)' : undefined }}>
+                            <div key={wk} style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.3fr 1fr', gap: 2, padding: '3px 5px', borderLeft: '1px solid var(--line)', background: wk === previewWeek ? 'rgba(255,106,0,0.035)' : undefined }}>
                               {isCond ? (
                                 <span className="muted" style={{ gridColumn: '1 / -1', textAlign: 'center', fontSize: 12 }}>—</span>
                               ) : (
@@ -408,7 +408,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                           style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13, height: 34 }}>✕</button>
                       </div>
                       {isOpen && (
-                        <div style={{ borderBottom: '1px solid var(--line)', background: 'rgba(255,90,0,0.035)', padding: '8px 10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div style={{ borderBottom: '1px solid var(--line)', background: 'rgba(255,106,0,0.035)', padding: '8px 10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
                             <button type="button" className="btn-ghost" disabled={list.indexOf(ex) === 0} onClick={() => move(d.id, ex, -1)} style={{ padding: '3px 9px', fontSize: 12 }}>↑ Up</button>
                             <button type="button" className="btn-ghost" disabled={list.indexOf(ex) === list.length - 1} onClick={() => move(d.id, ex, 1)} style={{ padding: '3px 9px', fontSize: 12 }}>↓ Down</button>

@@ -105,7 +105,7 @@ export default function ProgressPhotos({ clientId, isCoach }) {
           {[...rows].reverse().map(r => (
             <div key={r.id} className="card" style={{ padding: 10, borderTop: '3px solid var(--orange)' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
-                <span style={{ fontFamily: "'Anton','Barlow Condensed',system-ui,sans-serif", fontSize: 22, color: 'var(--orange-hot)' }}>{r.week !== null ? `WK ${r.week}` : ''}</span>
+                <span style={{ fontFamily: "'Oswald','Barlow',system-ui,sans-serif", fontSize: 22, color: 'var(--orange-hot)' }}>{r.week !== null ? `WK ${r.week}` : ''}</span>
                 <strong style={{ fontSize: 14 }}>{fmtD(r.date)}</strong>
                 {r.weight && <span style={{ marginLeft: 'auto', fontWeight: 800 }}>{r.weight} lb</span>}
               </div>

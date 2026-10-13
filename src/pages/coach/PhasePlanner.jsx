@@ -7,7 +7,7 @@ function Tile({ label, value, sub, accent, compact }) {
   return (
     <div style={{ background: 'var(--coal)', border: '1px solid var(--line)', borderTop: '3px solid var(--orange)', borderRadius: 10, padding: '10px 10px', textAlign: 'center', minWidth: 0 }}>
       <div className="muted" style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase' }}>{label}</div>
-      <div style={{ fontSize: compact ? 20 : 24, lineHeight: 1.15, marginTop: 4, color: accent ? 'var(--orange-hot)' : 'var(--white)', fontFamily: "'Anton','Barlow Condensed',system-ui,sans-serif", textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
+      <div style={{ fontSize: compact ? 20 : 24, lineHeight: 1.15, marginTop: 4, color: accent ? 'var(--orange-hot)' : 'var(--white)', fontFamily: "'Oswald','Barlow',system-ui,sans-serif", textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
       {sub && <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{sub}</div>}
     </div>
   )

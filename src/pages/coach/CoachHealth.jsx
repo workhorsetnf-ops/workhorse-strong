@@ -33,7 +33,7 @@ export function Tile({ label, value, sub, accent, warn }) {
   return (
     <div style={{ background: warn ? 'rgba(214,69,69,0.18)' : 'var(--coal)', border: '1px solid var(--line)', borderTop: '3px solid var(--orange)', borderRadius: 10, padding: '10px 12px', textAlign: 'center', minWidth: 0 }}>
       <div className="muted" style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase' }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.15, marginTop: 4, color: warn ? 'var(--red)' : accent ? 'var(--orange-hot)' : 'var(--white)', fontFamily: "'Anton','Barlow Condensed',system-ui,sans-serif", letterSpacing: '.01em' }}>{value}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.15, marginTop: 4, color: warn ? 'var(--red)' : accent ? 'var(--orange-hot)' : 'var(--white)', fontFamily: "'Oswald','Barlow',system-ui,sans-serif", letterSpacing: '.01em' }}>{value}</div>
       {sub && <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{sub}</div>}
     </div>
   )

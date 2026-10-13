@@ -116,7 +116,7 @@ export default function CoachCardio({ clientId, onBusy = () => {} }) {
             {WEEKDAYS.map((day, wd) => {
               const r = plan.find(p => p.weekday === wd) || {}
               return (
-                <tr key={day} style={{ background: wd === todayIdx ? 'rgba(255,90,0,0.08)' : wd % 2 ? 'var(--steel)' : 'transparent' }}>
+                <tr key={day} style={{ background: wd === todayIdx ? 'rgba(255,106,0,0.08)' : wd % 2 ? 'var(--steel)' : 'transparent' }}>
                   <td style={{ ...td, fontWeight: 800, color: wd === todayIdx ? 'var(--orange-hot)' : 'var(--white)', whiteSpace: 'nowrap', paddingLeft: 12 }}>{day.toUpperCase()}</td>
                   <td style={{ ...td, width: 140 }}>{blurInput(`p|${wd}|t`, r.cardio_type, v => saveDay(wd, 'cardio_type', v.trim()), { list: 'cardio-types', ph: 'Type', label: `${day} type`, style: { color: 'var(--orange-hot)', fontWeight: 700 } })}</td>
                   <td style={{ ...td, minWidth: 180 }}>{blurInput(`p|${wd}|m`, r.modality, v => saveDay(wd, 'modality', v.trim()), { ph: 'e.g. Incline walk', label: `${day} modality` })}</td>

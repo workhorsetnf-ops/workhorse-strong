@@ -82,7 +82,7 @@ export default function ClientHabits() {
             return (
               <button key={h.id} type="button" onClick={() => toggle(h)} aria-pressed={on}
                 style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', padding: '12px 12px', borderRadius: 10, cursor: 'pointer', width: '100%',
-                  border: '1px solid ' + (on ? 'var(--orange)' : 'var(--line)'), background: on ? 'rgba(255,90,0,0.14)' : 'transparent', color: 'inherit', font: 'inherit' }}>
+                  border: '1px solid ' + (on ? 'var(--orange)' : 'var(--line)'), background: on ? 'rgba(255,106,0,0.14)' : 'transparent', color: 'inherit', font: 'inherit' }}>
                 <span style={{ width: 30, height: 30, borderRadius: 15, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, fontWeight: 900,
                   background: on ? 'var(--orange)' : 'transparent', border: on ? 'none' : '1.5px solid var(--line)', color: '#000' }}>{on ? '✓' : ''}</span>
                 <span style={{ flex: 1, minWidth: 0 }}>

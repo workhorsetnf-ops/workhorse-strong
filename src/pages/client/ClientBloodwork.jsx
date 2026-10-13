@@ -65,7 +65,7 @@ export default function ClientBloodwork() {
                       <span className="muted" style={{ display: 'block', fontSize: 11.5 }}>Range {fmtRange(r.range)} {r.unit}</span>
                     </span>
                     <span style={{ fontSize: 17, fontWeight: 800, color: bad ? '#ff4d4d' : 'var(--white)' }}>{r.latest.value}</span>
-                    <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 6, minWidth: 62, textAlign: 'center', background: bad ? '#7a1f1f' : 'rgba(255,90,0,0.14)', color: bad ? '#fff' : 'var(--orange-hot)' }}>{r.status}</span>
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 6, minWidth: 62, textAlign: 'center', background: bad ? '#7a1f1f' : 'rgba(255,106,0,0.14)', color: bad ? '#fff' : 'var(--orange-hot)' }}>{r.status}</span>
                   </button>
                   {open === r.name && history.length > 0 && (
                     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
