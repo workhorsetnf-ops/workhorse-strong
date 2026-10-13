@@ -3,6 +3,12 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr } from '../../lib/weeks'
 import NutritionTabs from './NutritionTabs'
+import { mondayOf, weekDaysFrom } from '../../lib/weeks'
+import { MEAL_SLOTS, weekTable, planMealToLogs } from '../../lib/foodlog'
+import { itemMacros, sumMacros, targetsFrom } from '../../lib/mealplan'
+import { WeekTotals, DayLog } from '../coach/FoodLogViews'
+
+const slotForNow = () => { const h = new Date().getHours(); return h < 10 ? 'Breakfast' : h < 14 ? 'Lunch' : h < 17 ? 'Snack' : 'Dinner' }
 
 export default function ClientNutrition() {
   const { profile } = useAuth()
@@ -21,13 +27,35 @@ export default function ClientNutrition() {
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const today = localDateStr()   // local, not UTC — see ClientTraining
+  const week = weekDaysFrom(mondayOf(today))
+  const [slot, setSlot] = useState(slotForNow())
+  const [weekLogs, setWeekLogs] = useState([])
+  const [plan, setPlan] = useState({ meals: [], items: [], plan: null, me: null })
 
   async function load() {
     const { data } = await supabase.from('meal_logs').select('*')
       .eq('client_id', profile.id).eq('logged_on', today).order('logged_at')
     setMeals(data || [])
+    const { data: wk } = await supabase.from('meal_logs').select('*').eq('client_id', profile.id).gte('logged_on', week[0]).lte('logged_on', week[6])
+    setWeekLogs(wk || [])
   }
-  useEffect(() => { if (profile) load() }, [profile])
+  async function loadPlan() {
+    const [{ data: me }, { data: pl }, { data: pm }, { data: pi }] = await Promise.all([
+      supabase.from('profiles').select('protein_g, carbs_g, fat_g, calories').eq('id', profile.id).single(),
+      supabase.from('meal_plans').select('*').eq('client_id', profile.id).maybeSingle(),
+      supabase.from('meal_plan_meals').select('*').eq('client_id', profile.id).order('position'),
+      supabase.from('meal_plan_items').select('*').eq('client_id', profile.id).order('position'),
+    ])
+    setPlan({ me: me || profile, plan: pl, meals: pm || [], items: pi || [] })
+  }
+  // One tap logs every food in that meal from the plan.
+  async function logPlanMeal(m) {
+    const rows = planMealToLogs(m, plan.items, { clientId: profile.id, date: today, itemMacros })
+    if (!rows.length) return
+    await supabase.from('meal_logs').insert(rows)
+    load()
+  }
+  useEffect(() => { if (profile) { load(); loadPlan() } }, [profile])
 
   async function lookupBarcode(code) {
     try {
@@ -143,7 +171,7 @@ export default function ClientNutrition() {
     await supabase.from('meal_logs').insert({
       client_id: profile.id,
       logged_on: localDateStr(),   // the DB default is the server's UTC date
-      meal_name: label,
+      meal_name: label, meal: slot, grams: isServing ? null : +grams,
       protein_g: Math.round(selFood.p * factor),
       carbs_g: Math.round(selFood.c * factor),
       fat_g: Math.round(selFood.f * factor),
@@ -155,7 +183,7 @@ export default function ClientNutrition() {
   async function addMeal() {
     if (!form.meal_name) return
     await supabase.from('meal_logs').insert({
-      client_id: profile.id, logged_on: localDateStr(), meal_name: form.meal_name,
+      client_id: profile.id, logged_on: localDateStr(), meal_name: form.meal_name, meal: slot,
       protein_g: +form.protein_g || 0, carbs_g: +form.carbs_g || 0, fat_g: +form.fat_g || 0
     })
     setForm({ meal_name: '', protein_g: '', carbs_g: '', fat_g: '' })
@@ -193,6 +221,34 @@ export default function ClientNutrition() {
         <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4 }}>
           {totals.p * 4 + totals.c * 4 + totals.f * 9} <span className="muted">/ {profile?.calories || 0} kcal</span>
         </div>
+      </div>
+
+      {plan.meals.length > 0 && (
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="eyebrow">From your meal plan · one tap logs the whole meal</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {plan.meals.map((m, i) => {
+              const done = meals.some(l => l.meal === m.label)
+              const k = Math.round(sumMacros(plan.items.filter(it => it.meal_id === m.id)).kcal)
+              return (
+                <button key={m.id} type="button" onClick={() => (done && !window.confirm(`${m.label} is already logged today. Log it again?`) ? null : logPlanMeal(m))}
+                  style={{ textAlign: 'left', padding: '10px 10px', borderRadius: 10, cursor: 'pointer', font: 'inherit', color: 'inherit',
+                    border: '1px solid ' + (done ? 'var(--orange)' : 'var(--line)'), background: done ? 'rgba(255,90,0,0.14)' : 'var(--steel)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--orange-hot)' }}>{i + 1} · {done ? 'LOGGED ✓' : 'TAP TO LOG'}</div>
+                  <div style={{ fontWeight: 800, fontSize: 14, marginTop: 2 }}>{m.label}</div>
+                  <div className="muted" style={{ fontSize: 11.5 }}>{k.toLocaleString()} kcal</div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="card" style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 12px' }}>
+        <span className="eyebrow" style={{ fontSize: 10, margin: 0 }}>Logging to</span>
+        <select value={slot} onChange={e => setSlot(e.target.value)} aria-label="Meal" style={{ flex: 1 }}>
+          {MEAL_SLOTS.map(s => <option key={s}>{s}</option>)}
+        </select>
       </div>
 
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -291,15 +347,18 @@ export default function ClientNutrition() {
         <button className="btn" onClick={addMeal} disabled={!form.meal_name}>Add meal</button>
       </div>
 
-      {meals.map(m => (
-        <div className="card" key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px' }}>
-          <div>
-            <strong style={{ fontSize: 14.5 }}>{m.meal_name}</strong>
-            <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>P {m.protein_g} · C {m.carbs_g} · F {m.fat_g}</div>
-          </div>
-          <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => removeMeal(m.id)}>Remove</button>
+      <div>
+        <div style={{ borderBottom: '3px solid var(--orange)', paddingBottom: 4, marginBottom: 8, color: 'var(--orange-hot)', fontWeight: 900, fontSize: 13, letterSpacing: '.08em' }}>TODAY'S FOOD LOG</div>
+        <DayLog logs={meals} onRemove={removeMeal} />
+      </div>
+
+      <div>
+        <div style={{ borderBottom: '3px solid var(--orange)', paddingBottom: 4, marginBottom: 8, color: 'var(--orange-hot)', fontWeight: 900, fontSize: 13, letterSpacing: '.08em' }}>THIS WEEK · DAILY TOTALS</div>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <WeekTotals compact today={today} table={weekTable(weekLogs, week, targetsFrom(plan.me || profile, plan.plan), today)} targets={targetsFrom(plan.me || profile, plan.plan)} />
         </div>
-      ))}
+        <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>On target = calories within 5% and protein at 95%+ of your targets.</p>
+      </div>
     </div>
   )
 }

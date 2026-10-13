@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ChevronLeft, Utensils, ShoppingCart, Trash2, Plus } from 'lucide-react'
+import { ChevronLeft, Utensils, ShoppingCart, Trash2, Plus, NotebookPen, Calculator } from 'lucide-react'
+import { CoachFoodLog, MacroCalculator } from './CoachFoodLog'
 import { supabase } from '../../lib/supabase'
 import { itemMacros, sumMacros, targetsFrom, STARTER_PLAN, fromFood, shoppingList, fmt0, fmt1 } from '../../lib/mealplan'
 import { PlanTargets, ShoppingTable } from './MealPlanView'
@@ -24,7 +25,7 @@ export default function CoachNutrition() {
 
   async function load() {
     const [{ data: c }, { data: p, error }, { data: m }, { data: it }, { data: lib }, { data: s }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, phase, protein_g, carbs_g, fat_g, calories').eq('id', clientId).single(),
+      supabase.from('profiles').select('*').eq('id', clientId).single(),
       supabase.from('meal_plans').select('*').eq('client_id', clientId).maybeSingle(),
       supabase.from('meal_plan_meals').select('*').eq('client_id', clientId).order('position').order('created_at'),
       supabase.from('meal_plan_items').select('*').eq('client_id', clientId).order('position').order('created_at'),
@@ -160,7 +161,12 @@ export default function CoachNutrition() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         <button className={tab === 'plan' ? 'btn' : 'btn-ghost'} onClick={() => setTab('plan')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Utensils size={15} /> Meal Plan</button>
         <button className={tab === 'shop' ? 'btn' : 'btn-ghost'} onClick={() => setTab('shop')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><ShoppingCart size={15} /> Shopping List</button>
+        <button className={tab === 'log' ? 'btn' : 'btn-ghost'} onClick={() => setTab('log')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><NotebookPen size={15} /> Food Log</button>
+        <button className={tab === 'calc' ? 'btn' : 'btn-ghost'} onClick={() => setTab('calc')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Calculator size={15} /> Macro Calculator</button>
       </div>
+
+      {tab === 'log' && <CoachFoodLog clientId={clientId} targets={targets} />}
+      {tab === 'calc' && <MacroCalculator client={client} onApplied={load} />}
 
       {tab === 'plan' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
