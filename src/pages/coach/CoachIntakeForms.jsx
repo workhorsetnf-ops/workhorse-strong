@@ -229,7 +229,7 @@ export default function CoachIntakeForms() {
                     {formsById[a.form_id]?.name || 'Form'}
                     <span style={{
                       fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase', padding: '2px 6px', borderRadius: 20,
-                      background: a.status === 'completed' ? 'rgba(76,175,109,0.18)' : 'rgba(255,90,0,0.18)',
+                      background: a.status === 'completed' ? 'rgba(76,175,109,0.18)' : 'rgba(255,106,0,0.18)',
                       color: a.status === 'completed' ? 'var(--green)' : 'var(--orange-hot)',
                     }}>{a.status === 'completed' ? 'Done' : 'Pending'}</span>
                     <button onClick={() => unassignForm(a.id)} style={{ background: 'none', color: 'var(--muted)', padding: 0, fontSize: 12 }}>✕</button>

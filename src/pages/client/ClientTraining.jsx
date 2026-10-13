@@ -14,7 +14,7 @@ function loomEmbed(url) {
 
 const prefixOf = l => (l || '').replace(/[0-9]/g, '')
 const isNumbered = l => /^[A-Z]+\d+$/.test(l || '')
-const GROUP_COLORS = ['#FF5A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
+const GROUP_COLORS = ['#FF6A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
 
 function chunkGroups(list) {
   const out = []
@@ -648,7 +648,7 @@ export default function ClientTraining() {
                   style: cStyle,
                 })
                 return (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, alignItems: 'center', padding: '5px 2px', borderRadius: 10, background: isDone ? 'rgba(255,90,0,0.10)' : 'transparent', transition: 'background 0.2s' }}>
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, alignItems: 'center', padding: '5px 2px', borderRadius: 10, background: isDone ? 'rgba(255,106,0,0.10)' : 'transparent', transition: 'background 0.2s' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
                       <span style={{ fontSize: big ? 17 : 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 2 }}>
                         {i + 1}
@@ -748,13 +748,13 @@ export default function ClientTraining() {
                   <span key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     {ex.icon_url
                       ? <img className="thumb" src={ex.icon_url} alt="" style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover', flexShrink: 0 }} />
-                      : <span style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 9, background: 'rgba(255,90,0,0.12)', color: 'var(--orange-hot)', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{ex.letter || '•'}</span>}
+                      : <span style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 9, background: 'rgba(255,106,0,0.12)', color: 'var(--orange-hot)', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{ex.letter || '•'}</span>}
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <strong style={{ display: 'block', fontSize: 15 }}>{ex.name}</strong>
                       <span className="muted" style={{ fontSize: 12 }}>{ex.kind === 'conditioning' ? 'Conditioning' : targetText(ex)}</span>
                     </span>
                     <span style={{ flexShrink: 0, minWidth: 44, height: 28, padding: '0 9px', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800,
-                      background: full ? 'var(--orange)' : c.done ? 'rgba(255,90,0,0.14)' : 'var(--steel)', color: full ? '#140A02' : c.done ? 'var(--orange-hot)' : 'var(--muted)' }}>
+                      background: full ? 'var(--orange)' : c.done ? 'rgba(255,106,0,0.14)' : 'var(--steel)', color: full ? '#140A02' : c.done ? 'var(--orange-hot)' : 'var(--muted)' }}>
                       {full ? 'Done' : ex.kind === 'conditioning' ? '—' : `${c.done}/${c.total}`}
                     </span>
                   </span>
@@ -842,7 +842,7 @@ export default function ClientTraining() {
               }}
               aria-label={resting ? 'Resting — tap to skip' : 'Start rest timer'}
               style={{ height: 44, padding: '0 18px', borderRadius: 22, fontSize: 16, fontWeight: 800, fontVariantNumeric: 'tabular-nums', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-                background: resting ? 'var(--orange)' : rest ? 'rgba(255,90,0,0.14)' : 'var(--steel)',
+                background: resting ? 'var(--orange)' : rest ? 'rgba(255,106,0,0.14)' : 'var(--steel)',
                 color: resting ? '#140A02' : rest ? 'var(--orange-hot)' : 'inherit',
                 border: resting || rest ? '1px solid var(--orange)' : '1px solid var(--line)' }}>
               ⏱ {resting ? fmtClock(left) : rest ? 'Rest over · go' : defaultRest ? `Rest ${fmtClock(defaultRest)}` : 'Rest timer'}
@@ -867,7 +867,7 @@ export default function ClientTraining() {
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
               {ex.icon_url
                 ? <img className="thumb" src={ex.icon_url} alt="" style={{ width: 52, height: 52, borderRadius: 12, objectFit: 'cover', flexShrink: 0 }} />
-                : <span style={{ width: 52, height: 52, flexShrink: 0, borderRadius: 12, background: 'rgba(255,90,0,0.12)', color: 'var(--orange-hot)', fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{ex.letter || '•'}</span>}
+                : <span style={{ width: 52, height: 52, flexShrink: 0, borderRadius: 12, background: 'rgba(255,106,0,0.12)', color: 'var(--orange-hot)', fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{ex.letter || '•'}</span>}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <h2 style={{ fontSize: 28, lineHeight: 1, textTransform: 'uppercase' }}>
                   {ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter} · </span>}{ex.name}

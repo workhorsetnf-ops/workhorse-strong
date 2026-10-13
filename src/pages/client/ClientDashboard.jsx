@@ -4,14 +4,14 @@ import { supabase } from '../../lib/supabase'
 import { localDateStr, mondayOf, weekDaysFrom } from '../../lib/weeks'
 import { weekOfCoaching, nextCheckin, macroRows, progress, sessionsOn, DEFAULT_TODOS, weekCompletion, heightText, WEEKDAYS, mondayIndex } from '../../lib/dashboard'
 
-const ANTON = "'Anton','Barlow Condensed',system-ui,sans-serif"
+const DISPLAY_FONT = "'Oswald','Barlow',system-ui,sans-serif"
 const fmtDate = (d, opts = { month: 'short', day: 'numeric', year: 'numeric' }) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(undefined, opts) : '—')
 
 function Tile({ label, value, sub, accent, wide }) {
   return (
     <div style={{ gridColumn: wide ? '1 / -1' : undefined, background: 'var(--coal)', border: '1px solid var(--line)', borderTop: '3px solid var(--orange)', borderRadius: 10, padding: '10px 8px', textAlign: 'center', minWidth: 0 }}>
       <div className="muted" style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase' }}>{label}</div>
-      <div style={{ fontFamily: ANTON, fontSize: wide ? 34 : 24, lineHeight: 1.15, marginTop: 3, color: accent ? 'var(--orange-hot)' : 'var(--white)', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
+      <div style={{ fontFamily: DISPLAY_FONT, fontSize: wide ? 34 : 24, lineHeight: 1.15, marginTop: 3, color: accent ? 'var(--orange-hot)' : 'var(--white)', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
       {sub && <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{sub}</div>}
     </div>
   )
