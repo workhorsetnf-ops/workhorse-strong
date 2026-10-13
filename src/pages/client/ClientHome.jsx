@@ -4,6 +4,7 @@ import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, F
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr, logDate } from '../../lib/weeks'
+import ClientDashboard from './ClientDashboard'
 
 export default function ClientHome() {
   const { profile, signOut } = useAuth()
@@ -224,6 +225,8 @@ export default function ClientHome() {
           </div>
         </Link>
       )}
+
+      {profile && <ClientDashboard profile={profile} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div className="card">
