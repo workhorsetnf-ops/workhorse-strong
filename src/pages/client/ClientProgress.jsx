@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import Sparkline from '../../lib/Sparkline'
@@ -105,15 +106,12 @@ export default function ClientProgress() {
   const [saveState, setSaveState] = useState('')   // '', 'saving', 'saved', 'error'
   const [range, setRange] = useState(30)
   const [measurements, setMeasurements] = useState([])
-  const [mform, setMform] = useState({ waist: '', chest: '', arms: '', thighs: '', hips: '', neck: '' })
-  const [msaved, setMsaved] = useState(false)
 
   // logsRef always holds the latest rows so a delayed save writes what the
   // client typed last, not a stale snapshot from when the timer started
   const logsRef = useRef([])
   useEffect(() => { logsRef.current = logs }, [logs])
   const timers = useRef({})          // date -> pending save timer
-  const measurementsLoaded = useRef(false)
 
   async function load() {
     const since = localDateStr(new Date(Date.now() - 90 * 864e5))
@@ -126,16 +124,9 @@ export default function ClientProgress() {
     setWorkoutDates(new Set((wl || []).map(w => localDateStr(new Date(w.logged_at)))))
   }
   async function loadMeasurements() {
-    const since = localDateStr(new Date(Date.now() - 180 * 864e5))
-    const { data } = await supabase.from('body_measurements').select('*')
-      .eq('client_id', profile.id).gte('log_date', since).order('log_date')
+    const { data } = await supabase.from('body_measurements').select('log_date, waist')
+      .eq('client_id', profile.id).not('waist', 'is', null).order('log_date', { ascending: false }).limit(1)
     setMeasurements(data || [])
-    const latest = (data || [])[(data || []).length - 1]
-    measurementsLoaded.current = false
-    if (latest && latest.log_date === todayStr()) {
-      setMform({ waist: latest.waist ?? '', chest: latest.chest ?? '', arms: latest.arms ?? '', thighs: latest.thighs ?? '', hips: latest.hips ?? '', neck: latest.neck ?? '' })
-    }
-    setTimeout(() => { measurementsLoaded.current = true }, 0)
   }
   useEffect(() => { if (profile) { load(); loadMeasurements() } }, [profile])
 
@@ -176,22 +167,7 @@ export default function ClientProgress() {
   }
   const toggle = (key, val) => setField(key, row[key] === val ? null : val)
 
-  async function saveMeasurements() {
-    if (!Object.values(mform).some(v => v !== '')) return
-    const r = { client_id: profile.id, log_date: todayStr() }
-    for (const k of ['waist', 'chest', 'arms', 'thighs', 'hips', 'neck']) r[k] = mform[k] === '' ? null : +mform[k]
-    await supabase.from('body_measurements').upsert(r, { onConflict: 'client_id,log_date' })
-    setMsaved(true); setTimeout(() => setMsaved(false), 2000)
-    loadMeasurements()
-  }
-  useEffect(() => {
-    if (!measurementsLoaded.current) return
-    if (!Object.values(mform).some(v => v !== '')) return
-    const t = setTimeout(saveMeasurements, 1200)
-    return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mform])
-
+  const latestWaist = measurements[0]?.waist ?? null
   const byDate = useMemo(() => Object.fromEntries(logs.map(l => [l.log_date, l])), [logs])
   const week = lastNDays(7)
   const summary = useMemo(() => summarizeWeek(week, byDate, workoutDates), [byDate, workoutDates, week.join()])
@@ -309,30 +285,18 @@ export default function ClientProgress() {
         <Sparkline data={stepsData} color="#4A6FA5" unit=" steps" />
       </div>
 
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div className="eyebrow" style={{ fontSize: 10 }}>Body measurements (in)</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          {[['waist', 'Waist'], ['chest', 'Chest'], ['arms', 'Arms'], ['thighs', 'Thighs'], ['hips', 'Hips'], ['neck', 'Neck']].map(([k, label]) => (
-            <div key={k}>
-              <label className="muted" style={{ fontSize: 11.5 }}>{label}</label>
-              <input inputMode="decimal" value={mform[k]} onChange={e => setMform({ ...mform, [k]: e.target.value })} />
-            </div>
-          ))}
-        </div>
-        <button className="btn" onClick={saveMeasurements}>{msaved ? 'Saved ✓' : 'Save measurements'}</button>
-        <p className="muted" style={{ fontSize: 11, marginTop: -4 }}>Auto-saves shortly after you stop typing — this button is just a quick confirmation.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Link to="/app/measurements" className="card" style={{ textDecoration: 'none', borderTop: '3px solid var(--orange)', textAlign: 'center', padding: '14px 8px' }}>
+          <div className="eyebrow" style={{ fontSize: 10 }}>Measurements</div>
+          <div style={{ fontSize: 22, fontWeight: 900, marginTop: 4, color: 'var(--orange-hot)' }}>{latestWaist != null ? `${latestWaist}"` : '+'}</div>
+          <div className="muted" style={{ fontSize: 11 }}>{latestWaist != null ? 'waist · log & body fat →' : 'Log your first →'}</div>
+        </Link>
+        <Link to="/app/photos" className="card" style={{ textDecoration: 'none', borderTop: '3px solid var(--orange)', textAlign: 'center', padding: '14px 8px' }}>
+          <div className="eyebrow" style={{ fontSize: 10 }}>Progress photos</div>
+          <div style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>📸</div>
+          <div className="muted" style={{ fontSize: 11 }}>Compare side by side →</div>
+        </Link>
       </div>
-
-      {measurements.length >= 2 && ['waist', 'chest', 'arms'].map(k => {
-        const data = measurements.filter(m => m[k] !== null).map(m => ({ label: fmt(m.log_date), value: m[k] }))
-        if (data.length < 2) return null
-        return (
-          <div className="card" key={k}>
-            <div className="eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>{k[0].toUpperCase() + k.slice(1)} trend</div>
-            <Sparkline data={data} color="#3E8E7E" unit={'"'} />
-          </div>
-        )
-      })}
     </div>
   )
 }

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import ClientMeasurements from './ClientMeasurements'
+import ClientPhotos from './ClientPhotos'
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { Home, Dumbbell, Utensils, ClipboardCheck, LineChart, Video, Trophy, MessageCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -23,6 +25,9 @@ import ClientDocuments from './ClientDocuments'
 import ClientSupplements from './ClientSupplements'
 import ClientBloodwork from './ClientBloodwork'
 import ClientCardio from './ClientCardio'
+import ClientHabits from './ClientHabits'
+import ClientMealPlan from './ClientMealPlan'
+import ClientShopping from './ClientShopping'
 import ContractPrint from '../ContractPrint'
 
 function Dot() {
@@ -65,6 +70,8 @@ export default function ClientApp() {
           <Route index element={<ClientHome />} />
           <Route path="training" element={<ClientTraining />} />
           <Route path="nutrition" element={<ClientNutrition />} />
+          <Route path="nutrition/plan" element={<ClientMealPlan />} />
+          <Route path="nutrition/shopping" element={<ClientShopping />} />
           <Route path="messages" element={<ClientMessages />} />
           <Route path="checkin" element={<ClientCheckin />} />
           <Route path="progress" element={<ClientProgress />} />
@@ -80,9 +87,12 @@ export default function ClientApp() {
           <Route path="contracts" element={<ClientContracts />} />
           <Route path="contracts/print/:contractId" element={<ContractPrint />} />
           <Route path="documents" element={<ClientDocuments />} />
+          <Route path="measurements" element={<ClientMeasurements />} />
+          <Route path="photos" element={<ClientPhotos />} />
           <Route path="supplements" element={<ClientSupplements />} />
           <Route path="bloodwork" element={<ClientBloodwork />} />
           <Route path="cardio" element={<ClientCardio />} />
+          <Route path="habits" element={<ClientHabits />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>

@@ -1,31 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { calcMacros } from '../../lib/macros'
 
-// Workhorse starting-macros methodology: Mifflin-St Jeor + wrestler multipliers
-function calcMacros({ weightLbs, age, sex, hft, hin, bf, activity, goal }) {
-  const kg = weightLbs / 2.2046
-  const cm = (hft * 12 + hin) * 2.54
-  const bmr = 10 * kg + 6.25 * cm - 5 * age + (sex === 'male' ? 5 : -161)
-  const mult = { 'lifting-only': 1.45, 'light-schedule': 1.55, 'working-talent': 1.65, 'heavy-schedule': 1.8 }[activity]
-  const tdee = Math.round((bmr * mult) / 25) * 25
-  let target = goal === 'cut' ? tdee - 500 : goal === 'build' ? tdee + 300 : tdee
-  const notes = []
-  if (goal === 'cut') {
-    const floor = 10 * weightLbs
-    if (target < floor) { target = Math.round(floor / 25) * 25; notes.push('Calories floored at 10× bodyweight — the straight −500 cut too deep.') }
-  }
-  let proteinBase = weightLbs
-  if (weightLbs >= 250 && bf && +bf > 25) {
-    proteinBase = (weightLbs * (1 - +bf / 100)) * 1.2
-    notes.push('Protein set off estimated lean mass +20% (250+ lbs at higher body fat).')
-  }
-  const protein = Math.round(proteinBase / 5) * 5
-  const fat = Math.max(50, Math.round((weightLbs * (goal === 'cut' ? 0.35 : 0.4)) / 5) * 5)
-  const carbs = Math.max(0, Math.round(((target - protein * 4 - fat * 9) / 4) / 5) * 5)
-  if (!bf) notes.push('No body fat estimate — first two weeks of scale data matter more than the formula.')
-  return { tdee, target, protein, carbs, fat, notes }
-}
 
 export default function CoachClients() {
   const [clients, setClients] = useState([])
@@ -93,7 +70,7 @@ export default function CoachClients() {
     const { data: r } = await supabase.from('client_ratings').select('*').eq('client_id', c.id).maybeSingle()
     setRating({ retention: r?.retention || null, mindset: r?.mindset || null, notes: r?.notes || '' })
     setCalcResult(null)
-    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null, status: c.status || 'active', payment_plan: c.payment_plan || '', contract_ends: c.contract_ends || '', split_ends: c.split_ends || '', start_date: c.start_date || '', payment_date: c.payment_date || '' })
+    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null, status: c.status || 'active', payment_plan: c.payment_plan || '', contract_ends: c.contract_ends || '', split_ends: c.split_ends || '', start_date: c.start_date || '', payment_date: c.payment_date || '', goal: c.goal || '', target_weight: c.target_weight ?? '', age: c.age ?? '', height_ft: c.height_in ? Math.floor(c.height_in / 12) : '', height_inch: c.height_in ? c.height_in % 12 : '', steps_target: c.steps_target ?? '', water_oz: c.water_oz ?? '', limitations: c.limitations || '' })
     setOriginalEmail(c.email || '')
     // Pull their pre-sale timeline in if they came through the pipeline.
     const hist = leadHistory[c.id]
@@ -128,6 +105,13 @@ export default function CoachClients() {
       split_ends: form.split_ends || null,
       start_date: form.start_date || null,
       payment_date: form.payment_date || null,
+      goal: form.goal?.trim() || '',
+      target_weight: form.target_weight === '' || form.target_weight == null ? null : +form.target_weight,
+      age: form.age === '' || form.age == null ? null : +form.age,
+      height_in: (+form.height_ft || 0) * 12 + (+form.height_inch || 0) || null,
+      steps_target: form.steps_target === '' || form.steps_target == null ? null : +form.steps_target,
+      water_oz: form.water_oz === '' || form.water_oz == null ? null : +form.water_oz,
+      limitations: form.limitations?.trim() || '',
       // Only restamp when the status genuinely moved, so "12d paused" stays honest.
       ...(statusChanged ? { status_changed_at: new Date().toISOString() } : {}),
     }).eq('id', id)
@@ -324,6 +308,22 @@ export default function CoachClients() {
                   </div>
                 </div>
 
+                <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+                  <span className="eyebrow" style={{ fontSize: 10 }}>Dashboard profile (shown on the client's Home)</span>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 8, marginTop: 6 }}>
+                    <div><label className="muted" style={{ fontSize: 11.5 }}>Goal</label><input placeholder="e.g. Drop to 205 for TV" value={form.goal || ''} onChange={e => setForm({ ...form, goal: e.target.value })} /></div>
+                    <div><label className="muted" style={{ fontSize: 11.5 }}>Goal weight (lb)</label><input inputMode="decimal" value={form.target_weight ?? ''} onChange={e => setForm({ ...form, target_weight: e.target.value })} /></div>
+                    <div><label className="muted" style={{ fontSize: 11.5 }}>Age</label><input inputMode="numeric" value={form.age ?? ''} onChange={e => setForm({ ...form, age: e.target.value })} /></div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8, marginTop: 8 }}>
+                    <div><label className="muted" style={{ fontSize: 11.5 }}>Height (ft)</label><input inputMode="numeric" value={form.height_ft ?? ''} onChange={e => setForm({ ...form, height_ft: e.target.value })} /></div>
+                    <div><label className="muted" style={{ fontSize: 11.5 }}>Height (in)</label><input inputMode="numeric" value={form.height_inch ?? ''} onChange={e => setForm({ ...form, height_inch: e.target.value })} /></div>
+                    <div><label className="muted" style={{ fontSize: 11.5 }}>Steps target</label><input inputMode="numeric" value={form.steps_target ?? ''} onChange={e => setForm({ ...form, steps_target: e.target.value })} /></div>
+                    <div><label className="muted" style={{ fontSize: 11.5 }}>Water (oz)</label><input inputMode="numeric" value={form.water_oz ?? ''} onChange={e => setForm({ ...form, water_oz: e.target.value })} /></div>
+                  </div>
+                  <div style={{ marginTop: 8 }}><label className="muted" style={{ fontSize: 11.5 }}>Injuries / limitations</label><input value={form.limitations || ''} onChange={e => setForm({ ...form, limitations: e.target.value })} /></div>
+                </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                   <input inputMode="numeric" value={form.protein_g} placeholder="Protein g" onChange={e => setForm({ ...form, protein_g: e.target.value })} />
                   <input inputMode="numeric" value={form.carbs_g} placeholder="Carbs g" onChange={e => setForm({ ...form, carbs_g: e.target.value })} />
@@ -484,9 +484,11 @@ export default function CoachClients() {
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <Link to={`/coach/logs/${c.id}`} className="btn" style={{ textDecoration: 'none', display: 'inline-block' }}>View Logs</Link>
-                  <Link to={`/coach/health/${c.id}`} className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Supplements · Bloodwork · Cardio</Link>
+                  <Link to={`/coach/nutrition/${c.id}`} className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Nutrition</Link>
+                  <Link to={`/coach/health/${c.id}`} className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Supplements · Bloodwork · Cardio · Habits</Link>
                   <a href={`/coach/print/${c.id}`} target="_blank" rel="noreferrer" className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Print summary</a>
                   <button className="btn-ghost" onClick={() => resetPassword(c)}>Reset password</button>
+                  <Link to={`/coach/body/${c.id}`} className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Measurements · Photos</Link>
                   <button className="btn-ghost" onClick={() => togglePhotos(c.id)}>
                     {photosFor === c.id ? 'Hide photos' : 'Photos'}
                   </button>
