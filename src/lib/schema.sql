@@ -1341,3 +1341,9 @@ alter table checkins add column if not exists daily_summary jsonb default '[]';
 -- The existing 1–10 check constraints still apply to the new type.
 alter table checkins alter column energy type numeric using energy::numeric;
 alter table checkins alter column hunger type numeric using hunger::numeric;
+
+-- ===== PHASE PLANNER: reverse + diet break phases (Update 91) =====
+-- Safe to re-run.
+alter table client_phases drop constraint if exists client_phases_phase_type_check;
+alter table client_phases add constraint client_phases_phase_type_check
+  check (phase_type in ('cut','build','recomp','maintain','peak','reverse','diet_break'));
