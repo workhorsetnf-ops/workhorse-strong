@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { dash, effortText, effortMeaning } from '../../lib/targets'
+import { progressionCall, CALL_STYLE } from '../../lib/progression'
 import { supabase } from '../../lib/supabase'
 import { resolveAssignment, rotationForWeek, dayShowsInWeek, daysBetween, resolveBlockWeek, localDateStr } from '../../lib/weeks'
 import { useAuth } from '../../context/AuthContext'
@@ -252,8 +253,26 @@ export default function ClientTraining() {
     return max && target ? String(roundTo5(max * (+target / 100))) : ''
   }
 
+  // What last session says to do today (add weight / add reps / hold / drop)
+  function progressFor(ex) {
+    if (ex.kind === 'conditioning') return null
+    const last = lastSession[ex.id]
+    if (!last || !last.sets) return null
+    const nums = Object.keys(last.sets).map(Number).sort((a, b) => a - b)
+    return progressionCall(nums.map(n => last.sets[n]), exSetTargets(ex), ex.progression_type || 'rir')
+  }
+
   // What a blank cell should suggest: last session's value for that set, else the program target
   function suggestion(ex, i, field) {
+    if (field === 'weight') {
+      const pc = progressFor(ex)
+      const lw = Number(lastSession[ex.id]?.sets?.[i + 1]?.weight) || 0
+      // move every set by the same jump the top set gets
+      if (pc && (pc.call === 'up' || pc.call === 'drop') && lw) {
+        const top = Math.max(...Object.values(lastSession[ex.id].sets).map(x => Number(x.weight) || 0))
+        if (top && pc.nextWeight) return String(Math.round((lw * pc.nextWeight / top) / 2.5) * 2.5)
+      }
+    }
     const last = lastSession[ex.id]?.sets?.[i + 1]
     if (last?.[field]) return String(last[field])
     const t = exSetTargets(ex)[i] || {}
@@ -271,7 +290,8 @@ export default function ClientTraining() {
     const last = lastSession[ex.id]?.sets?.[i + 1] || {}
     const t = exSetTargets(ex)[i] || {}
     const filled = {
-      weight: s.weight || (last.weight ? String(last.weight) : percentLoad(ex, t.target)),
+      // the progression call's load when there is one (up / drop), else last time's
+      weight: s.weight || suggestion(ex, i, 'weight') || (last.weight ? String(last.weight) : percentLoad(ex, t.target)),
       reps: s.reps || (last.reps ? String(last.reps) : ''),
       rir: s.rir || (last.rir ? String(last.rir) : ''),
     }
@@ -354,6 +374,22 @@ export default function ClientTraining() {
     }
     if (ex.progression_type === 'rpe') return `${sets} × ${dash(reps)} @ RPE ${dash(target)}${ex.rest ? ` · rest ${ex.rest}` : ''}`
     return `${sets} × ${dash(reps)} @ RIR ${dash(target)}${ex.rest ? ` · rest ${ex.rest}` : ''}`
+  }
+
+  function progressNote(ex) {
+    const pc = progressFor(ex)
+    if (!pc) return null
+    const st = CALL_STYLE[pc.call]
+    return (
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '0 0 8px', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--coal)' }}>
+        <span style={{ flexShrink: 0, minWidth: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, background: st.bg, color: st.color }}>{st.icon}</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '.06em', color: 'var(--muted)' }}>TODAY, BASED ON LAST TIME</div>
+          <strong style={{ fontSize: 14 }}>{pc.title}</strong>
+          <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.4 }}>{pc.detail}</div>
+        </div>
+      </div>
+    )
   }
 
   // The effort target spelled out, so "RIR 1-2" is never a mystery.
@@ -730,6 +766,7 @@ export default function ClientTraining() {
             {ex.kind !== 'conditioning' && <span style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700 }}>{targetText(ex)}</span>}
           </div>
           {effortBox(ex)}
+          {progressNote(ex)}
           {renderExtras(ex)}
           {ex.kind !== 'conditioning' && ex.progression_type === 'percent' && !maxes[(ex.based_on_lift || ex.name).toLowerCase()] && (
             <p className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>No max on file for {ex.based_on_lift || ex.name} — ask your coach to set it.</p>
@@ -904,6 +941,7 @@ export default function ClientTraining() {
                 </h2>
                 <div style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700, marginTop: 4 }}>{targetText(ex)}</div>
                 {effortBox(ex)}
+                {progressNote(ex)}
               </div>
             </div>
 

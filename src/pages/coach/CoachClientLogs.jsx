@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ChevronLeft, Utensils, Dumbbell } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import { localDateStr, lastNDays } from '../../lib/weeks'
+import { localDateStr, lastNDays, setTargets, resolveAssignment } from '../../lib/weeks'
+import { latestCalls, CALL_STYLE } from '../../lib/progression'
 
 // Local dates throughout — toISOString() is UTC and moved evening logs onto the next day.
 function last7Dates() { return lastNDays(7) }
@@ -87,6 +88,7 @@ export default function CoachClientLogs() {
   const [grid, setGrid] = useState({ weeks: [], rows: [] })
   const [openDay, setOpenDay] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [calls, setCalls] = useState([])
 
   useEffect(() => {
     const since30 = localDateStr(new Date(Date.now() - 30 * 864e5))
@@ -117,8 +119,26 @@ export default function CoachClientLogs() {
       setWorkoutDays(days)
 
       setLoading(false)
+      loadCalls(logs || [])
     })
   }, [clientId])
+
+  // Progression calls: latest session of each exercise vs this week's targets
+  async function loadCalls(logs) {
+    const ids = [...new Set(logs.map(l => l.exercise_id).filter(Boolean))]
+    if (!ids.length) return
+    const [{ data: exs }, { data: asg }] = await Promise.all([
+      supabase.from('program_exercises').select('*').in('id', ids),
+      supabase.from('program_assignments').select('*').eq('client_id', clientId).maybeSingle(),
+    ])
+    let week = 1
+    if (asg) {
+      const { data: blocks } = await supabase.from('program_blocks').select('*').eq('program_id', asg.program_id).order('position')
+      week = resolveAssignment(asg, blocks || []).weekInBlock || 1
+    }
+    const exById = Object.fromEntries((exs || []).map(e => [e.id, e]))
+    setCalls(latestCalls(logs, exById, week, logDay, setTargets))
+  }
 
   if (loading) return <div className="muted">Loading…</div>
 
@@ -132,6 +152,31 @@ export default function CoachClientLogs() {
       </Link>
       <div className="eyebrow">Activity</div>
       <h1 style={{ fontSize: 28, margin: '6px 0 20px' }}>{profile?.full_name || 'Client'}'s Logs</h1>
+
+      {calls.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <Dumbbell size={17} strokeWidth={2} color="var(--orange-hot)" />
+            <strong style={{ fontSize: 15 }}>Next session calls</strong>
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>From each lift's last session against its rep range and RIR target. The client sees the same call in their app.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {calls.map(c => {
+              const st = CALL_STYLE[c.call.call]
+              return (
+                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '34px minmax(140px, 1fr) minmax(160px, 2fr)', gap: 10, alignItems: 'center', padding: '6px 8px', borderRadius: 8, background: 'var(--steel)' }}>
+                  <span style={{ height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, background: st.bg, color: st.color }}>{st.icon}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ fontSize: 13.5 }}>{c.name}</strong>
+                    <div className="muted" style={{ fontSize: 11.5 }}>{fmtDate(c.date)}: {c.sets.map(s => `${s.weight ? s.weight + '×' : ''}${s.reps || '–'}${s.rir !== null && s.rir !== undefined && s.rir !== '' ? ' @' + s.rir : ''}`).join(', ')}</div>
+                  </div>
+                  <div style={{ fontSize: 12.5 }}><strong>{c.call.title}.</strong> <span className="muted">{c.call.detail}</span></div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
