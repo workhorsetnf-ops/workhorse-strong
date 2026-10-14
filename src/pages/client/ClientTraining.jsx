@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { dash, effortText, effortMeaning } from '../../lib/targets'
 import { supabase } from '../../lib/supabase'
 import { resolveAssignment, rotationForWeek, dayShowsInWeek, daysBetween, resolveBlockWeek, localDateStr } from '../../lib/weeks'
 import { useAuth } from '../../context/AuthContext'
@@ -258,7 +259,7 @@ export default function ClientTraining() {
     const t = exSetTargets(ex)[i] || {}
     if (field === 'weight') return percentLoad(ex, t.target)
     if (field === 'reps') return t.reps ? String(t.reps).split('-')[0] : ''
-    if (field === 'rir') return ex.progression_type === 'percent' ? '' : (t.target ?? '').toString()
+    if (field === 'rir') return ex.progression_type === 'percent' ? '' : dash(t.target ?? '')
     return ''
   }
 
@@ -351,8 +352,35 @@ export default function ClientTraining() {
       const load = max ? ` → ${roundTo5(max * (+target / 100))} lbs` : ''
       return `${sets} × ${reps} @ ${target}%${load}${ex.rest ? ` · rest ${ex.rest}` : ''}`
     }
-    if (ex.progression_type === 'rpe') return `${sets} × ${reps} @ RPE ${target}${ex.rest ? ` · rest ${ex.rest}` : ''}`
-    return `${sets} × ${reps} @ RIR ${target}${ex.rest ? ` · rest ${ex.rest}` : ''}`
+    if (ex.progression_type === 'rpe') return `${sets} × ${dash(reps)} @ RPE ${dash(target)}${ex.rest ? ` · rest ${ex.rest}` : ''}`
+    return `${sets} × ${dash(reps)} @ RIR ${dash(target)}${ex.rest ? ` · rest ${ex.rest}` : ''}`
+  }
+
+  // The effort target spelled out, so "RIR 1-2" is never a mystery.
+  function effortBox(ex) {
+    if (ex.kind === 'conditioning') return null
+    const type = ex.progression_type || 'rir'
+    const sets = exSetTargets(ex)
+    const uniq = [...new Set(sets.map(t => String(t.target ?? '')).filter(Boolean))]
+    if (!uniq.length) return null
+    const label = uniq.length === 1 ? effortText(type, uniq[0]) : `${type === 'rpe' ? 'RPE' : type === 'percent' ? '%' : 'RIR'} ${uniq.map(dash).join(' / ')} (see each set)`
+    return (
+      <div style={{ margin: '6px 0 8px', border: '1px solid var(--orange)', borderRadius: 10, padding: '8px 10px', background: 'rgba(255,106,0,0.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: '.08em', color: 'var(--orange-hot)' }}>TARGET</span>
+          <strong style={{ fontSize: 16 }}>{label}</strong>
+        </div>
+        {uniq.length === 1 && <div style={{ fontSize: 12.5, marginTop: 2 }}>{effortMeaning(type, uniq[0])}</div>}
+        {type === 'rir' && (
+          <details style={{ marginTop: 4 }}>
+            <summary className="muted" style={{ fontSize: 11.5, cursor: 'pointer' }}>What's RIR?</summary>
+            <p className="muted" style={{ fontSize: 12, marginTop: 4, lineHeight: 1.45 }}>
+              Reps In Reserve: how many more good reps you could have done when you stopped. RIR 2 = you could have done 2 more. RIR 1-2 = finish the set with 1 or 2 left. In the RIR box, log what you actually had left.
+            </p>
+          </details>
+        )}
+      </div>
+    )
   }
 
   // If the week moves (calendar jump, or auto mode rolling over) and the day
@@ -627,7 +655,7 @@ export default function ClientTraining() {
                 <div>Last</div>
                 <div style={{ textAlign: 'center' }}>Lbs</div>
                 <div style={{ textAlign: 'center' }}>{repsHead}</div>
-                <div style={{ textAlign: 'center' }}>{effortHead}</div>
+                <div style={{ textAlign: 'center' }} title={effortHead === 'RIR' ? 'Reps you had left in the tank' : 'How hard it felt, out of 10'}>{effortHead === 'RIR' ? 'RIR left' : effortHead}</div>
                 <div />
               </div>
               {rows.map((s, i) => {
@@ -654,7 +682,8 @@ export default function ClientTraining() {
                         {i + 1}
                         {up && <span title="Beat last time" aria-label="Beat last time" style={{ color: 'var(--orange-hot)', fontSize: 12 }}>▲</span>}
                       </span>
-                      {t.reps != null && t.reps !== '' && <span className="muted" style={{ fontSize: 10.5 }}>{t.reps}</span>}
+                      {t.reps != null && t.reps !== '' && <span className="muted" style={{ fontSize: 10.5 }}>{dash(t.reps)}</span>}
+                      {t.target != null && t.target !== '' && ex.progression_type !== 'percent' && <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--orange-hot)', whiteSpace: 'nowrap' }}>{effortHead} {dash(t.target)}</span>}
                     </div>
                     <div className="muted" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {prev ? `${prev.weight || '–'} × ${prev.reps || '–'}` : '—'}
@@ -700,6 +729,7 @@ export default function ClientTraining() {
             </button>
             {ex.kind !== 'conditioning' && <span style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700 }}>{targetText(ex)}</span>}
           </div>
+          {effortBox(ex)}
           {renderExtras(ex)}
           {ex.kind !== 'conditioning' && ex.progression_type === 'percent' && !maxes[(ex.based_on_lift || ex.name).toLowerCase()] && (
             <p className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>No max on file for {ex.based_on_lift || ex.name} — ask your coach to set it.</p>
@@ -873,6 +903,7 @@ export default function ClientTraining() {
                   {ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter} · </span>}{ex.name}
                 </h2>
                 <div style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700, marginTop: 4 }}>{targetText(ex)}</div>
+                {effortBox(ex)}
               </div>
             </div>
 

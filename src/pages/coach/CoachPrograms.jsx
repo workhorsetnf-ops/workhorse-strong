@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { normalizeTarget, normalizeReps, dash, effortText, effortMeaning } from '../../lib/targets'
 import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets } from '../../lib/weeks'
 import { parseProgramText } from '../../lib/parse'
 
@@ -62,9 +63,11 @@ export function cellPatch(ex, weeks, weekIdx, field, raw) {
       cur.setRows = Array.from({ length: cur.sets }, (_, i) => ({ ...(cur.setRows[i] || last) }))
     }
   } else if (field === 'reps') {
-    cur.reps = value
+    cur.reps = normalizeReps(value)
   } else if (field === 'target') {
-    cur.target = value
+    const n = normalizeTarget(value)
+    if (!n.ok) return null              // not a number or a low-high range
+    cur.target = n.value
   } else return null
   const patch = { week_targets: wts }
   if (weekIdx === 0) {
@@ -94,6 +97,7 @@ export function copyWeekPatch(ex, weeks, fromIdx, toIdx) {
 // each week's own set count, and setRows is dropped when nothing actually varies.
 export function setRowsPatch(ex, weeks, weekIdxs, rows) {
   const wts = weekTargetsFor(ex, weeks)
+  if (rows) rows = rows.map(r => ({ ...r, reps: normalizeReps(r.reps), target: normalizeTarget(r.target).ok ? normalizeTarget(r.target).value : String(r.target ?? '').trim() }))
   for (const i of weekIdxs) {
     if (!wts[i]) continue
     if (!rows) { const { setRows, ...rest } = wts[i]; wts[i] = rest; continue }
@@ -124,7 +128,7 @@ export function reorderPatches(list, exId, dir) {
 
 const TARGET_LABEL = { rir: 'RIR', rpe: 'RPE', percent: '%' }
 
-export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, setPreviewWeek, onPatch, onAdd, onDelete, onOpenCards, library = [], onReload }) {
+export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, previewWeek, setPreviewWeek, onPatch, onAdd, onDelete, onOpenCards, library = [], onReload, onAddDay, onRenameDay, onDeleteDay, track = 'exercise' }) {
   const weeks = block.weeks || 4
   const [draft, setDraft] = useState({})       // `${exId}|${weekIdx}|${field}` -> text being typed
   const [selEx, setSelEx] = useState(null)     // { dayId, exId } shown in the preview
@@ -132,6 +136,9 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
   const [busy, setBusy] = useState(0)
   const [open, setOpen] = useState(null)       // exercise id with its detail strip open (per-set, order, video)
   const [rowDraft, setRowDraft] = useState({}) // `${exId}|${weekIdx}` -> [{reps,target}] being edited
+  const [bad, setBad] = useState({})           // cell key -> true when the typed target isn't a number or range
+  const [newDay, setNewDay] = useState({ dn: '', label: '' })
+  const [renaming, setRenaming] = useState({}) // dayId -> label being typed
   const cells = useRef({})
   const sortEx = arr => [...(arr || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
 
@@ -200,6 +207,8 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
     const key = `${ex.id}|${weekIdx}|${field}`
     if (!(key in draft)) return
     const raw = draft[key]
+    if (field === 'target' && !normalizeTarget(raw).ok) { setBad(b => ({ ...b, [key]: true })); return }
+    setBad(b => { if (!b[key]) return b; const n = { ...b }; delete n[key]; return n })
     setDraft(dr => { const n = { ...dr }; delete n[key]; return n })
     const before = weekTargetsFor(ex, weeks)[weekIdx]?.[field]
     if (String(before ?? '') === String(raw).trim()) return
@@ -247,12 +256,14 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
     return (
       <input
         ref={el => { cells.current[`${ex.id}|${weekIdx}|${field}`] = el }}
-        className="pt-cell"
-        aria-label={`${ex.name} week ${weekIdx + 1} ${field}`}
+        className={`pt-cell pt-box${field === 'target' ? ' pt-target' : ''}${bad[key] ? ' pt-bad' : ''}`}
+        aria-label={`${ex.name} week ${weekIdx + 1} ${field === 'target' ? TARGET_LABEL[ex.progression_type || 'rir'] + ' target' : field}`}
+        aria-invalid={bad[key] ? 'true' : undefined}
+        placeholder={field === 'target' ? ({ rir: '1-2', rpe: '8', percent: '75' }[ex.progression_type || 'rir']) : field === 'reps' ? '8-12' : ''}
         inputMode={field === 'sets' ? 'numeric' : undefined}
         value={key in draft ? draft[key] : String(value ?? '')}
         readOnly={opts.readOnly}
-        title={opts.title}
+        title={bad[key] ? 'Use a number or a range, e.g. 2 or 1-2' : opts.title}
         onFocus={() => { setSelEx({ dayId, exId: ex.id }); setPreviewWeek(weekIdx + 1) }}
         onChange={e => setDraft(dr => ({ ...dr, [key]: e.target.value }))}
         onBlur={() => commit(dayId, ex, weekIdx, field)}
@@ -284,8 +295,18 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
       <style>{`
         .pt-cell{width:100%;min-width:0;height:34px;box-sizing:border-box;padding:0 6px;border:1px solid transparent;border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:14px;font-weight:500;text-align:center;font-variant-numeric:tabular-nums}
-        .pt-cell:hover{border-color:var(--line);background:var(--steel)}
-        .pt-cell:focus{outline:none;border-color:var(--orange);background:rgba(255,106,0,0.10)}
+        .pt-box{border-color:#3d3d3d;background:#121212}
+        .pt-box::placeholder{color:#5c5c5c}
+        .pt-target{color:var(--orange-hot);font-weight:800}
+        .pt-bad{border-color:#e5484d!important;background:rgba(229,72,77,.12)!important}
+        .pt-cell:hover{border-color:#6a6a6a}
+        .pt-cell:focus{outline:none;border-color:var(--orange);background:rgba(255,106,0,0.12)}
+        .pt-table{border:1px solid #4a4a4a;border-radius:10px;overflow:hidden;background:var(--coal)}
+        .pt-head{background:var(--orange);color:#000}
+        .pt-sub{background:#0f0f0f;border-bottom:2px solid var(--orange)}
+        .pt-row:nth-child(even) > .pt-grid{background:#202020}
+        .pt-wk{border-left:2px solid #555}
+        .pt-sep{border-left:1px solid #333}
         .pt-name{text-align:left;font-weight:600}
         .pt-mini{height:24px;box-sizing:border-box;padding:0 5px;border:1px solid var(--line);border-radius:5px;background:transparent;color:inherit;font:inherit;font-size:11.5px;text-align:center}
         .pt-mini:focus{outline:none;border-color:var(--orange);background:rgba(255,106,0,0.10)}
@@ -304,7 +325,9 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
         </div>
 
         {dayList.length === 0 && (
-          <p className="muted" style={{ fontSize: 13 }}>No workouts in this view yet. Switch to Cards to add a workout to a day.</p>
+          <div style={{ border: '1px dashed var(--orange)', borderRadius: 10, padding: 14, fontSize: 13.5 }}>
+            <strong>No workouts yet.</strong> <span className="muted">Add the first one below: pick a day, name it (e.g. Upper A), then type exercises straight into the table.</span>
+          </div>
         )}
 
         {dayList.map(d => {
@@ -314,34 +337,52 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
           const totalSets = lifts.reduce((s, e) => s + (+weekTargetsFor(e, weeks)[firstWk - 1]?.sets || 0), 0)
           return (
             <section key={d.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-                <strong style={{ fontSize: 15, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--orange-hot)' }}>{d.day_label}</strong>
-                <span className="muted" style={{ fontSize: 12.5 }}>Day {d.day_number} · {lifts.length} exercises · {totalSets} sets in week {firstWk}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {d.id in renaming ? (
+                  <input autoFocus value={renaming[d.id]} aria-label="Workout name" onChange={e => setRenaming(r => ({ ...r, [d.id]: e.target.value }))}
+                    onBlur={async () => { const v = (renaming[d.id] || '').trim(); setRenaming(r => { const n = { ...r }; delete n[d.id]; return n }); if (v && v !== d.day_label) await onRenameDay?.(d, v) }}
+                    onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setRenaming(r => { const n = { ...r }; delete n[d.id]; return n }) }}
+                    style={{ maxWidth: 240, padding: '4px 8px', fontSize: 14, fontWeight: 800 }} />
+                ) : (
+                  <strong style={{ fontSize: 15, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--orange-hot)' }}>Day {d.day_number}: {d.day_label}</strong>
+                )}
+                <span className="muted" style={{ fontSize: 12.5 }}>{lifts.length} exercise{lifts.length === 1 ? '' : 's'} · {totalSets} sets in week {firstWk}</span>
+                {onRenameDay && !(d.id in renaming) && <button type="button" className="btn-ghost" onClick={() => setRenaming(r => ({ ...r, [d.id]: d.day_label }))} style={{ padding: '2px 9px', fontSize: 11 }}>Rename</button>}
+                {onDeleteDay && <button type="button" className="btn-ghost" onClick={() => onDeleteDay(d)} style={{ padding: '2px 9px', fontSize: 11, color: 'var(--muted)' }}>Delete workout</button>}
               </div>
-              <div style={{ overflowX: 'auto', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--coal)' }}>
+              <div className="pt-table" style={{ overflowX: 'auto' }}>
                 <div style={{ minWidth: minW }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: gridCols, borderBottom: '1px solid var(--line)', alignItems: 'end' }}>
+                  <div className="pt-head" style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center' }}>
                     <div />
-                    <div className="eyebrow" style={{ fontSize: 10, padding: '8px 8px' }}>Exercise</div>
+                    <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '.08em', padding: '8px 8px' }}>EXERCISE</div>
                     {runWeeks.map((wk, wi) => (
-                      <div key={wk} style={{ borderLeft: '1px solid var(--line)', background: wk === previewWeek ? 'rgba(255,106,0,0.07)' : undefined }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 8px 2px', gap: 6 }}>
-                          <button type="button" onClick={() => setPreviewWeek(wk)}
-                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: wk === previewWeek ? 'var(--orange-hot)' : 'inherit', fontSize: 12.5, fontWeight: 800 }}>
-                            Week {wk}
+                      <div key={wk} className="pt-wk" style={{ borderLeftColor: 'rgba(0,0,0,.35)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', gap: 6, background: wk === previewWeek ? '#ff8a33' : undefined }}>
+                        <button type="button" onClick={() => setPreviewWeek(wk)}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#000', fontSize: 13, fontWeight: 900, letterSpacing: '.04em' }}>
+                          WEEK {wk}
+                        </button>
+                        {wi < runWeeks.length - 1 && lifts.length > 0 && (
+                          <button type="button" title={`Copy week ${wk} into week ${runWeeks[wi + 1]}`}
+                            onClick={() => copyForward(d.id, wk)} style={{ padding: '2px 8px', fontSize: 11, fontWeight: 800, borderRadius: 5, border: '1px solid rgba(0,0,0,.45)', background: 'rgba(0,0,0,.12)', color: '#000', cursor: 'pointer' }}>
+                            Copy →
                           </button>
-                          {wi < runWeeks.length - 1 && lifts.length > 0 && (
-                            <button type="button" className="btn-ghost" title={`Copy week ${wk} into week ${runWeeks[wi + 1]}`}
-                              onClick={() => copyForward(d.id, wk)} style={{ padding: '2px 8px', fontSize: 11 }}>
-                              Copy →
-                            </button>
-                          )}
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.3fr 1fr', fontSize: 9.5, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)', textAlign: 'center', padding: '0 6px 6px' }}>
-                          <span>Sets</span><span>Reps</span><span>Target</span>
-                        </div>
+                        )}
                       </div>
                     ))}
+                    <div />
+                  </div>
+                  <div className="pt-sub" style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center' }}>
+                    <div />
+                    <div className="muted" style={{ fontSize: 10, padding: '5px 8px' }}>Name · letter · rest</div>
+                    {runWeeks.map(wk => {
+                      const types = [...new Set(lifts.map(e => e.progression_type || 'rir'))]
+                      const tl = types.length === 1 ? TARGET_LABEL[types[0]] : 'Effort'
+                      return (
+                        <div key={wk} className="pt-wk" style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.3fr 1fr', gap: 2, fontSize: 10, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', textAlign: 'center', padding: '5px 5px' }}>
+                          <span style={{ color: 'var(--muted)' }}>Sets</span><span style={{ color: 'var(--muted)' }}>Reps</span><span style={{ color: 'var(--orange-hot)' }}>{tl === '%' ? '% target' : `${tl} target`}</span>
+                        </div>
+                      )
+                    })}
                     <div />
                   </div>
 
@@ -353,8 +394,8 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                     const nameKey = `${ex.id}|name`
                     const isOpen = open === ex.id
                     return (
-                      <div key={ex.id}>
-                      <div style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center', borderBottom: isOpen ? 'none' : '1px solid var(--line)', background: on || isOpen ? 'rgba(255,106,0,0.06)' : undefined, boxShadow: on || isOpen ? 'inset 3px 0 0 var(--orange)' : undefined }}>
+                      <div key={ex.id} className="pt-row">
+                      <div className="pt-grid" style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center', borderBottom: isOpen ? 'none' : '1px solid #3a3a3a', background: on || isOpen ? 'rgba(255,106,0,0.08)' : undefined, boxShadow: on || isOpen ? 'inset 3px 0 0 var(--orange)' : undefined }}>
                         <button type="button" onClick={() => { setOpen(isOpen ? null : ex.id); setSelEx({ dayId: d.id, exId: ex.id }) }}
                           aria-expanded={isOpen} aria-label={`${isOpen ? 'Close' : 'Open'} details for ${ex.name}`} title="Per-set targets, order, video"
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: isOpen ? 'var(--orange-hot)' : 'var(--muted)', fontSize: 11, fontWeight: 800, padding: 0, height: 34 }}>
@@ -373,7 +414,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                             : <div style={{ display: 'flex', gap: 4, alignItems: 'center', padding: '1px 6px 3px', flexWrap: 'wrap' }}>
                                 {fieldInput(d.id, ex, 'letter', 'A1', 38, v => v.toUpperCase().replace(/\s+/g, ''))}
                                 {fieldInput(d.id, ex, 'rest', 'rest', 58)}
-                                <span className="muted" style={{ fontSize: 10.5 }}>{TARGET_LABEL[ex.progression_type || 'rir']}</span>
+                                <span style={{ fontSize: 10, fontWeight: 800, padding: '1px 5px', borderRadius: 4, border: '1px solid var(--orange)', color: 'var(--orange-hot)' }} title="Change RIR / RPE / % in Cards view">{TARGET_LABEL[ex.progression_type || 'rir']}</span>
                                 {ex.video_url
                                   ? <a href={ex.video_url} target="_blank" rel="noreferrer" title={ex.video_url} style={{ fontSize: 10.5, fontWeight: 800 }}>▶ video</a>
                                   : <span className="muted" style={{ fontSize: 10.5 }}>no video</span>}
@@ -384,7 +425,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                           const t = wts[wi]
                           const perSet = Array.isArray(t.setRows)
                           return (
-                            <div key={wk} style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.3fr 1fr', gap: 2, padding: '3px 5px', borderLeft: '1px solid var(--line)', background: wk === previewWeek ? 'rgba(255,106,0,0.035)' : undefined }}>
+                            <div key={wk} className="pt-wk" style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.3fr 1fr', gap: 4, padding: '5px 6px', background: wk === previewWeek ? 'rgba(255,106,0,0.05)' : undefined }}>
                               {isCond ? (
                                 <span className="muted" style={{ gridColumn: '1 / -1', textAlign: 'center', fontSize: 12 }}>—</span>
                               ) : (
@@ -396,7 +437,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                                     : cellInput(d.id, ex, exIdx, wi, 'reps', t.reps)}
                                   {perSet
                                     ? <button type="button" className="pt-cell" title="Per-set targets — click to edit" onClick={() => { setOpen(ex.id); setPreviewWeek(wk); setSelEx({ dayId: d.id, exId: ex.id }) }}
-                                        style={{ color: 'var(--orange-hot)', cursor: 'pointer', fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.setRows.map(r => r.target).join('/')}</button>
+                                        style={{ color: 'var(--orange-hot)', cursor: 'pointer', fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.setRows.map(r => dash(r.target)).join(' / ')}</button>
                                     : cellInput(d.id, ex, exIdx, wi, 'target', t.target)}
                                 </>
                               )}
@@ -473,8 +514,27 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
             </section>
           )
         })}
+        {onAddDay && (
+          <form onSubmit={async e => {
+              e.preventDefault()
+              const label = newDay.label.trim()
+              const dn = +newDay.dn || (Math.max(0, ...dayList.map(x => x.day_number)) % 7) + 1
+              if (!label) return
+              setNewDay({ dn: '', label: '' })
+              await onAddDay(dn, label)
+            }}
+            style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', border: '1px solid #4a4a4a', borderRadius: 10, padding: '10px 12px', background: 'var(--coal)' }}>
+            <strong style={{ fontSize: 12.5, color: 'var(--orange-hot)', letterSpacing: '.06em' }}>+ ADD {track === 'lifestyle' ? 'LIFESTYLE CARD' : 'WORKOUT'}</strong>
+            <select value={newDay.dn} onChange={e => setNewDay(n => ({ ...n, dn: e.target.value }))} aria-label="Day" style={{ width: 'auto', padding: '6px 8px', fontSize: 13 }}>
+              <option value="">Next day</option>
+              {[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>Day {n}</option>)}
+            </select>
+            <input value={newDay.label} onChange={e => setNewDay(n => ({ ...n, label: e.target.value }))} placeholder={track === 'lifestyle' ? 'e.g. Recovery' : 'Workout name, e.g. Upper A'} aria-label="Workout name" style={{ maxWidth: 260, padding: '6px 9px', fontSize: 13 }} />
+            <button type="submit" className="btn" disabled={!newDay.label.trim()} style={{ padding: '7px 14px', fontSize: 12.5 }}>Add</button>
+          </form>
+        )}
         <p className="muted" style={{ fontSize: 11.5 }}>
-          Click ▸ on a row for set-by-set targets, order and the video link. Icons, conditioning and comments are in{' '}
+          Targets take a single number or a range: type <strong style={{ color: 'var(--white)' }}>2</strong> or <strong style={{ color: 'var(--white)' }}>1-2</strong>. Click ▸ on a row for set-by-set targets, order and the video link. Icons, conditioning and comments are in{' '}
           <button type="button" onClick={onOpenCards} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--orange-hot)', cursor: 'pointer', fontSize: 11.5, fontWeight: 700 }}>Cards view</button>.
         </p>
       </div>
@@ -497,15 +557,23 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
               <strong style={{ fontSize: 15 }}>{preview.ex.name}</strong>
               <div style={{ fontSize: 12, color: 'var(--orange-hot)', fontWeight: 700, marginTop: 2 }}>
                 {preview.t.setRows
-                  ? preview.rows.map(r => r.reps).join(', ')
-                  : `${preview.t.sets} × ${preview.t.reps}`}
-                {(() => {
-                  // per-set weeks show each set's target, not the base value they no longer use
-                  const tg = preview.t.setRows ? [...new Set(preview.rows.map(r => r.target))].join('/') : preview.t.target
-                  return preview.label === '%' ? ` @ ${tg}%` : ` @ ${preview.label} ${tg}`
-                })()}
+                  ? preview.rows.map(r => dash(r.reps)).join(', ')
+                  : `${preview.t.sets} × ${dash(preview.t.reps)}`}
                 {preview.ex.rest ? ` · rest ${preview.ex.rest}` : ''}
               </div>
+              {(() => {
+                // per-set weeks show each set's target, not the base value they no longer use
+                const type = preview.ex.progression_type || 'rir'
+                const uniq = [...new Set(preview.rows.map(r => String(r.target ?? '')))]
+                const tg = preview.t.setRows ? uniq.join(' / ') : preview.t.target
+                if (!tg) return null
+                return (
+                  <div style={{ marginTop: 6, border: '1px solid var(--orange)', borderRadius: 8, padding: '6px 8px', background: 'rgba(255,106,0,0.08)' }}>
+                    <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '.06em', color: 'var(--orange-hot)' }}>TARGET {effortText(type, tg).toUpperCase()}</div>
+                    {uniq.length === 1 && <div style={{ fontSize: 10.5, marginTop: 1 }}>{effortMeaning(type, tg)}</div>}
+                  </div>
+                )
+              })()}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '28px minmax(0,1fr) 48px 40px 36px 28px', gap: 4, fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>
               <span>Set</span><span>Last</span><span style={{ textAlign: 'center' }}>Lbs</span><span style={{ textAlign: 'center' }}>Reps</span><span style={{ textAlign: 'center' }}>{preview.label === '%' ? 'RIR' : preview.label}</span><span />
@@ -519,7 +587,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                 <span className="muted" style={{ fontSize: 11 }}>—</span>
                 <span style={{ height: 30, border: '1px solid var(--line)', borderRadius: 6 }} />
                 <span style={{ height: 30, border: '1px solid var(--line)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--muted)' }}>{String(r.reps ?? '').split('-')[0]}</span>
-                <span style={{ height: 30, border: '1px solid var(--line)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--muted)' }}>{preview.label === '%' ? '' : r.target}</span>
+                <span style={{ height: 30, border: '1px solid var(--line)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--muted)' }}>{preview.label === '%' ? '' : dash(r.target)}</span>
                 <span style={{ width: 24, height: 24, borderRadius: 12, border: '1.5px solid var(--line)' }} />
               </div>
             ))}
@@ -1447,6 +1515,18 @@ export default function CoachPrograms() {
                             onOpenCards={() => setLayout('cards')}
                             library={library}
                             onReload={loadDay}
+                            track={track}
+                            onAddDay={async (dn, label) => {
+                              const { error } = await supabase.from('program_days').insert({
+                                program_id: open, block_id: activeBlock.id, day_label: label, day_number: dn,
+                                position: (days[activeBlock.id]?.length || 0), track,
+                                rotation_id: (rots.length ? activeRot : null) || null,
+                              })
+                              if (error) { alert('Could not add workout: ' + error.message); return }
+                              loadDays(activeBlock.id)
+                            }}
+                            onRenameDay={async (day, label) => { await supabase.from('program_days').update({ day_label: label }).eq('id', day.id); loadDays(activeBlock.id) }}
+                            onDeleteDay={day => deleteWorkout(activeBlock.id, day.id)}
                           />
                         )
                       })() : (
