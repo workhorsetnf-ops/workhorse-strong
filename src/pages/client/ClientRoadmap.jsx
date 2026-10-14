@@ -2,17 +2,19 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { typeOf, phaseWeeks, statusOf, caloriesOf } from '../../lib/phases'
-import { PlannerTiles, PlannerTimeline } from '../coach/PhasePlanner'
+import { PlannerTiles, PlannerTimeline, EventBanner } from '../coach/PhasePlanner'
 
 const fmt = d => new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 
 export default function ClientRoadmap() {
   const { profile } = useAuth()
   const [phases, setPhases] = useState(null)
+  const [ev, setEv] = useState({})
 
   useEffect(() => {
     if (!profile) return
     supabase.from('client_phases').select('*').eq('client_id', profile.id).order('start_date').then(({ data }) => setPhases(data || []))
+    supabase.from('profiles').select('event_name, event_date').eq('id', profile.id).single().then(({ data }) => setEv(data || {}))
   }, [profile])
 
   if (!phases) return <p className="muted">Loading…</p>
@@ -27,11 +29,12 @@ export default function ClientRoadmap() {
 
       {phases.length === 0 && <div className="card muted" style={{ fontSize: 14 }}>Your coach hasn't mapped out your phases yet.</div>}
 
+      {ev.event_date && <EventBanner name={ev.event_name} date={ev.event_date} compact />}
       {phases.length > 0 && <>
         <PlannerTiles phases={phases} compact />
         <div className="card">
           <div className="eyebrow" style={{ fontSize: 10, marginBottom: 10 }}>Timeline</div>
-          <PlannerTimeline phases={phases} />
+          <PlannerTimeline phases={phases} eventDate={ev.event_date} eventName={ev.event_name} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {phases.map((p, i) => {
