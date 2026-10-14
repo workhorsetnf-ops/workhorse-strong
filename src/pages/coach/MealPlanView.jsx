@@ -13,7 +13,8 @@ export function StatusBadge({ status, small }) {
 
 // The five target tiles across the top of the sheet's Meal Plan tab.
 export function PlanTargets({ targets, totals, compact }) {
-  const st = planStatus(totals, targets)
+  // no foods yet: show the targets without judging an empty plan
+  const st = totals.kcal > 0 ? planStatus(totals, targets) : {}
   const tiles = [
     ['Calories', targets.kcal, totals.kcal, 'kcal', st.kcal, true],
     ['Protein', targets.p, totals.p, 'g', st.p],
