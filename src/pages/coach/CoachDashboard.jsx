@@ -1,11 +1,11 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import CoachTemplates from './CoachTemplates'
 import CoachReview from './CoachReview'
 import CoachBody from './CoachBody'
 import {
   LayoutDashboard, Users, Bell, Video, Trophy, FileText, BookOpen, Map, Users2,
   ClipboardList, Library, ListChecks, CalendarCheck, MessageCircle, Quote, Target, Webcam,
-  FileCheck2, ClipboardSignature,
-} from 'lucide-react'
+  FileCheck2, ClipboardSignature, Copy } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import CoachHome from './CoachHome'
 import CoachClients from './CoachClients'
@@ -53,6 +53,7 @@ export default function CoachDashboard() {
         <NavLink to="/coach/community"><Users2 size={17} strokeWidth={2} /><span>Community</span></NavLink>
         <NavLink to="/coach/programs"><ClipboardList size={17} strokeWidth={2} /><span>Programs</span></NavLink>
         <NavLink to="/coach/library"><Library size={17} strokeWidth={2} /><span>Library</span></NavLink>
+        <NavLink to="/coach/templates"><Copy size={17} strokeWidth={2} /><span>Templates & Tracks</span></NavLink>
         <NavLink to="/coach/forms"><ListChecks size={17} strokeWidth={2} /><span>Forms</span></NavLink>
         <NavLink to="/coach/intake-forms"><FileCheck2 size={17} strokeWidth={2} /><span>Intake Forms</span></NavLink>
         <NavLink to="/coach/contracts"><ClipboardSignature size={17} strokeWidth={2} /><span>Contracts</span></NavLink>
@@ -69,6 +70,7 @@ export default function CoachDashboard() {
           <Route path="pipeline" element={<CoachPipeline />} />
           <Route path="clients" element={<CoachClients />} />
           <Route path="programs" element={<CoachPrograms />} />
+          <Route path="templates" element={<CoachTemplates />} />
           <Route path="library" element={<CoachLibrary />} />
           <Route path="forms" element={<CoachForms />} />
           <Route path="intake-forms" element={<CoachIntakeForms />} />

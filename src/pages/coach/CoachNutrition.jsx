@@ -297,6 +297,7 @@ export default function CoachNutrition() {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <button className="btn-ghost" onClick={() => addMeal()} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', fontSize: 13 }}><Plus size={14} /> Add meal</button>
               <span className="muted" style={{ fontSize: 12 }}>Pick a food and enter grams; everything else calculates. Need a food that isn't listed? Add it under Library → Foods.</span>
+              <Link to="/coach/templates" style={{ fontSize: 12.5, fontWeight: 700, marginLeft: 'auto' }}>Copy to other clients / save as template →</Link>
             </div>
           )}
         </div>
