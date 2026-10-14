@@ -1,4 +1,5 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import CoachReview from './CoachReview'
 import CoachBody from './CoachBody'
 import {
   LayoutDashboard, Users, Bell, Video, Trophy, FileText, BookOpen, Map, Users2,
@@ -82,6 +83,7 @@ export default function CoachDashboard() {
           <Route path="community" element={<ClientCommunity isCoach />} />
           <Route path="print/:clientId" element={<CoachPrintSummary />} />
           <Route path="logs/:clientId" element={<CoachClientLogs />} />
+          <Route path="review/:clientId" element={<CoachReview />} />
           <Route path="body/:clientId" element={<CoachBody />} />
           <Route path="health/:clientId" element={<CoachHealth />} />
           <Route path="nutrition/:clientId" element={<CoachNutrition />} />

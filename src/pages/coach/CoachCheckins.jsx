@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { WeekTable } from '../client/ClientProgress'
 
@@ -390,6 +391,8 @@ export default function CoachCheckins() {
                   {g.profile.start_date && <Chip>Since {fmtDate(g.profile.start_date)}</Chip>}
                   {g.profile.checkin_day != null && g.profile.checkin_day !== undefined && <Chip>{WEEKDAYS[g.profile.checkin_day]}</Chip>}
                   {g.profile.phase && <Chip><span style={{ textTransform: 'capitalize' }}>{g.profile.phase}</span></Chip>}
+                  <Link to={`/coach/review/${g.profile.id}${latest?.period_start ? `?week=${latest.period_start}` : ''}`} onClick={e => e.stopPropagation()}
+                    className="btn" style={{ padding: '4px 11px', fontSize: 12, textDecoration: 'none' }}>Week review</Link>
                   {latest && <StatusBadge status={latest.status || 'pending'} />}
                   {latest && !latest.coach_feedback && (
                     <span style={{ color: 'var(--orange-hot)', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Needs reply</span>
