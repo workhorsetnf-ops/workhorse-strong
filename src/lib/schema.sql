@@ -1753,3 +1753,8 @@ create policy "coach manages tracks" on tracks for all using (is_coach()) with c
 alter table profiles add column if not exists track_id uuid references tracks(id) on delete set null;
 drop policy if exists "client reads own track" on tracks;
 create policy "client reads own track" on tracks for select using (exists (select 1 from profiles p where p.id = auth.uid() and p.track_id = tracks.id));
+
+-- ===== EVENT COUNTDOWN + PEAK WEEK (Update 104) =====
+-- Safe to re-run. Needs Update 91's SQL (peak / reverse / diet break phases).
+alter table profiles add column if not exists event_name text default '';
+alter table profiles add column if not exists event_date date;

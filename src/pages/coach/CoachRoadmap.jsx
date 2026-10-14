@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { localDateStr } from '../../lib/weeks'
-import { PHASE_TYPES, typeOf, phaseWeeks, endFor, addDays } from '../../lib/phases'
-import { PlannerTiles, PlannerTable, PlannerTimeline } from './PhasePlanner'
+import { PHASE_TYPES, typeOf, phaseWeeks, endFor, addDays, planBackFromEvent } from '../../lib/phases'
+import { PlannerTiles, PlannerTable, PlannerTimeline, EventBanner } from './PhasePlanner'
 
 const EMPTY = { name: '', phase_type: 'cut', start_date: '', weeks: '12', end_date: '', protein_g: '', carbs_g: '', fat_g: '', calories: '', notes: '' }
 
@@ -24,9 +24,12 @@ export default function CoachRoadmap() {
   const [form, setForm] = useState(EMPTY)
   const [editingId, setEditingId] = useState(null)
   const [error, setError] = useState('')
+  const [ev, setEv] = useState({ name: '', date: '' })
+  const [back, setBack] = useState({ cutWeeks: 12, dietBreak: false, peakWeeks: 1, reverseWeeks: 6 })
+  const [backMsg, setBackMsg] = useState('')
 
   useEffect(() => {
-    supabase.from('profiles').select('id, full_name, start_date').eq('role', 'client').order('full_name').then(({ data }) => setClients(data || []))
+    supabase.from('profiles').select('id, full_name, start_date, event_name, event_date').eq('role', 'client').order('full_name').then(({ data }) => setClients(data || []))
   }, [])
 
   async function loadPhases(id) {
@@ -45,7 +48,9 @@ export default function CoachRoadmap() {
   }
 
   async function selectClient(id) {
-    setClientId(id); setEditingId(null); setError('')
+    setClientId(id); setEditingId(null); setError(''); setBackMsg('')
+    const cl = clients.find(c => c.id === id)
+    setEv({ name: cl?.event_name || '', date: cl?.event_date || '' })
     if (!id) { setPhases([]); return }
     const list = await loadPhases(id)
     setForm(blankFor(list, id))
@@ -102,6 +107,29 @@ export default function CoachRoadmap() {
     if (!editingId) setForm(blankFor(list))
   }
 
+  async function saveEvent(next) {
+    setEv(next)
+    const { error: err } = await supabase.from('profiles').update({ event_name: next.name.trim(), event_date: next.date || null }).eq('id', clientId)
+    if (err) { setError(/event_/.test(err.message) ? 'The event needs the Update 104 SQL run in Supabase first.' : err.message); return }
+    setClients(cs => cs.map(c => (c.id === clientId ? { ...c, event_name: next.name.trim(), event_date: next.date || null } : c)))
+  }
+
+  // Lay out cut -> (diet break) -> peak week -> reverse, ending peak week on the event day.
+  async function buildFromEvent() {
+    setBackMsg(''); setError('')
+    if (!ev.date) { setError('Set the event date first.'); return }
+    const plan = planBackFromEvent(ev.date, { ...back, earliest: localDateStr() })
+    const clash = phases.filter(p => plan.phases.some(n => p.start_date <= n.end_date && n.start_date <= p.end_date))
+    const msg = `Add ${plan.phases.length} phases: ${plan.phases.map(p => `${typeOf(p.phase_type).label} (${phaseWeeks(p)}w)`).join(' → ')}?` +
+      (plan.warning ? `\n\n${plan.warning}` : '') + (clash.length ? `\n\n${clash.length} existing phase(s) overlap these dates — delete them after if they're replaced.` : '')
+    if (!window.confirm(msg)) return
+    const { error: err } = await supabase.from('client_phases').insert(plan.phases.map(p => ({ ...p, client_id: clientId, notes: p.phase_type === 'peak' ? `Peak for ${ev.name || 'the event'}` : '' })))
+    if (err) { setError(/check constraint/i.test(err.message) ? 'Peak / reverse / diet break need the Update 91 SQL run first.' : 'Could not add: ' + err.message); return }
+    setBackMsg(`Added ${plan.phases.length} phases.${plan.warning ? ' ' + plan.warning : ''} Fill in the macros on each one.`)
+    const list = await loadPhases(clientId)
+    setForm(blankFor(list))
+  }
+
   const lbl = { fontSize: 11.5 }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -117,6 +145,7 @@ export default function CoachRoadmap() {
       </select>
 
       {clientId && <>
+        {ev.date && <EventBanner name={ev.name} date={ev.date} />}
         <PlannerTiles phases={phases} />
 
         <Section title="Phases">
@@ -127,9 +156,34 @@ export default function CoachRoadmap() {
 
         {phases.length > 0 && (
           <Section title="Timeline">
-            <div className="card"><PlannerTimeline phases={phases} /></div>
+            <div className="card"><PlannerTimeline phases={phases} eventDate={ev.date} eventName={ev.name} /></div>
           </Section>
         )}
+
+        <Section title="Event · plan back from it">
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+              <div><label className="muted" style={lbl}>Event (shown to the client)</label>
+                <input value={ev.name} placeholder="e.g. TV taping, show, photoshoot" onChange={e => setEv({ ...ev, name: e.target.value })} onBlur={() => saveEvent(ev)} /></div>
+              <div><label className="muted" style={lbl}>Event date</label>
+                <input type="date" value={ev.date || ''} onChange={e => saveEvent({ ...ev, date: e.target.value })} /></div>
+              {ev.date && <div style={{ alignSelf: 'end' }}><button className="btn-ghost" onClick={() => saveEvent({ name: '', date: '' })} style={{ padding: '8px 12px', fontSize: 12 }}>Clear event</button></div>}
+            </div>
+            {ev.date && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap', borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+                <div style={{ width: 90 }}><label className="muted" style={lbl}>Cut weeks</label><input inputMode="numeric" value={back.cutWeeks} onChange={e => setBack({ ...back, cutWeeks: e.target.value })} /></div>
+                <div style={{ width: 90 }}><label className="muted" style={lbl}>Peak weeks</label><input inputMode="numeric" value={back.peakWeeks} onChange={e => setBack({ ...back, peakWeeks: e.target.value })} /></div>
+                <div style={{ width: 110 }}><label className="muted" style={lbl}>Reverse after</label><input inputMode="numeric" value={back.reverseWeeks} onChange={e => setBack({ ...back, reverseWeeks: e.target.value })} /></div>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, paddingBottom: 10 }}>
+                  <input type="checkbox" checked={back.dietBreak} onChange={e => setBack({ ...back, dietBreak: e.target.checked })} style={{ width: 'auto' }} /> 1-week diet break mid-cut (8+ wk cuts)
+                </label>
+                <button className="btn" onClick={buildFromEvent} style={{ padding: '10px 16px', fontSize: 13 }}>Build phases back from the event</button>
+              </div>
+            )}
+            {backMsg && <p style={{ fontSize: 12.5, color: 'var(--orange-hot)' }}>{backMsg}</p>}
+            <p className="muted" style={{ fontSize: 11.5 }}>Peak week ends on the event day, the cut runs right up to it, and the reverse starts the day after. If there isn't room before today, the cut is shortened to fit.</p>
+          </div>
+        </Section>
 
         <Section title={editingId ? 'Edit phase' : 'Add phase'}>
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

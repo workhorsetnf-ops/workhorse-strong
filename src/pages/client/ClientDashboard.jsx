@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { localDateStr, mondayOf, weekDaysFrom } from '../../lib/weeks'
+import { EventBanner } from '../coach/PhasePlanner'
 import { weekOfCoaching, nextCheckin, macroRows, progress, sessionsOn, DEFAULT_TODOS, weekCompletion, heightText, WEEKDAYS, mondayIndex } from '../../lib/dashboard'
 
 const DISPLAY_FONT = "'Oswald','Barlow',system-ui,sans-serif"
@@ -125,6 +126,7 @@ export default function ClientDashboard({ profile }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {me?.event_date && <EventBanner name={me.event_name} date={me.event_date} compact />}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <Tile wide accent label="Week of coaching" value={wk ? `Week ${wk}` : '—'} sub={start ? `Started ${fmtDate(start)}` : 'Start date not set yet'} />
         <Tile accent label="Daily calories" value={kcal ? kcal.toLocaleString() : '—'} sub="kcal per day" />

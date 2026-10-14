@@ -1,5 +1,5 @@
 import { localDateStr } from '../../lib/weeks'
-import { typeOf, phaseWeeks, statusOf, caloriesOf, summary, timeline } from '../../lib/phases'
+import { typeOf, phaseWeeks, statusOf, caloriesOf, summary, timeline, countdown, eventWeek } from '../../lib/phases'
 
 const fmt = (d, year) => new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(year ? { year: '2-digit' } : {}) })
 
@@ -25,8 +25,26 @@ export function PlannerTiles({ phases, compact }) {
   )
 }
 
-export function PlannerTimeline({ phases }) {
+// Big countdown to the client's event (TV taping, show, shoot). Hidden once it's passed.
+export function EventBanner({ name, date, compact }) {
+  const c = countdown(date)
+  if (!c) return null
+  const when = new Date(date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: compact ? 12 : 18, background: 'var(--orange)', color: '#000', borderRadius: 12, padding: compact ? '10px 14px' : '12px 18px' }}>
+      <div style={{ fontFamily: "'Oswald','Barlow',system-ui,sans-serif", fontWeight: 700, fontSize: compact ? 40 : 48, lineHeight: 1 }}>{c.days}</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '.1em' }}>{c.days === 0 ? 'TODAY' : c.days === 1 ? 'DAY TO GO' : 'DAYS TO GO'}</div>
+        <div style={{ fontFamily: "'Oswald','Barlow',system-ui,sans-serif", fontWeight: 700, fontSize: compact ? 18 : 22, textTransform: 'uppercase', lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name || 'Event day'}</div>
+        <div style={{ fontSize: 12, fontWeight: 700 }}>{when}{c.days >= 7 ? ` · ${c.weeks} wk${c.weeks === 1 ? '' : 's'}${c.rem ? ` ${c.rem} d` : ''}` : ''}</div>
+      </div>
+    </div>
+  )
+}
+
+export function PlannerTimeline({ phases, eventDate, eventName }) {
   const t = timeline(phases)
+  const ew = eventWeek(phases, eventDate)
   if (!t.rows.length) return null
   const cell = 100 / t.totalWeeks
   return (
@@ -46,6 +64,9 @@ export function PlannerTimeline({ phases }) {
               {t.todayWeek !== null && (
                 <div style={{ position: 'absolute', left: `calc(${(t.todayWeek + 0.5) * cell}% - 1px)`, top: -2, bottom: -2, width: 2, background: 'var(--white)' }} />
               )}
+              {ew !== null && ew <= t.totalWeeks && (
+                <div title={eventName || 'Event'} style={{ position: 'absolute', left: `calc(${ew * cell}% - 1px)`, top: -2, bottom: -2, width: 0, borderLeft: '3px dashed #fff', filter: 'drop-shadow(0 0 2px #000)' }} />
+              )}
             </div>
           </div>
         )
@@ -53,6 +74,7 @@ export function PlannerTimeline({ phases }) {
       <div className="muted" style={{ fontSize: 11, display: 'flex', flexWrap: 'wrap', gap: '2px 12px', justifyContent: 'space-between' }}>
         <span style={{ whiteSpace: 'nowrap' }}>{fmt(t.rows[0].phase.start_date, true)}</span>
         {t.todayWeek !== null && <span style={{ whiteSpace: 'nowrap' }}>▏white line = this week</span>}
+        {ew !== null && <span style={{ whiteSpace: 'nowrap', color: 'var(--orange-hot)', fontWeight: 800 }}>┊ dashed = {eventName || 'event'}</span>}
         <span style={{ whiteSpace: 'nowrap' }}>{t.totalWeeks} weeks · ends {fmt(summary(phases).planEnd, true)}</span>
       </div>
     </div>
