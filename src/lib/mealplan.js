@@ -85,3 +85,34 @@ export const fromFood = food => ({
 
 export const fmt0 = n => Math.round(n).toLocaleString()
 export const fmt1 = n => (Math.round(n * 10) / 10).toString()
+
+// Scale the sample day to a client's targets. Foods are grouped by what they
+// mostly bring (protein foods, carb foods, fat foods; veg stays as is) and the
+// three groups are scaled together so protein, carbs and fat land on target.
+// Grams are rounded to 5 g (oils/whey to 1 g steps of 5 too) and kept sensible.
+const GROUP = { Protein: 'p', Dairy: 'p', Carb: 'c', Fruit: 'c', Snack: 'c', Fat: 'f' }
+export function scaleToTargets(lines, targets) {
+  // lines: [{ grams, category, protein100, carbs100, fat100 }]
+  const per = l => [l.protein100 / 100, l.carbs100 / 100, l.fat100 / 100]
+  const sums = { p: [0, 0, 0], c: [0, 0, 0], f: [0, 0, 0], fixed: [0, 0, 0] }
+  for (const l of lines) {
+    const g = GROUP[l.category] || 'fixed'
+    per(l).forEach((v, i) => { sums[g][i] += v * l.grams })
+  }
+  const want = [targets.p, targets.c, targets.f].map((v, i) => (Number(v) || 0) - sums.fixed[i])
+  // solve A * s = want, A columns = group macro totals
+  const A = [0, 1, 2].map(r => [sums.p[r], sums.c[r], sums.f[r]])
+  const s = solve3(A, want) || [1, 1, 1]
+  const scale = { p: clamp(s[0]), c: clamp(s[1]), f: clamp(s[2]), fixed: 1 }
+  return lines.map(l => {
+    const k = scale[GROUP[l.category] || 'fixed']
+    return { ...l, grams: Math.max(5, Math.round((l.grams * k) / 5) * 5) }
+  })
+}
+const clamp = v => (Number.isFinite(v) ? Math.min(3, Math.max(0.25, v)) : 1)
+function solve3(A, b) {
+  const det = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+  const D = det(A)
+  if (Math.abs(D) < 1e-9) return null
+  return [0, 1, 2].map(c => det(A.map((row, r) => row.map((v, j) => (j === c ? b[r] : v)))) / D)
+}

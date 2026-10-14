@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { ChevronLeft, Utensils, ShoppingCart, Trash2, Plus, NotebookPen, Calculator } from 'lucide-react'
 import { CoachFoodLog, MacroCalculator } from './CoachFoodLog'
 import { supabase } from '../../lib/supabase'
-import { itemMacros, sumMacros, targetsFrom, STARTER_PLAN, fromFood, shoppingList, fmt0, fmt1 } from '../../lib/mealplan'
+import { itemMacros, sumMacros, targetsFrom, STARTER_PLAN, fromFood, shoppingList, fmt0, fmt1, scaleToTargets } from '../../lib/mealplan'
 import { PlanTargets, ShoppingTable } from './MealPlanView'
 
 const DISPLAY_FONT = "'Oswald','Barlow',system-ui,sans-serif"
@@ -45,17 +45,22 @@ export default function CoachNutrition() {
   async function addMeal(label = `Meal ${meals.length + 1}`) {
     await run(async () => { await touchPlan(); await supabase.from('meal_plan_meals').insert({ client_id: clientId, label, position: meals.length }); await load() })
   }
+  // The sheet's sample day, with grams scaled to THIS client's targets so it
+  // starts on target instead of at the sample's 2,445 kcal.
   async function startFromSheet() {
     await run(async () => {
       await touchPlan()
+      const t = targetsFrom(client, plan)
+      const lines = STARTER_PLAN.flatMap((sm, i) => sm.items.map(([name, grams, note], k) => {
+        const f = findFood(name)
+        return { meal: i, grams, note, position: k, ...(f ? fromFood(f) : { food_name: name, category: 'Other', protein100: 0, carbs100: 0, fat100: 0, fiber100: 0 }) }
+      }))
+      const scaled = t.p && t.c && t.f ? scaleToTargets(lines, t) : lines
       for (let i = 0; i < STARTER_PLAN.length; i++) {
         const sm = STARTER_PLAN[i]
         const id = crypto.randomUUID()
         await supabase.from('meal_plan_meals').insert({ id, client_id: clientId, label: sm.label, swap: sm.swap, position: meals.length + i })
-        const rows = sm.items.map(([name, grams, note], k) => {
-          const f = findFood(name)
-          return { meal_id: id, client_id: clientId, grams, note, position: k, ...(f ? fromFood(f) : { food_name: name }) }
-        })
+        const rows = scaled.filter(l => l.meal === i).map(({ meal, ...l }) => ({ ...l, meal_id: id, client_id: clientId }))
         await supabase.from('meal_plan_items').insert(rows)
       }
       await load()
@@ -199,7 +204,7 @@ export default function CoachNutrition() {
                 {meals.length === 0 && (
                   <tr><td colSpan={10} style={{ ...td, padding: 18, textAlign: 'left' }}>
                     <span className="muted">No meals yet. </span>
-                    <button className="btn" onClick={startFromSheet} style={{ padding: '7px 14px', fontSize: 13, marginLeft: 6 }}>Start from the sheet's sample day</button>
+                    <button className="btn" onClick={startFromSheet} style={{ padding: '7px 14px', fontSize: 13, marginLeft: 6 }}>Start from the sample day{targetsFrom(client, plan).p ? ' (scaled to their targets)' : ''}</button>
                     <button className="btn-ghost" onClick={() => addMeal('Breakfast')} style={{ padding: '7px 14px', fontSize: 13, marginLeft: 6 }}>Start blank</button>
                   </td></tr>
                 )}
