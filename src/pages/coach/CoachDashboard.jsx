@@ -2,10 +2,11 @@ import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import CoachTemplates from './CoachTemplates'
 import CoachReview from './CoachReview'
 import CoachBody from './CoachBody'
+import ReminderSettings from '../ReminderSettings'
 import {
   LayoutDashboard, Users, Bell, Video, Trophy, FileText, BookOpen, Map, Users2,
   ClipboardList, Library, ListChecks, CalendarCheck, MessageCircle, Quote, Target, Webcam,
-  FileCheck2, ClipboardSignature, Copy } from 'lucide-react'
+  FileCheck2, ClipboardSignature, Copy, BellRing } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import CoachHome from './CoachHome'
 import CoachClients from './CoachClients'
@@ -61,6 +62,7 @@ export default function CoachDashboard() {
         <NavLink to="/coach/calls"><Webcam size={17} strokeWidth={2} /><span>Calls</span></NavLink>
         <NavLink to="/coach/messages"><MessageCircle size={17} strokeWidth={2} /><span>Messages</span></NavLink>
         <NavLink to="/coach/testimonials"><Quote size={17} strokeWidth={2} /><span>Testimonials</span></NavLink>
+        <NavLink to="/coach/notifications"><BellRing size={17} strokeWidth={2} /><span>Notifications</span></NavLink>
         <div style={{ flex: 1 }} />
         <button className="btn-ghost" onClick={signOut}>Sign out</button>
       </aside>
@@ -93,6 +95,7 @@ export default function CoachDashboard() {
           <Route path="checkins" element={<CoachCheckins />} />
           <Route path="calls" element={<CoachCalls />} />
           <Route path="messages" element={<CoachMessages />} />
+          <Route path="notifications" element={<ReminderSettings />} />
           <Route path="*" element={<Navigate to="/coach" replace />} />
         </Routes>
       </main>

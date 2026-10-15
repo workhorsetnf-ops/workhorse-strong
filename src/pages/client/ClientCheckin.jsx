@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { notifyEvent } from '../../lib/push'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr, lastNDays, summarizeWeek } from '../../lib/weeks'
 import { WeekTable } from './ClientProgress'
@@ -85,6 +86,7 @@ export default function ClientCheckin() {
     })
     setBusy(false)
     if (!error) {
+      notifyEvent('checkin')
       setDone(true)
       setForm({ waist: '', notes: '' })
       setAnswers({})
