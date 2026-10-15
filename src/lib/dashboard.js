@@ -84,3 +84,21 @@ export function weekCompletion(todos, ticks, days) {
 }
 
 export const heightText = inches => (inches ? `${Math.floor(inches / 12)}' ${inches % 12}"` : '—')
+
+// This week's training split, using the SAME block + week the Train page uses
+// (resolveAssignment), not a date-only guess, so Home and Train always agree.
+// Day N maps to a weekday the way the Calendar does: Day 1 = the weekday the
+// program started on (Monday when there's no start date).
+export function dayNumberOn(date, startDate) {
+  if (!startDate) return mondayIndex(date) + 1
+  return ((daysBetween(startDate, date) % 7) + 7) % 7 + 1
+}
+export function splitForWeek(weekDays, { startDate, blockDays, rotations = [], weekInBlock = 1, showsInWeek }) {
+  return weekDays.map(date => {
+    const dn = dayNumberOn(date, startDate)
+    const sessions = (blockDays || [])
+      .filter(d => (d.track || 'exercise') === 'exercise' && d.day_number === dn && (!showsInWeek || showsInWeek(d, rotations, weekInBlock)))
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    return { date, dayNumber: dn, sessions }
+  })
+}

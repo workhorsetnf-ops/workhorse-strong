@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import { localDateStr, mondayOf, weekDaysFrom, logDate, summarizeWeek } from '../../lib/weeks'
-import { addDays } from '../../lib/dashboard'
+import { localDateStr, mondayOf, weekDaysFrom, logDate, summarizeWeek, resolveAssignment, dayShowsInWeek } from '../../lib/weeks'
+import { addDays, splitForWeek } from '../../lib/dashboard'
 import { targetsFrom } from '../../lib/mealplan'
 import { weekTable } from '../../lib/foodlog'
 import { monthStats } from '../../lib/habits'
@@ -64,7 +64,7 @@ export default function CoachReview() {
         supabase.from('profiles').select('*').eq('id', clientId).single(),
         q('daily_logs').gte('log_date', prevDays[0]).lte('log_date', days[6]),
         q('workout_logs', 'logged_at, logged_date').gte('logged_at', new Date(prevDays[0] + 'T00:00:00').toISOString()),
-        supabase.from('program_assignments').select('program_id, start_date').eq('client_id', clientId).maybeSingle(),
+        supabase.from('program_assignments').select('*').eq('client_id', clientId).maybeSingle(),
         q('meal_logs').gte('logged_on', days[0]).lte('logged_on', days[6]),
         supabase.from('meal_plans').select('*').eq('client_id', clientId).maybeSingle(),
         q('client_habits').eq('active', true).order('position'),
@@ -75,18 +75,23 @@ export default function CoachReview() {
         q('body_measurements').order('log_date'),
         q('checkins').order('submitted_at'),
       ])
-      let program = null
+      // same block + week as the client's Train page
+      let split = null
       if (asg.data) {
         const { data: blocks } = await supabase.from('program_blocks').select('*').eq('program_id', asg.data.program_id).order('position')
-        const { data: pdays } = await supabase.from('program_days').select('*').eq('program_id', asg.data.program_id)
-        const daysByBlock = {}
-        for (const x of pdays || []) (daysByBlock[x.block_id] = daysByBlock[x.block_id] || []).push(x)
-        program = { start: asg.data.start_date, blocks: blocks || [], daysByBlock }
+        const pos = resolveAssignment(asg.data, blocks || [])
+        if (pos.block) {
+          const [{ data: bd }, { data: rots }] = await Promise.all([
+            supabase.from('program_days').select('*').eq('block_id', pos.block.id),
+            supabase.from('program_rotations').select('*').eq('block_id', pos.block.id).order('position'),
+          ])
+          split = splitForWeek(days, { startDate: asg.data.start_date, blockDays: bd || [], rotations: rots || [], weekInBlock: pos.weekInBlock, showsInWeek: dayShowsInWeek })
+        }
       }
       const profile = me.data || {}
       const d = {
         days, prevDays, today, phase: profile.phase,
-        daily: daily.data || [], workoutDates: new Set((wl.data || []).map(logDate)), program,
+        daily: daily.data || [], workoutDates: new Set((wl.data || []).map(logDate)), split,
         mealLogs: meals.data || [], targets: targetsFrom(profile, plan.data),
         habits: habits.data || [], habitLogs: hlogs.data || [], supps: supps.data || [], suppLogs: slogs.data || [],
         cardioPlan: cplan.data || [], measurements: ms.data || [],
