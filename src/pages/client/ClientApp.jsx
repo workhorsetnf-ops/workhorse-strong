@@ -30,6 +30,7 @@ import ClientMealPlan from './ClientMealPlan'
 import ClientShopping from './ClientShopping'
 import ContractPrint from '../ContractPrint'
 import ReminderSettings from '../ReminderSettings'
+import ClientProfile from './ClientProfile'
 
 function Dot() {
   return <span style={{ position: 'absolute', top: 4, right: '28%', width: 8, height: 8, borderRadius: '50%', background: 'var(--red)', border: '1.5px solid var(--coal)' }} />
@@ -104,6 +105,7 @@ export default function ClientApp() {
           <Route path="cardio" element={<ClientCardio />} />
           <Route path="habits" element={<ClientHabits />} />
           <Route path="reminders" element={<ReminderSettings />} />
+          <Route path="profile" element={<ClientProfile />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature, FileStack, Pill, Droplet, HeartPulse, CalendarCheck, Bell } from 'lucide-react'
+import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature, FileStack, Pill, Droplet, HeartPulse, CalendarCheck, Bell, UserRound } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr, logDate } from '../../lib/weeks'
@@ -8,7 +8,7 @@ import ClientDashboard from './ClientDashboard'
 import { RemindersPrompt } from '../ReminderSettings'
 
 export default function ClientHome() {
-  const { profile, signOut } = useAuth()
+  const { profile } = useAuth()
   const [todayMacros, setTodayMacros] = useState({ p: 0, c: 0, f: 0 })
   const [weekWorkouts, setWeekWorkouts] = useState(0)
   const [checkinDue, setCheckinDue] = useState(null) // { days, overdue }
@@ -180,7 +180,7 @@ export default function ClientHome() {
             Phase: {profile?.phase}
           </p>
         </div>
-        <button className="btn-ghost" onClick={signOut}>Sign out</button>
+        <Link to="/app/profile" className="btn-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}><UserRound size={15} strokeWidth={2} /> Profile</Link>
       </header>
 
       {milestonePrompt && (
