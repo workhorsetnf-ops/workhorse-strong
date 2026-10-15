@@ -1,4 +1,18 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
-  "crons": [{ "path": "/api/send-tracking-reminders", "schedule": "0 1 * * *" }]
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/push-reminders?slot=morning",
+      "schedule": "30 12 * * *"
+    },
+    {
+      "path": "/api/push-reminders?slot=evening",
+      "schedule": "30 23 * * *"
+    }
+  ]
 }

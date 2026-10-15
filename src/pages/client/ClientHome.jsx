@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature, FileStack, Pill, Droplet, HeartPulse, CalendarCheck } from 'lucide-react'
+import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature, FileStack, Pill, Droplet, HeartPulse, CalendarCheck, Bell } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr, logDate } from '../../lib/weeks'
 import ClientDashboard from './ClientDashboard'
+import { RemindersPrompt } from '../ReminderSettings'
 
 export default function ClientHome() {
   const { profile, signOut } = useAuth()
@@ -226,6 +227,8 @@ export default function ClientHome() {
         </Link>
       )}
 
+      <RemindersPrompt />
+
       {profile && <ClientDashboard profile={profile} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -287,6 +290,12 @@ export default function ClientHome() {
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
             <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><CalendarCheck size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Habits</div>
+          </div>
+        </Link>
+        <Link to="/app/reminders" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><Bell size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Reminders</div>
           </div>
         </Link>
         <Link to="/app/cardio" style={{ textDecoration: 'none' }}>

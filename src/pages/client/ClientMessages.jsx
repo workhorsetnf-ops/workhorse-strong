@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { notifyEvent } from '../../lib/push'
 import { useAuth } from '../../context/AuthContext'
 import VoiceRecorder from '../../lib/VoiceRecorder'
 
@@ -49,13 +50,15 @@ export default function ClientMessages() {
     if (!text.trim() || !coachId) return
     const body = text.trim()
     setText('')
-    await supabase.from('messages').insert({ sender_id: profile.id, recipient_id: coachId, body })
+    const { error } = await supabase.from('messages').insert({ sender_id: profile.id, recipient_id: coachId, body })
+    if (!error) notifyEvent('message', { to: coachId })
   }
 
   async function sendVoice(path) {
     if (!coachId) { alert('No coach found to send to yet.'); return }
     const { error } = await supabase.from('messages').insert({ sender_id: profile.id, recipient_id: coachId, body: '🎙 Voice note', msg_type: 'audio', audio_path: path })
     if (error) alert('Could not send voice note: ' + error.message + '\n\nIf this mentions a missing column, the database update (migration14.sql) needs to be run in Supabase first.')
+    else notifyEvent('message', { to: coachId })
   }
 
   async function playAudio(m) {
@@ -78,6 +81,7 @@ export default function ClientMessages() {
     if (error) { alert('Could not attach file: ' + error.message); setAttaching(false); return }
     const { error: msgErr } = await supabase.from('messages').insert({ sender_id: profile.id, recipient_id: coachId, body: `📎 ${file.name}`, msg_type: 'file', file_path: path, file_name: file.name })
     if (msgErr) alert('Could not send: ' + msgErr.message)
+    else notifyEvent('message', { to: coachId })
     setAttaching(false)
   }
 

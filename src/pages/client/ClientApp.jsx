@@ -29,6 +29,7 @@ import ClientHabits from './ClientHabits'
 import ClientMealPlan from './ClientMealPlan'
 import ClientShopping from './ClientShopping'
 import ContractPrint from '../ContractPrint'
+import ReminderSettings from '../ReminderSettings'
 
 function Dot() {
   return <span style={{ position: 'absolute', top: 4, right: '28%', width: 8, height: 8, borderRadius: '50%', background: 'var(--red)', border: '1.5px solid var(--coal)' }} />
@@ -60,6 +61,15 @@ export default function ClientApp() {
   }
 
   useEffect(() => { refreshBadges() }, [profile])
+  // "last seen" for the coach's Client radar, at most once an hour per device
+  useEffect(() => {
+    if (!profile?.id) return
+    let last = 0
+    try { last = Number(localStorage.getItem('ws-seen') || 0) } catch { /* ignore */ }
+    if (Date.now() - last < 36e5) return
+    supabase.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', profile.id)
+      .then(({ error }) => { if (!error) try { localStorage.setItem('ws-seen', String(Date.now())) } catch { /* ignore */ } })
+  }, [profile?.id])
   // re-check whenever the client navigates — covers "just read it, badge should clear"
   useEffect(() => { const t = setTimeout(refreshBadges, 400); return () => clearTimeout(t) }, [location.pathname])
 
@@ -93,6 +103,7 @@ export default function ClientApp() {
           <Route path="bloodwork" element={<ClientBloodwork />} />
           <Route path="cardio" element={<ClientCardio />} />
           <Route path="habits" element={<ClientHabits />} />
+          <Route path="reminders" element={<ReminderSettings />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>
