@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { localDateStr, mondayOf, weekDaysFrom } from '../../lib/weeks'
+import { localDateStr, mondayOf, weekDaysFrom, resolveAssignment, dayShowsInWeek } from '../../lib/weeks'
 import { EventBanner } from '../coach/PhasePlanner'
-import { weekOfCoaching, nextCheckin, macroRows, progress, sessionsOn, DEFAULT_TODOS, weekCompletion, heightText, WEEKDAYS, mondayIndex } from '../../lib/dashboard'
+import { weekOfCoaching, nextCheckin, macroRows, progress, splitForWeek, DEFAULT_TODOS, weekCompletion, heightText, WEEKDAYS, mondayIndex } from '../../lib/dashboard'
 
 const DISPLAY_FONT = "'Oswald','Barlow',system-ui,sans-serif"
 const fmtDate = (d, opts = { month: 'short', day: 'numeric', year: 'numeric' }) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(undefined, opts) : '—')
@@ -69,13 +69,20 @@ export default function ClientDashboard({ profile }) {
       .then(({ data }) => setWeights((data || []).filter(d => d.weight)))
     supabase.from('checkins').select('submitted_at').eq('client_id', profile.id).order('submitted_at', { ascending: false })
       .then(({ data }) => setCheckins({ count: (data || []).length, last: data?.[0]?.submitted_at ? localDateStr(new Date(data[0].submitted_at)) : null }))
-    supabase.from('program_assignments').select('program_id, start_date').eq('client_id', profile.id).maybeSingle().then(async ({ data }) => {
-      if (!data) { setProg({ start: null, blocks: [], daysByBlock: {} }); return }
-      const { data: blocks } = await supabase.from('program_blocks').select('*').eq('program_id', data.program_id).order('position')
-      const { data: pdays } = await supabase.from('program_days').select('*').eq('program_id', data.program_id).order('day_number').order('position')
-      const daysByBlock = {}
-      for (const d of pdays || []) (daysByBlock[d.block_id] = daysByBlock[d.block_id] || []).push(d)
-      setProg({ start: data.start_date, blocks: blocks || [], daysByBlock })
+    supabase.from('program_assignments').select('*').eq('client_id', profile.id).maybeSingle().then(async ({ data }) => {
+      if (!data) { setProg({ none: true }); return }
+      const [{ data: blocks }, { data: pg }] = await Promise.all([
+        supabase.from('program_blocks').select('*').eq('program_id', data.program_id).order('position'),
+        supabase.from('programs').select('name').eq('id', data.program_id).maybeSingle(),
+      ])
+      // same block + week as the Train page
+      const pos = resolveAssignment(data, blocks || [])
+      if (!pos.block) { setProg({ start: data.start_date, name: pg?.name || 'Your program', blockDays: [], rotations: [], week: 1 }); return }
+      const [{ data: bd }, { data: rots }] = await Promise.all([
+        supabase.from('program_days').select('*').eq('block_id', pos.block.id),
+        supabase.from('program_rotations').select('*').eq('block_id', pos.block.id).order('position'),
+      ])
+      setProg({ start: data.start_date, name: pg?.name || 'Your program', blockName: pos.block.name, week: pos.weekInBlock, weeks: pos.block.weeks, blockDays: bd || [], rotations: rots || [] })
     })
     supabase.from('profiles').select('full_name').eq('role', 'coach').limit(1).then(({ data }) => setCoachName(data?.[0]?.full_name || ''))
     loadTodos()
@@ -212,10 +219,9 @@ export default function ClientDashboard({ profile }) {
         <Link to="/app/nutrition/plan" style={{ fontSize: 12, marginTop: 6, alignSelf: 'flex-start' }}>See your meal plan →</Link>
       </Section>
 
-      <Section title="Weekly training split">
+      <Section title="Weekly training split" right={prog && !prog.none ? <Link to="/app/training" style={{ fontSize: 11.5, fontWeight: 800 }}>{prog.name}{prog.blockName ? ` · ${prog.blockName}` : ''} · Wk {prog.week}{prog.weeks ? `/${prog.weeks}` : ''} →</Link> : null}>
         <div style={{ borderRadius: 8, overflow: 'hidden' }}>
-          {days.map((d, i) => {
-            const s = prog ? sessionsOn(d, prog.start, prog.blocks, prog.daysByBlock) : []
+          {(prog && !prog.none ? splitForWeek(days, { startDate: prog.start, blockDays: prog.blockDays, rotations: prog.rotations, weekInBlock: prog.week, showsInWeek: dayShowsInWeek }) : days.map(date => ({ date, sessions: [] }))).map(({ date: d, sessions: s }, i) => {
             const isToday = d === today
             const rest = !s.length
             return (
@@ -229,7 +235,7 @@ export default function ClientDashboard({ profile }) {
             )
           })}
         </div>
-        <span className="muted" style={{ fontSize: 11, marginTop: 6 }}>Today's session is highlighted in orange.</span>
+        <span className="muted" style={{ fontSize: 11, marginTop: 6 }}>{prog?.none ? 'No program assigned yet.' : "Today's session is highlighted in orange. Tap the program name to train."}</span>
       </Section>
 
       <Section title="Progress">
