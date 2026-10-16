@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { calcMacros } from '../../lib/macros'
 import Avatar, { AvatarPicker } from '../Avatar'
+import InviteClients from './InviteClients'
 
 
 export default function CoachClients() {
@@ -226,9 +227,10 @@ export default function CoachClients() {
     <div>
       <div className="eyebrow">Roster</div>
       <h1 style={{ fontSize: 28, margin: '6px 0 6px' }}>Clients</h1>
-      <p className="muted" style={{ fontSize: 14, marginBottom: 22 }}>
-        To add a client: Supabase → Authentication → Users → Add user. They appear here after first sign-in.
+      <p className="muted" style={{ fontSize: 14, marginBottom: 16 }}>
+        Add clients with your sign-up link, or set them up yourself below.
       </p>
+      <InviteClients onAdded={load} />
 
       {clients.some(c => !c.full_name) && (
         <div className="card" style={{ borderLeft: '3px solid var(--orange)', marginBottom: 16 }}>
