@@ -12,7 +12,7 @@ const CLIENT_ITEMS = [
   ['workout', 'Training days', 'Morning heads-up when a session is on, and an evening nudge if it isn’t logged.'],
   ['food', 'Food log', 'Evening reminder if nothing’s logged for today.'],
   ['habits', 'Habits', 'Evening reminder of habits not ticked yet.'],
-  ['checkin', 'Check-in', 'On check-in day, and for up to 3 days if it’s late.'],
+  ['checkin', 'Check-in', 'The evening before, the morning it’s due, and for up to 3 days if it’s late.'],
   ['messages', 'Messages from your coach', 'As soon as your coach messages you.'],
 ]
 const COACH_ITEMS = [

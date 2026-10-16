@@ -12,8 +12,10 @@ export function checkinState(checkinDay, lastCheckin, today) {
   const back = (mondayIndex(today) - Number(checkinDay) + 7) % 7
   const dueDate = addDays(today, -back)
   const done = lastCheckin && lastCheckin >= addDays(dueDate, -1)   // a day early counts
-  if (done) return { due: false, overdueDays: 0, dueDate }
-  return { due: back === 0, overdueDays: back, dueDate }
+  // tomorrow is check-in day and they haven't already sent it early today
+  const tomorrow = back === 6 && !(lastCheckin && lastCheckin >= today)
+  if (done) return { due: false, overdueDays: 0, dueDate, tomorrow }
+  return { due: back === 0, overdueDays: back, dueDate, tomorrow }
 }
 
 const first = name => String(name || '').trim().split(/\s+/)[0] || ''
@@ -40,7 +42,11 @@ export function eveningFor(f) {
   if (p.habits && f.habitsLeft > 0) { items.push(`${f.habitsLeft} habit${f.habitsLeft === 1 ? '' : 's'} left`); if (url === '/app') url = '/app/habits' }
   if (p.checkin && f.checkin && !f.checkin.due && f.checkin.overdueDays >= 1 && f.checkin.overdueDays <= 3) { items.unshift(`check-in is ${f.checkin.overdueDays} day${f.checkin.overdueDays === 1 ? '' : 's'} late`); url = '/app/checkin' }
   else if (p.checkin && f.checkin?.due) { items.unshift('check-in still due today'); url = '/app/checkin' }
+  else if (p.checkin && f.checkin?.tomorrow) { items.unshift('check-in is due tomorrow'); if (url === '/app') url = '/app/checkin' }
   if (!items.length) return null
+  if (items.length === 1 && items[0] === 'check-in is due tomorrow') {
+    return { user_id: f.id, title: 'Check-in is tomorrow ✅', body: 'Weigh in first thing and have your photos ready, so it only takes a couple of minutes.', url: '/app/checkin', tag: 'evening' }
+  }
   const text = items.join(' · ')
   return { user_id: f.id, title: 'Before the day ends', body: text.charAt(0).toUpperCase() + text.slice(1), url, tag: 'evening' }
 }
