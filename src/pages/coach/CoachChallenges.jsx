@@ -15,7 +15,7 @@ export default function CoachChallenges() {
   async function load() {
     const [{ data: ch }, { data: cl }, { data: pp }] = await Promise.all([
       supabase.from('challenges').select('*').order('start_date', { ascending: false }),
-      supabase.from('profiles').select('id, full_name').eq('role', 'client').order('full_name'),
+      supabase.from('profiles').select('id, full_name').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('challenge_participants').select('*'),
     ])
     setChallenges(ch || []); setClients(cl || [])

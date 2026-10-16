@@ -15,7 +15,7 @@ export default function CoachForms() {
   async function load() {
     const [{ data: f }, { data: c }, { data: a }] = await Promise.all([
       supabase.from('checkin_forms').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id, full_name').eq('role', 'client').order('full_name'),
+      supabase.from('profiles').select('id, full_name').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('checkin_form_assignments').select('*'),
     ])
     setForms(f || []); setClients(c || []); setAssignments(a || [])

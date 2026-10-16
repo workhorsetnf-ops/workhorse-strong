@@ -24,7 +24,7 @@ export default function CoachClients() {
   const [docFileKey, setDocFileKey] = useState(0)       // bumped to reset the file input after upload
   const [calc, setCalc] = useState({ weightLbs: '', age: '', sex: 'male', hft: '', hin: '', bf: '', activity: 'working-talent', goal: 'cut' })
   const [calcResult, setCalcResult] = useState(null)
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('current')   // current = active + paused; 'exited' = archived
   const [leadHistory, setLeadHistory] = useState({})   // profileId -> { lead, activity[] }
 
   async function load() {
@@ -55,6 +55,17 @@ export default function CoachClients() {
       phase: calc.goal,
       protein_g: calcResult.protein, carbs_g: calcResult.carbs, fat_g: calcResult.fat, calories: calcResult.target,
     }))
+  }
+
+  // Archive = no longer a client: hidden from your lists, no reminders, and the
+  // app shows them a "coaching has ended" screen. Nothing is deleted; Restore undoes it.
+  async function setArchived(c, archive) {
+    const who = c.full_name || c.email || 'this client'
+    if (archive && !window.confirm(`Archive ${who}?\n\nThey'll be hidden from your lists and reminders, and can't use the app until you restore them. All their data is kept.`)) return
+    const patch = { status: archive ? 'exited' : 'active', status_changed_at: new Date().toISOString() }
+    const { error } = await supabase.from('profiles').update(patch).eq('id', c.id)
+    if (error) { alert('Could not update: ' + error.message); return }
+    setClients(cs => cs.map(x => (x.id === c.id ? { ...x, ...patch } : x)))
   }
 
   async function resetPassword(c) {
@@ -207,7 +218,7 @@ export default function CoachClients() {
   }
 
   const filteredClients = clients
-    .filter(c => statusFilter === 'all' ? true : (c.status || 'active') === statusFilter)
+    .filter(c => statusFilter === 'all' ? true : statusFilter === 'current' ? (c.status || 'active') !== 'exited' : (c.status || 'active') === statusFilter)
     .filter(c => ((c.full_name || '') + ' ' + (c.email || '')).toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => (a.full_name ? 1 : 0) - (b.full_name ? 1 : 0))
 
@@ -230,12 +241,13 @@ export default function CoachClients() {
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         {[
-          { key: 'all', label: 'All' },
+          { key: 'current', label: 'Current' },
           { key: 'active', label: 'Active' },
           { key: 'paused', label: 'Paused' },
-          { key: 'exited', label: 'Exited' },
+          { key: 'exited', label: 'Archived' },
+          { key: 'all', label: 'All' },
         ].map(f => {
-          const n = f.key === 'all' ? clients.length : clients.filter(c => (c.status || 'active') === f.key).length
+          const n = f.key === 'all' ? clients.length : f.key === 'current' ? clients.filter(c => (c.status || 'active') !== 'exited').length : clients.filter(c => (c.status || 'active') === f.key).length
           return (
             <button key={f.key} className={statusFilter === f.key ? 'btn' : 'btn-ghost'}
               style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setStatusFilter(f.key)}>
@@ -273,7 +285,7 @@ export default function CoachClients() {
                     <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
                       <option value="active">Active</option>
                       <option value="paused">Paused</option>
-                      <option value="exited">Exited</option>
+                      <option value="exited">Archived</option>
                     </select>
                   </div>
                   <div>
@@ -479,7 +491,7 @@ export default function CoachClients() {
                       fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5,
                       marginLeft: 8, padding: '2px 8px', borderRadius: 20,
                       background: 'var(--steel)', color: c.status === 'exited' ? 'var(--red)' : 'var(--orange-hot)',
-                    }}>{c.status}</span>
+                    }}>{c.status === 'exited' ? 'archived' : c.status}</span>
                   )}
                   {c.email && <div className="muted" style={{ fontSize: 12.5, marginTop: 1 }}>{c.email}</div>}
                   <div className="muted" style={{ fontSize: 13, marginTop: 3, textTransform: 'capitalize' }}>
@@ -512,6 +524,9 @@ export default function CoachClients() {
                   <button className="btn-ghost" onClick={() => toggleDocs(c.id)}>
                     {docsFor === c.id ? 'Hide documents' : 'Documents'}
                   </button>
+                  {c.status === 'exited'
+                    ? <button className="btn-ghost" onClick={() => setArchived(c, false)}>Restore</button>
+                    : <button className="btn-ghost" onClick={() => setArchived(c, true)} style={{ color: 'var(--muted)' }}>Archive</button>}
                   <button className="btn-ghost" onClick={() => startEdit(c)}>
                     {savedId === c.id ? 'Saved ✓' : 'Edit'}
                   </button>

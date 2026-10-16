@@ -13,7 +13,7 @@ export default function CoachAlerts() {
     const results = []
     const since30 = localDateStr(new Date(Date.now() - 30 * 864e5))
     const [{ data: clients }, { data: assignments }, { data: blocksAll }, { data: checkins }, { data: dailyLogs }, { data: workoutLogs }, { data: daysAll }, { data: mealLogs }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('role', 'client'),
+      supabase.from('profiles').select('*').eq('role', 'client').neq('status', 'exited'),
       supabase.from('program_assignments').select('*'),
       supabase.from('program_blocks').select('*'),
       supabase.from('checkins').select('client_id, submitted_at, weight').order('submitted_at', { ascending: false }),

@@ -20,7 +20,7 @@ export default function CoachIntakeForms() {
   async function load() {
     const [{ data: f }, { data: c }, { data: a }, { data: r }] = await Promise.all([
       supabase.from('standalone_forms').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id, full_name').eq('role', 'client').order('full_name'),
+      supabase.from('profiles').select('id, full_name').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('standalone_form_assignments').select('*'),
       supabase.from('standalone_form_responses').select('*').order('submitted_at', { ascending: false }).limit(100),
     ])

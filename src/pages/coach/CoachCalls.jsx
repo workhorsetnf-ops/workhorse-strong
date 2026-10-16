@@ -67,7 +67,7 @@ export default function CoachCalls() {
       supabase.from('coach_availability').select('*').order('weekday').order('start_minute'),
       supabase.from('coach_blackouts').select('*').order('starts_at'),
       supabase.from('bookings').select('*').order('starts_at', { ascending: false }),
-      supabase.from('profiles').select('id, full_name, email, status').eq('role', 'client').order('full_name'),
+      supabase.from('profiles').select('id, full_name, email, status').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('call_types').select('*').order('position'),
     ])
     setTypes(ct || [])

@@ -29,7 +29,7 @@ export default function CoachRoadmap() {
   const [backMsg, setBackMsg] = useState('')
 
   useEffect(() => {
-    supabase.from('profiles').select('id, full_name, start_date, event_name, event_date').eq('role', 'client').order('full_name').then(({ data }) => setClients(data || []))
+    supabase.from('profiles').select('id, full_name, start_date, event_name, event_date').eq('role', 'client').neq('status', 'exited').order('full_name').then(({ data }) => setClients(data || []))
   }, [])
 
   async function loadPhases(id) {

@@ -16,9 +16,10 @@ export default function CoachFormChecks() {
   async function load() {
     const [{ data: items }, { data: clients }] = await Promise.all([
       supabase.from('form_checks').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id, full_name').eq('role', 'client'),
+      supabase.from('profiles').select('id, full_name').eq('role', 'client').neq('status', 'exited'),
     ])
-    setItems(items || [])
+    const ids = new Set((clients || []).map(c => c.id))
+    setItems((items || []).filter(i => ids.has(i.client_id)))   // hide archived clients' videos
     setClientsById(Object.fromEntries((clients || []).map(c => [c.id, c.full_name])))
   }
   useEffect(() => { load() }, [])
