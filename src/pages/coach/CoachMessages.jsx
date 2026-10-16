@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { notifyEvent } from '../../lib/push'
+import Avatar from '../Avatar'
 import { useAuth } from '../../context/AuthContext'
 import VoiceRecorder from '../../lib/VoiceRecorder'
 
@@ -19,7 +20,7 @@ export default function CoachMessages() {
   const bottomRef = useRef(null)
 
   useEffect(() => {
-    supabase.from('profiles').select('id, full_name').eq('role', 'client').order('full_name')
+    supabase.from('profiles').select('id, full_name, avatar_url').eq('role', 'client').order('full_name')
       .then(({ data }) => setClients(data || []))
     supabase.from('message_templates').select('*').order('created_at')
       .then(({ data }) => setTemplates(data || []))
@@ -109,8 +110,9 @@ export default function CoachMessages() {
         <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {clients.map(c => (
             <button key={c.id} className={active?.id === c.id ? 'btn' : 'btn-ghost'}
-              style={{ textAlign: 'left', fontSize: 13.5 }} onClick={() => setActive(c)}>
-              {c.full_name || c.id.slice(0, 8)}
+              style={{ textAlign: 'left', fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => setActive(c)}>
+              <Avatar url={c.avatar_url} name={c.full_name} size={26} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name || c.id.slice(0, 8)}</span>
             </button>
           ))}
           {clients.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No clients yet.</p>}

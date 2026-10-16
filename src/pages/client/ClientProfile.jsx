@@ -7,6 +7,7 @@ import { Bell } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { WEEKDAYS } from '../../lib/dashboard'
+import { AvatarPicker } from '../Avatar'
 
 const lab = { fontSize: 11.5, display: 'block', marginBottom: 4 }
 const fromProfile = p => ({
@@ -78,6 +79,7 @@ export default function ClientProfile() {
 
       <form className="card" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={save}>
         <div className="eyebrow">Your details</div>
+        <AvatarPicker userId={profile?.id} url={profile?.avatar_url} name={form.full_name || profile?.full_name} onChange={() => refreshProfile?.()} />
         <div><label className="muted" style={lab}>Full name</label><input value={form.full_name} onChange={e => set('full_name', e.target.value)} autoComplete="name" /></div>
         <div><label className="muted" style={lab}>Email (login)</label><input value={session?.user?.email || p.email || ''} disabled style={{ opacity: 0.7 }} />
           <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>To change your login email, message your coach.</div></div>

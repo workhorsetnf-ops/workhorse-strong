@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { calcMacros } from '../../lib/macros'
+import Avatar, { AvatarPicker } from '../Avatar'
 
 
 export default function CoachClients() {
@@ -253,6 +254,8 @@ export default function CoachClients() {
           <div className="card" key={c.id}>
             {editing === c.id ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <AvatarPicker userId={c.id} url={c.avatar_url} name={form.full_name || c.full_name} size={64}
+                  onChange={u => setClients(cs => cs.map(x => (x.id === c.id ? { ...x, avatar_url: u } : x)))} />
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8 }}>
                   <input value={form.full_name} placeholder="Name" onChange={e => setForm({ ...form, full_name: e.target.value })} />
                   <select value={form.phase} onChange={e => setForm({ ...form, phase: e.target.value })}>
@@ -467,6 +470,8 @@ export default function CoachClients() {
               </div>
             ) : (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Avatar url={c.avatar_url} name={c.full_name || c.email} size={44} />
                 <div>
                   <strong style={{ fontSize: 16, color: c.full_name ? undefined : 'var(--orange-hot)' }}>{c.full_name || 'Needs a name'}</strong>
                   {c.status && c.status !== 'active' && (
@@ -491,6 +496,7 @@ export default function CoachClients() {
                       ].filter(Boolean).join(' · ')}
                     </div>
                   )}
+                </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <Link to={`/coach/logs/${c.id}`} className="btn" style={{ textDecoration: 'none', display: 'inline-block' }}>View Logs</Link>

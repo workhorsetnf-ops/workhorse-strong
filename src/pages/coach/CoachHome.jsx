@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { CheckSquare, Square, Plus, Repeat, Trash2, MessageCircle, ClipboardList, MoreVertical, Target } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { localDateStr, logDate } from '../../lib/weeks'
+import Avatar from '../Avatar'
 
 function startOfWeek(d = new Date()) {
   const day = (d.getDay() + 6) % 7 // Monday = 0
@@ -134,7 +135,7 @@ export default function CoachHome() {
   async function load() {
     setLoading(true)
     const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }, { data: ratingsData }, { data: flagsData }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, protein_g, calories, created_at').eq('role', 'client').order('full_name'),
+      supabase.from('profiles').select('id, full_name, protein_g, calories, created_at, avatar_url').eq('role', 'client').order('full_name'),
       supabase.from('program_assignments').select('*'),
       supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text, logged_date').order('logged_at', { ascending: false }).limit(600),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(400),
@@ -493,7 +494,7 @@ export default function CoachHome() {
             {clients.filter(c => insights[c.id]?.length).map(c => (
               <div key={c.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 130 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{initials(c.full_name)}</div>
+                  <Avatar url={c.avatar_url} name={c.full_name} size={30} />
                   <strong style={{ fontSize: 13.5 }}>{c.full_name}</strong>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
@@ -545,7 +546,7 @@ export default function CoachHome() {
             <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 16px', borderBottom: i < filtered.length - 1 ? '1px solid var(--line)' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ position: 'relative', flexShrink: 0 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800 }}>{initials(c.full_name)}</div>
+                  <Avatar url={c.avatar_url} name={c.full_name} size={34} />
                   {healthPoints[c.id] && (
                     <span title={`Health Points: ${healthPoints[c.id].overall}`} style={{ position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: '50%', background: { red: '#D64545', yellow: '#E0B23E', green: '#4CAF6D' }[healthPoints[c.id].overall], border: '2px solid var(--coal)' }} />
                   )}
@@ -665,7 +666,7 @@ export default function CoachHome() {
               <div key={c.id} style={{ textAlign: 'center', position: 'relative' }}>
                 <button onClick={() => setOpenTouchpoint(openTouchpoint === c.id ? null : c.id)}
                   style={{ background: 'none', padding: 0, cursor: 'pointer' }}>
-                  <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 800, border: contacted.has(c.id) ? '2px solid var(--green)' : '2px solid var(--line)' }}>{initials(c.full_name)}</div>
+                  <Avatar url={c.avatar_url} name={c.full_name} size={44} ring={contacted.has(c.id) ? '2px solid var(--green)' : '2px solid var(--line)'} />
                 </button>
                 <div className="muted" style={{ fontSize: 10.5, marginTop: 4, maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name}</div>
                 {daysSince !== null && daysSince >= 10 && (
@@ -679,7 +680,7 @@ export default function CoachHome() {
                     width: 220, textAlign: 'left', boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800 }}>{initials(c.full_name)}</div>
+                      <Avatar url={c.avatar_url} name={c.full_name} size={34} />
                       <button onClick={() => setOpenTouchpoint(null)} style={{ background: 'none', color: 'var(--muted)', fontSize: 13 }}>✕</button>
                     </div>
                     <strong style={{ display: 'block', fontSize: 14.5, marginTop: 8 }}>{c.full_name}</strong>
