@@ -168,7 +168,7 @@ export default function CoachCheckins() {
     const [{ data: c }, { data: p }] = await Promise.all([
       supabase.from('checkins').select('*').order('submitted_at', { ascending: false }).limit(200),
       supabase.from('profiles').select('id, full_name, phase, checkin_day, status, payment_plan, payment_date, contract_ends, split_ends, start_date')
-        .eq('role', 'client').order('full_name'),
+        .eq('role', 'client').neq('status', 'exited').order('full_name'),
     ])
     setCheckins(c || [])
     setClients(p || [])
@@ -236,7 +236,7 @@ export default function CoachCheckins() {
     const map = {}
     for (const cl of clients) map[cl.id] = { profile: cl, checkins: [] }
     for (const row of checkins) {
-      if (!map[row.client_id]) map[row.client_id] = { profile: { id: row.client_id, full_name: 'Client' }, checkins: [] }
+      if (!map[row.client_id]) continue   // archived client
       map[row.client_id].checkins.push(row)
     }
     for (const g of Object.values(map)) g.checkins.sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at))

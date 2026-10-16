@@ -77,7 +77,7 @@ export default function CoachTemplates() {
 
   async function load() {
     const [{ data: c }, { data: p }, { data: t, error }, { data: tr }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, status, track_id').eq('role', 'client').order('full_name'),
+      supabase.from('profiles').select('id, full_name, status, track_id').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('programs').select('id, name').order('name'),
       supabase.from('plan_templates').select('*').order('kind').order('name'),
       supabase.from('tracks').select('*').order('name'),

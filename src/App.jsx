@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import SetPassword from './pages/SetPassword'
+import ClientArchived from './pages/client/ClientArchived'
 import ClientApp from './pages/client/ClientApp'
 import CoachDashboard from './pages/coach/CoachDashboard'
 
@@ -27,6 +28,8 @@ export default function App() {
       </Routes>
     )
   }
+
+  if (profile?.status === 'exited') return <ClientArchived />
 
   return (
     <Routes>

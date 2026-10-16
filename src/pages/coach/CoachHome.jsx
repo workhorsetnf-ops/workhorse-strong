@@ -135,7 +135,7 @@ export default function CoachHome() {
   async function load() {
     setLoading(true)
     const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }, { data: ratingsData }, { data: flagsData }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, protein_g, calories, created_at, avatar_url').eq('role', 'client').order('full_name'),
+      supabase.from('profiles').select('id, full_name, protein_g, calories, created_at, avatar_url').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('program_assignments').select('*'),
       supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text, logged_date').order('logged_at', { ascending: false }).limit(600),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(400),
@@ -321,6 +321,9 @@ export default function CoachHome() {
 
   function buildFeed(tab, cl, workoutLogs, dailyLogs, checkins) {
     const nameOf = id => cl.find(c => c.id === id)?.full_name || 'Client'
+    // archived clients aren't in cl; keep their old activity out of the feed
+    const ids = new Set(cl.map(c => c.id))
+    workoutLogs = workoutLogs.filter(x => ids.has(x.client_id)); dailyLogs = dailyLogs.filter(x => ids.has(x.client_id)); checkins = checkins.filter(x => ids.has(x.client_id))
     if (tab === 'exercises') {
       const byDay = {}
       for (const w of workoutLogs) {

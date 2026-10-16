@@ -661,7 +661,7 @@ export default function CoachPrograms() {
   async function load() {
     const [{ data: p }, { data: c }, { data: a }] = await Promise.all([
       supabase.from('programs').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id, full_name').eq('role', 'client').order('full_name'),
+      supabase.from('profiles').select('id, full_name').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('program_assignments').select('*'),
     ])
     setPrograms(p || []); setClients(c || []); setAssignments(a || [])

@@ -18,9 +18,10 @@ export default function CoachMessages() {
   const [showTemplates, setShowTemplates] = useState(false)
   const [newTpl, setNewTpl] = useState({ label: '', body: '' })
   const bottomRef = useRef(null)
+  const [showArchived, setShowArchived] = useState(false)
 
   useEffect(() => {
-    supabase.from('profiles').select('id, full_name, avatar_url').eq('role', 'client').order('full_name')
+    supabase.from('profiles').select('id, full_name, avatar_url, status').eq('role', 'client').order('full_name')
       .then(({ data }) => setClients(data || []))
     supabase.from('message_templates').select('*').order('created_at')
       .then(({ data }) => setTemplates(data || []))
@@ -108,7 +109,7 @@ export default function CoachMessages() {
       <h1 style={{ fontSize: 28, margin: '6px 0 20px' }}>Messages</h1>
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {clients.map(c => (
+          {clients.filter(c => showArchived || c.status !== 'exited').map(c => (
             <button key={c.id} className={active?.id === c.id ? 'btn' : 'btn-ghost'}
               style={{ textAlign: 'left', fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => setActive(c)}>
               <Avatar url={c.avatar_url} name={c.full_name} size={26} />
@@ -116,6 +117,11 @@ export default function CoachMessages() {
             </button>
           ))}
           {clients.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No clients yet.</p>}
+          {clients.some(c => c.status === 'exited') && (
+            <button onClick={() => setShowArchived(v => !v)} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 12, textAlign: 'left', padding: '6px 2px', cursor: 'pointer', textDecoration: 'underline' }}>
+              {showArchived ? 'Hide archived' : `Show archived (${clients.filter(c => c.status === 'exited').length})`}
+            </button>
+          )}
         </div>
         <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '65vh' }}>
           {!active
