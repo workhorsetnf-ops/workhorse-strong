@@ -9,6 +9,8 @@
 //   Back squat 4-9@1, 6-12@2, 6-12@3        <- per-set: top set then backoffs
 //   Bench press 5x5 @80%
 //   Leg press 3x12                          <- no target given, caller supplies
+//   B1) DB RDL 2x4-8 RIR 1-2                <- B1/B2 = superset (same letter)
+//   B2) Chest-supported row 2x8-12 RIR 1
 //
 // Anything it can't read is handed back as an issue rather than silently
 // dropped or guessed at, so nothing lands in a client's program unnoticed.
@@ -17,14 +19,17 @@
 // caught as a nameless row, not become an exercise called "A)".
 // "." and "-" still require a following space so "A-frame carry" and "A.M. bike"
 // don't get their first letter eaten.
-const LETTER = /^\s*([A-Z])\s*(?:[):]\s*|[.-]\s+)/i
+// "A1)" / "A2)" mark a superset or circuit (same letter, numbered).
+const LETTER = /^\s*([A-Z][1-9]?)\s*(?:[):]\s*|[.-]\s+)/i
 // "3x8-12", "3 X 8-12", "4×6"
-const SETS_X_REPS = /(\d+)\s*[x×X]\s*([0-9]+(?:\s*-\s*[0-9]+)?|[0-9]+s|AMRAP)/
+// time first, so "180s" keeps its "s" instead of becoming 180 reps
+const SETS_X_REPS = /(\d+)\s*[x×X]\s*([0-9]+s(?![a-z])|[0-9]+(?:\s*-\s*[0-9]+)?|AMRAP)/i
 // "@2", "@ 75%", "RIR 1-2", "RPE 8"
 const AT_TARGET = /@\s*([0-9]+(?:\.[0-9]+)?)\s*(%?)/
 const RIR_TARGET = /\bRIR\s*([0-9]+(?:\s*-\s*[0-9]+)?)/i
 const RPE_TARGET = /\bRPE\s*([0-9]+(?:\.[0-9]+)?)/i
-const REST = /\brest\s*([0-9]+\s*(?:s|sec|secs|m|min|mins)?)/i
+// longest unit first, so "3 min" isn't cut to "3 m"
+const REST = /\brest\s*([0-9]+\s*(?:secs|sec|s|mins|min|m)?)\b/i
 // one per-set chunk: "6-12@2" or "5 @ 80%"
 const PER_SET = /([0-9]+(?:\s*-\s*[0-9]+)?|AMRAP)\s*@\s*([0-9]+(?:\.[0-9]+)?)\s*(%?)/gi
 
