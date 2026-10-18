@@ -22,8 +22,29 @@
 // "A1)" / "A2)" mark a superset or circuit (same letter, numbered).
 const LETTER = /^\s*([A-Z][1-9]?)\s*(?:[):]\s*|[.-]\s+)/i
 // "3x8-12", "3 X 8-12", "4×6"
-// time first, so "180s" keeps its "s" instead of becoming 180 reps
-const SETS_X_REPS = /(\d+)\s*[x×X]\s*([0-9]+s(?![a-z])|[0-9]+(?:\s*-\s*[0-9]+)?|AMRAP)/i
+// Work can be reps ("8-12"), time ("20s", "45 sec", "2 min", "1:30") or
+// distance ("30m", "40 yd"). Time/distance are tried first so "20s" doesn't
+// become 20 reps. Note: "m" means metres; minutes must be "min".
+const TIME_WORK = '[0-9]+(?:\\.[0-9]+)?\\s*(?:seconds|secs|sec|s|minutes|mins|min)(?![a-z])|[0-9]+:[0-5][0-9]'
+const DIST_WORK = '[0-9]+(?:\\.[0-9]+)?\\s*(?:meters|metres|m|yards|yds|yd)(?![a-z])'
+const SETS_X_REPS = new RegExp(`(\\d+)\\s*[x×X]\\s*(${TIME_WORK}|${DIST_WORK}|[0-9]+(?:\\s*-\\s*[0-9]+)?|AMRAP)`, 'i')
+// interval style: "20s on / 90s off" -> the "off" part is the rest
+const OFF = /(?:\bon\b)?\s*\/?\s*([0-9]+(?:\.[0-9]+)?\s*(?:seconds|secs|sec|s|minutes|mins|min)|[0-9]+:[0-5][0-9])\s*off\b/i
+
+// "20 sec" -> "20s", "2 minutes" -> "2 min", "30 m" -> "30m"; tells time from distance
+export function workOf(raw) {
+  const t = clean(raw).toLowerCase()
+  let m = t.match(/^([0-9]+(?:\.[0-9]+)?)\s*(seconds|secs|sec|s)$/)
+  if (m) return { value: `${m[1]}s`, metric: 'time' }
+  m = t.match(/^([0-9]+(?:\.[0-9]+)?)\s*(minutes|mins|min)$/)
+  if (m) return { value: `${m[1]} min`, metric: 'time' }
+  if (/^[0-9]+:[0-5][0-9]$/.test(t)) return { value: t, metric: 'time' }
+  m = t.match(/^([0-9]+(?:\.[0-9]+)?)\s*(meters|metres|m)$/)
+  if (m) return { value: `${m[1]}m`, metric: 'distance' }
+  m = t.match(/^([0-9]+(?:\.[0-9]+)?)\s*(yards|yds|yd)$/)
+  if (m) return { value: `${m[1]} yd`, metric: 'distance' }
+  return { value: t.replace(/\s*-\s*/, '-').toUpperCase() === 'AMRAP' ? 'AMRAP' : t.replace(/\s*-\s*/, '-'), metric: 'reps' }
+}
 // "@2", "@ 75%", "RIR 1-2", "RPE 8"
 const AT_TARGET = /@\s*([0-9]+(?:\.[0-9]+)?)\s*(%?)/
 const RIR_TARGET = /\bRIR\s*([0-9]+(?:\s*-\s*[0-9]+)?)/i
@@ -47,11 +68,13 @@ export function parseExerciseLine(raw) {
   if (!line) return null
   if (SKIP.test(line)) return null
 
-  const out = { name: '', letter: '', sets: null, reps: '', target: '', progression_type: 'rir', rest: '', setRows: null, issues: [] }
+  const out = { name: '', letter: '', sets: null, reps: '', metric: 'reps', target: '', progression_type: 'rir', rest: '', setRows: null, issues: [] }
 
   const lm = line.match(LETTER)
   if (lm) { out.letter = lm[1].toUpperCase(); line = line.slice(lm[0].length) }
 
+  const om = line.match(OFF)
+  if (om) { out.rest = workOf(om[1]).value; line = line.replace(om[0], ' ') }
   const rm = line.match(REST)
   if (rm) { out.rest = clean(rm[1]); line = line.replace(rm[0], ' ') }
 
@@ -78,7 +101,9 @@ export function parseExerciseLine(raw) {
   if (sm) {
     out.name = clean(line.slice(0, sm.index))
     out.sets = +sm[1]
-    out.reps = clean(sm[2]).replace(/\s*-\s*/, '-')
+    const w = workOf(sm[2])
+    out.reps = w.value
+    out.metric = w.metric
     line = line.slice(sm.index + sm[0].length)
   } else {
     // No sets given at all — still a valid exercise, just needs defaults.

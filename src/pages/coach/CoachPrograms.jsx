@@ -887,7 +887,7 @@ export default function CoachPrograms() {
         day_id: dayId, name: r.name, kind: 'exercise', description: '',
         tracking_type: '', letter,
         video_url: '', notes: '', icon_url: null,
-        metric: 'reps', rest: r.rest || '', progression_type: r.progression_type || 'rir',
+        metric: r.metric || 'reps', rest: r.rest || '', progression_type: r.progression_type || 'rir',
         sets, reps: String(reps), rir: String(target),
         week_targets: Array.from({ length: weeks }, () => ({ ...entry, setRows: entry.setRows ? entry.setRows.map(x => ({ ...x })) : undefined })),
         position: list.length + i,
@@ -1651,7 +1651,8 @@ export default function CoachPrograms() {
                                                   {' — '}
                                                   {r.setRows
                                                     ? r.setRows.map(x => `${x.reps}@${x.target}`).join(', ')
-                                                    : `${r.sets || 3} × ${r.reps || '8-12'} @ ${r.target || '2'}`}
+                                                    : `${r.sets || 3} × ${r.reps || '8-12'} @ ${r.progression_type === 'rpe' ? 'RPE ' : ''}${r.target || '2'}${r.rest ? ` · rest ${r.rest}` : ''}`}
+                                                  {r.metric !== 'reps' && <span style={{ color: 'var(--orange)' }}> · {r.metric}</span>}
                                                 </p>
                                               ))}
                                               {bad.map((r, i) => (
@@ -1667,7 +1668,7 @@ export default function CoachPrograms() {
                                             {pasteBusy ? 'Adding…' : `Add ${good.length} exercise${good.length === 1 ? '' : 's'}`}
                                           </button>
                                           <p className="muted" style={{ fontSize: 10, marginTop: 4 }}>
-                                            One exercise per line. Sets/reps and target are optional — anything missing uses 3 × 8-12 @ RIR 2.
+                                            One exercise per line. Sets/reps and target are optional — anything missing uses 3 × 8-12 @ RIR 2. Timed work: 6x20s on / 90s off RPE 9 (use “min” for minutes; “m” is metres).
                                           </p>
                                         </div>
                                       )
