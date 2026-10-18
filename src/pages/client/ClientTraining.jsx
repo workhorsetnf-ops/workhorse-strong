@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { resolveAssignment, rotationForWeek, dayShowsInWeek, daysBetween, resolveBlockWeek, localDateStr } from '../../lib/weeks'
 import { useAuth } from '../../context/AuthContext'
 import RestTimer from '../../lib/RestTimer'
+import IntervalTimer from '../../lib/IntervalTimer'
 import PlateCalc from '../../lib/PlateCalc'
 
 function roundTo5(n) { return Math.round(n / 5) * 5 }
@@ -539,6 +540,18 @@ export default function ClientTraining() {
     }, 900)
   }
 
+  // the interval timer fills a round's time in for them, unless they typed one
+  function fillIfEmpty(exId, i, field, value) {
+    setLog(l => {
+      const cur = l[exId]?.[i]
+      if (!cur || (cur[field] !== undefined && cur[field] !== '' && cur[field] !== null)) return l
+      const updated = l[exId].map((s, j) => j === i ? { ...s, [field]: value } : s)
+      const ex = exercises.find(e => e.id === exId)
+      autoSaveSet(exId, i + 1, updated[i], ex?.name)
+      return { ...l, [exId]: updated }
+    })
+  }
+
   function updateSet(exId, i, field, value) {
     setLog(l => {
       const updated = l[exId].map((s, j) => j === i ? { ...s, [field]: value } : s)
@@ -686,6 +699,10 @@ export default function ClientTraining() {
             const cStyle = big ? cellStyleBig : cellStyle
             return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+              {ex.metric === 'time' && (
+                <IntervalTimer rounds={rows.length || targets.length || 1} work={targets[0]?.reps || ex.reps} rest={ex.rest}
+                  onRoundDone={(i, secs) => fillIfEmpty(ex.id, i, 'reps', String(secs))} />
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, padding: '0 2px 2px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>
                 <div>Set</div>
                 <div>Last</div>
