@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { calcMacros } from '../../lib/macros'
 import Avatar, { AvatarPicker } from '../Avatar'
 import InviteClients from './InviteClients'
+import { callApi } from '../../lib/push'
 
 
 export default function CoachClients() {
@@ -67,6 +68,21 @@ export default function CoachClients() {
     const { error } = await supabase.from('profiles').update(patch).eq('id', c.id)
     if (error) { alert('Could not update: ' + error.message); return }
     setClients(cs => cs.map(x => (x.id === c.id ? { ...x, ...patch } : x)))
+  }
+
+  // Permanent. Typing their name is the safety catch; the server checks it too.
+  async function deleteClient(c) {
+    const who = c.full_name || c.email || ''
+    const typed = window.prompt(
+      `Permanently delete ${who || 'this client'}?\n\nThis removes their login and ALL their data: logs, check-ins, photos, messages and program history. It can't be undone.\n\nIf they're just finished, use Archive instead.\n\nType ${c.full_name ? 'their name' : 'their email'} to confirm:\n${who}`, '')
+    if (typed === null) return
+    if (typed.trim().toLowerCase().replace(/\s+/g, ' ') !== who.trim().toLowerCase().replace(/\s+/g, ' ')) { alert('That doesn’t match, so nothing was deleted.'); return }
+    try {
+      await callApi('/api/delete-client', { id: c.id, confirm: typed })
+      setEditing(null)
+      setClients(cs => cs.filter(x => x.id !== c.id))
+      alert(`${who || 'Client'} has been deleted.`)
+    } catch (e) { alert(e.message) }
   }
 
   async function resetPassword(c) {
@@ -477,9 +493,11 @@ export default function CoachClients() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <button className="btn" style={{ padding: '10px 18px', fontSize: 13 }} onClick={() => save(c.id)}>Save</button>
                   <button className="btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
+                  <button className="btn-ghost" onClick={() => deleteClient(c)}
+                    style={{ marginLeft: 'auto', color: 'var(--red)', borderColor: 'rgba(214,69,69,0.5)', fontSize: 12.5 }}>Delete client…</button>
                 </div>
               </div>
             ) : (
