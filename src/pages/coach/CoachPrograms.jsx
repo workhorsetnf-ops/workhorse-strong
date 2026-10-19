@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { normalizeTarget, normalizeReps, dash, effortText, effortMeaning } from '../../lib/targets'
 import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets } from '../../lib/weeks'
 import { parseProgramText } from '../../lib/parse'
+import NotesBox from './NotesBox'
 
 const GROUP_COLORS = ['#FF6A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
 const prefixOf = l => (l || '').replace(/[0-9]/g, '')
@@ -457,6 +458,10 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                             {fieldInput(d.id, ex, 'video_url', 'Paste YouTube / Loom / Drive link', 280)}
                             <span className="muted" style={{ fontSize: 11 }}>Superset: give exercises the same letter + a number (A1, A2).</span>
                           </div>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
+                            <span className="muted">Note for client</span>
+                            {fieldInput(d.id, ex, 'notes', 'Cue or instruction, e.g. “Stop if jump height drops”', 420)}
+                          </div>
                           {!isCond && (
                             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${runWeeks.length}, minmax(150px, 1fr))`, gap: 10, overflowX: 'auto' }}>
                               {runWeeks.map(wk => {
@@ -886,7 +891,7 @@ export default function CoachPrograms() {
       return {
         day_id: dayId, name: r.name, kind: 'exercise', description: '',
         tracking_type: '', letter,
-        video_url: '', notes: '', icon_url: null,
+        video_url: '', notes: r.notes || '', icon_url: null,
         metric: r.metric || 'reps', rest: r.rest || '', progression_type: r.progression_type || 'rir',
         sets, reps: String(reps), rir: String(target),
         week_targets: Array.from({ length: weeks }, () => ({ ...entry, setRows: entry.setRows ? entry.setRows.map(x => ({ ...x })) : undefined })),
@@ -934,7 +939,7 @@ export default function CoachPrograms() {
       letter: ex.letter || '', name: ex.name, video_url: ex.video_url || '', rest: ex.rest || '',
       metric: ex.metric || 'reps', progression_type: ex.progression_type || 'rir',
       based_on_lift: ex.based_on_lift || '', kind: ex.kind || 'exercise', description: ex.description || '',
-      icon_url: ex.icon_url || '',
+      icon_url: ex.icon_url || '', notes: ex.notes || '',
     })
     const weeks = block.weeks || 4
     const wt = Array.isArray(ex.week_targets) ? ex.week_targets : []
@@ -1001,7 +1006,7 @@ export default function CoachPrograms() {
       letter: edit.letter.trim().toUpperCase(), name: edit.name.trim(), video_url: edit.video_url.trim(),
       rest: edit.rest.trim(), metric: edit.metric, progression_type: edit.progression_type,
       based_on_lift: edit.progression_type === 'percent' ? edit.based_on_lift.trim() : '',
-      description: edit.description || '', icon_url: edit.icon_url || null,
+      description: edit.description || '', icon_url: edit.icon_url || null, notes: (edit.notes || '').trim(),
       sets: +editWeeks[0]?.sets || 3, reps: String(editWeeks[0]?.reps ?? ''),
       week_targets: editWeeks.map(r => {
         const sets = +r.sets || 3
@@ -1219,6 +1224,7 @@ export default function CoachPrograms() {
               <input placeholder="Rest" value={edit.rest} onChange={e => setEdit({ ...edit, rest: e.target.value })} style={{ padding: '6px 8px', fontSize: 12 }} />
               <input placeholder="Video URL" value={edit.video_url} onChange={e => setEdit({ ...edit, video_url: e.target.value })} style={{ padding: '6px 8px', fontSize: 12 }} />
             </div>
+            <textarea rows="2" placeholder="Note for client (cue or instruction)" value={edit.notes} onChange={e => setEdit({ ...edit, notes: e.target.value })} style={{ fontSize: 12 }} />
             {edit.kind !== 'conditioning' && (
               <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                 <table className="data" style={{ fontSize: 12, minWidth: 230 }}>
@@ -1357,6 +1363,15 @@ export default function CoachPrograms() {
                   <button className="btn-ghost" style={{ color: 'var(--red)' }} onClick={() => deleteProgram(p.id)}>Delete</button>
                 </div>
               </div>
+
+              {open === p.id && (
+                <div style={{ marginTop: 10 }}>
+                  <NotesBox label="Program instructions" value={p.notes} rows={8}
+                    hint="Clients see this at the top of their Train page: how the program works, how to warm up, RIR, rest, what to log."
+                    placeholder={'How this program works:\n• Warm up with the first 2–3 exercises, then the jumps/throws at full effort.\n• RIR = reps left in the tank. Stop each set at the target.\n• Supersets (A1/A2): one set of each, then rest.\n• Log every set so I can adjust next week.'}
+                    onSave={async v => { await supabase.from('programs').update({ notes: v }).eq('id', p.id); load() }} />
+                </div>
+              )}
 
               {assigned.length > 0 && (
                 <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1626,6 +1641,14 @@ export default function CoachPrograms() {
                                       onKeyDown={e => e.key === 'Enter' && quickAddExercise(activeBlock, d.id, matches.length === 1 ? matches[0] : null)}
                                       style={{ padding: '7px 9px', fontSize: 12.5 }} />
 
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                                      <NotesBox label="Day notes" value={d.notes} hint="Shown at the top of this workout for the client."
+                                        placeholder={'Focus today: explosive intent on every jump.\nKeep rest honest — use the timer.'}
+                                        onSave={async v => { await supabase.from('program_days').update({ notes: v }).eq('id', d.id); loadDays(activeBlock.id) }} />
+                                      <NotesBox label="Warm-up" value={d.warmup} rows={5} hint="Shown above the exercises as the warm-up to do first."
+                                        placeholder={'3 min easy bike\n90/90 hip switches x 8\nBand pull-aparts x 15'}
+                                        onSave={async v => { await supabase.from('program_days').update({ warmup: v }).eq('id', d.id); loadDays(activeBlock.id) }} />
+                                    </div>
                                     <button className="btn-ghost" style={{ padding: '5px 9px', fontSize: 11.5, width: '100%', marginTop: 4 }}
                                       onClick={() => openPaste(d.id)}>
                                       {pasteDay === d.id ? 'Cancel paste' : '⇩ Paste whole day'}
@@ -1653,6 +1676,7 @@ export default function CoachPrograms() {
                                                     ? r.setRows.map(x => `${x.reps}@${x.target}`).join(', ')
                                                     : `${r.sets || 3} × ${r.reps || '8-12'} @ ${r.progression_type === 'rpe' ? 'RPE ' : ''}${r.target || '2'}${r.rest ? ` · rest ${r.rest}` : ''}`}
                                                   {r.metric !== 'reps' && <span style={{ color: 'var(--orange)' }}> · {r.metric}</span>}
+                                                  {r.notes && <span style={{ display: 'block', paddingLeft: 12, fontStyle: 'italic' }}>📝 {r.notes}</span>}
                                                 </p>
                                               ))}
                                               {bad.map((r, i) => (
@@ -1668,7 +1692,7 @@ export default function CoachPrograms() {
                                             {pasteBusy ? 'Adding…' : `Add ${good.length} exercise${good.length === 1 ? '' : 's'}`}
                                           </button>
                                           <p className="muted" style={{ fontSize: 10, marginTop: 4 }}>
-                                            One exercise per line. Sets/reps and target are optional — anything missing uses 3 × 8-12 @ RIR 2. Timed work: 6x20s on / 90s off RPE 9 (use “min” for minutes; “m” is metres).
+                                            One exercise per line. Sets/reps and target are optional — anything missing uses 3 × 8-12 @ RIR 2. Timed work: 6x20s on / 90s off RPE 9 (use “min” for minutes; “m” is metres). Add a note after a bar: Box Jump 3x3 | Stop if height drops.
                                           </p>
                                         </div>
                                       )
