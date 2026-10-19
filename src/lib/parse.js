@@ -11,6 +11,7 @@
 //   Leg press 3x12                          <- no target given, caller supplies
 //   B1) DB RDL 2x4-8 RIR 1-2                <- B1/B2 = superset (same letter)
 //   B2) Chest-supported row 2x8-12 RIR 1
+//   Box jump 3x3 rest 30s | Stop if jump height drops   <- " | " starts a note
 //
 // Anything it can't read is handed back as an issue rather than silently
 // dropped or guessed at, so nothing lands in a client's program unnoticed.
@@ -68,7 +69,11 @@ export function parseExerciseLine(raw) {
   if (!line) return null
   if (SKIP.test(line)) return null
 
-  const out = { name: '', letter: '', sets: null, reps: '', metric: 'reps', target: '', progression_type: 'rir', rest: '', setRows: null, issues: [] }
+  const out = { name: '', letter: '', sets: null, reps: '', metric: 'reps', target: '', progression_type: 'rir', rest: '', notes: '', setRows: null, issues: [] }
+
+  // anything after " | " (or " // ") is a coach note shown to the client
+  const nm = line.match(/\s(?:\||\/\/)\s*(.*)$/)
+  if (nm) { out.notes = clean(nm[1]); line = clean(line.slice(0, nm.index)) }
 
   const lm = line.match(LETTER)
   if (lm) { out.letter = lm[1].toUpperCase(); line = line.slice(lm[0].length) }

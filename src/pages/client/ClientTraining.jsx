@@ -788,7 +788,7 @@ export default function ClientTraining() {
           {ex.kind !== 'conditioning' && ex.progression_type === 'percent' && !maxes[(ex.based_on_lift || ex.name).toLowerCase()] && (
             <p className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>No max on file for {ex.based_on_lift || ex.name} — ask your coach to set it.</p>
           )}
-          {ex.notes && <p className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>{ex.notes}</p>}
+          {ex.notes && <p style={{ fontSize: 12.5, marginBottom: 8, whiteSpace: 'pre-wrap', borderLeft: '2px solid var(--orange)', paddingLeft: 8 }}>{ex.notes}</p>}
           {ex.video_url && (
             <a href={ex.video_url} target="_blank" rel="noreferrer"
               style={{ display: 'inline-block', fontSize: 12.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
@@ -1032,7 +1032,12 @@ export default function ClientTraining() {
           {rotations.length > 0 && ` · ${rotationForWeek(rotations, week)?.name || ''}`}
         </div>
         <h1 style={{ fontSize: 24, marginTop: 4 }}>{program.name}</h1>
-        {program.notes && <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>{program.notes}</p>}
+        {program.notes && (
+          <details style={{ marginTop: 8, border: '1px solid var(--line)', borderRadius: 10, padding: '8px 12px', background: 'var(--coal)' }} open={program.notes.length < 220}>
+            <summary style={{ fontSize: 12, fontWeight: 900, letterSpacing: '.08em', color: 'var(--orange-hot)', cursor: 'pointer' }}>PROGRAM INSTRUCTIONS</summary>
+            <p style={{ fontSize: 13.5, marginTop: 6, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{program.notes}</p>
+          </details>
+        )}
       </header>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1179,14 +1184,14 @@ export default function ClientTraining() {
 
       {!calMode && !awayMode && activeDay && (showList || screen === 'overview') && (activeDay.notes || activeDay.video_note || activeDay.warmup) && (
         <div className="card">
-          {activeDay.notes && <p style={{ fontSize: 13.5, lineHeight: 1.5 }}>{activeDay.notes}</p>}
+          {activeDay.notes && <p style={{ fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{activeDay.notes}</p>}
           {activeDay.video_note && (loomEmbed(activeDay.video_note)
             ? <iframe src={loomEmbed(activeDay.video_note)} style={{ width: '100%', height: 210, border: 'none', borderRadius: 8, marginTop: activeDay.notes ? 8 : 0 }} allowFullScreen title="Coach video note" />
             : <a href={activeDay.video_note} target="_blank" rel="noreferrer" style={{ display: 'inline-block', fontSize: 13, fontWeight: 800, marginTop: activeDay.notes ? 6 : 0 }}>🎥 Watch coach's video note</a>)}
           {activeDay.warmup && (
             <div style={{ marginTop: (activeDay.notes || activeDay.video_note) ? 10 : 0, borderLeft: '3px solid var(--orange)', paddingLeft: 10 }}>
               <span className="eyebrow" style={{ fontSize: 10 }}>Warmup</span>
-              <p style={{ fontSize: 13.5, marginTop: 3, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 13.5, marginTop: 3, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                 {activeDay.warmup}
                 {activeDay.warmup_video && <a href={activeDay.warmup_video} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ demo</a>}
               </p>
