@@ -3,10 +3,11 @@
 // call to Open Food Facts' beta search API. Deploys automatically because
 // it's in /api — no extra setup, same `git push` as everything else.
 //
-// If NUTRITIONIX_APP_ID and NUTRITIONIX_APP_KEY are set as Vercel env vars,
-// this uses Nutritionix instead — much better search relevance and US
-// branded/restaurant food coverage. Falls back to Open Food Facts if those
-// aren't set, so this keeps working either way.
+// Provider order: fatsecret (if FATSECRET_CLIENT_ID/SECRET are set), then
+// Nutritionix (if its keys are set), then Open Food Facts. If fatsecret errors
+// (e.g. IP whitelist not active yet) the search falls back to Open Food Facts
+// and reports why in `fallbackReason`, so clients are never left with nothing.
+import { fatsecretConfigured, searchFatsecret } from './_fatsecret.js'
 
 async function searchNutritionix(q, appId, appKey) {
   const res = await fetch('https://trackapi.nutritionix.com/v2/search/instant?query=' + encodeURIComponent(q), {
@@ -81,16 +82,29 @@ export default async function handler(req, res) {
   const { NUTRITIONIX_APP_ID, NUTRITIONIX_APP_KEY } = process.env
 
   try {
-    let items, source
-    if (NUTRITIONIX_APP_ID && NUTRITIONIX_APP_KEY) {
+    let items, source, fallbackReason
+    if (fatsecretConfigured()) {
+      try {
+        items = await searchFatsecret(q)
+        if (items.length) source = 'fatsecret' // nothing found → let Open Food Facts try
+      } catch (err) {
+        fallbackReason = err.message
+        console.error('[food-search] fatsecret failed, using Open Food Facts:', err.message)
+      }
+    }
+    if (source) {
+      // already have fatsecret results
+    } else if (NUTRITIONIX_APP_ID && NUTRITIONIX_APP_KEY) {
       items = await searchNutritionix(q, NUTRITIONIX_APP_ID, NUTRITIONIX_APP_KEY)
       source = 'nutritionix'
     } else {
       items = await searchOpenFoodFacts(q)
       source = 'openfoodfacts'
     }
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate')
-    return res.status(200).json({ items, source })
+    // Only cache good fatsecret answers at the edge; a fallback shouldn't stick
+    // around for an hour once fatsecret starts working.
+    res.setHeader('Cache-Control', fallbackReason ? 'no-store' : 's-maxage=3600, stale-while-revalidate')
+    return res.status(200).json({ items, source, ...(fallbackReason ? { fallbackReason } : {}) })
   } catch (err) {
     return res.status(500).json({ error: err.message })
   }

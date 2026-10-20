@@ -58,6 +58,18 @@ export default function ClientNutrition() {
   useEffect(() => { if (profile) { load(); loadPlan() } }, [profile])
 
   async function lookupBarcode(code) {
+    // fatsecret first (needs Premier Free); Open Food Facts if it has no match.
+    try {
+      const fs = await fetch('/api/food-barcode?code=' + encodeURIComponent(code))
+      const fsData = await fs.json().catch(() => ({}))
+      if (fsData.item) {
+        setSelFood(fsData.item)
+        setGrams(fsData.item.per === 'serving' ? '1' : '100')
+        setSource('fatsecret')
+        setFoodResults([]); setFoodQ('')
+        return
+      }
+    } catch {}
     try {
       const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`)
       const data = await res.json()
@@ -66,7 +78,9 @@ export default function ClientNutrition() {
       setSelFood({
         id: code, name: pr.product_name || 'Scanned item', brand: (pr.brands || '').split(',')[0],
         p: +pr.nutriments?.proteins_100g || 0, c: +pr.nutriments?.carbohydrates_100g || 0, f: +pr.nutriments?.fat_100g || 0,
+        per: '100g',
       })
+      setGrams('100'); setSource('openfoodfacts')
       setFoodResults([]); setFoodQ('')
     } catch {
       setScanError('Lookup failed — check your connection and try again.')
@@ -258,6 +272,13 @@ export default function ClientNutrition() {
             onChange={e => { setFoodQ(e.target.value); setSelFood(null) }} />
           {searching && <span className="muted" style={{ position: 'absolute', right: 10, top: 12, fontSize: 12 }}>Searching…</span>}
         </div>
+        {source === 'fatsecret' && (
+          // Required by fatsecret's attribution policy on the free tiers.
+          <a href="https://www.fatsecret.com" target="_blank" rel="noopener noreferrer"
+            className="muted" style={{ fontSize: 11, alignSelf: 'flex-end', textDecoration: 'none' }}>
+            Powered by fatsecret
+          </a>
+        )}
         {!scanning ? (
           <button className="btn-ghost" onClick={startScan}>📷 Scan a barcode</button>
         ) : (
