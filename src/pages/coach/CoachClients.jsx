@@ -55,7 +55,7 @@ export default function CoachClients() {
     setForm(f => ({
       ...f,
       phase: calc.goal,
-      protein_g: calcResult.protein, carbs_g: calcResult.carbs, fat_g: calcResult.fat, calories: calcResult.target,
+      protein_g: calcResult.protein, carbs_g: calcResult.carbs, fat_g: calcResult.fat, calories: calcResult.protein * 4 + calcResult.carbs * 4 + calcResult.fat * 9,
     }))
   }
 

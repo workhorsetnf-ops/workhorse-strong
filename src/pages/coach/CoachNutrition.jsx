@@ -97,6 +97,21 @@ export default function CoachNutrition() {
       await load()
     })
   }
+  // Re-solve the grams of the plan as it stands so it lands on the client's targets.
+  async function refitPlan() {
+    const t = targetsFrom(client, plan)
+    if (!(t.p && t.c && t.f) || !items.length) return
+    if (!window.confirm(`Adjust the grams in this plan to hit ${t.p} P / ${t.c} C / ${t.f} F? Foods and notes stay the same.`)) return
+    const scaled = scaleToTargets(items, t)
+    const changed = scaled.filter((l, i) => Number(l.grams) !== Number(items[i].grams))
+    if (!changed.length) return
+    setItems(scaled)
+    await run(async () => {
+      for (const l of changed) await supabase.from('meal_plan_items').update({ grams: l.grams }).eq('id', l.id)
+      await touchPlan()
+      await load()
+    })
+  }
   async function patchItem(it, field, raw) {
     let patch
     if (field === 'food_name') {
@@ -188,6 +203,9 @@ export default function CoachNutrition() {
           ) : (
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button className="btn-ghost" onClick={() => setTg({ p: targets.p, c: targets.c, f: targets.f, fi: targets.fi })} style={{ padding: '6px 12px', fontSize: 12.5 }}>Edit targets</button>
+              {items.length > 0 && targets.p > 0 && targets.c > 0 && targets.f > 0 && (
+                <button className="btn-ghost" onClick={refitPlan} style={{ padding: '6px 12px', fontSize: 12.5 }}>Re-fit grams to targets</button>
+              )}
               <span className="muted" style={{ fontSize: 12 }}>Targets are the client's macros (same as on the Clients page). On target = within 5%; fiber just needs 90%.</span>
             </div>
           )}
