@@ -1159,6 +1159,10 @@ alter table profiles add column start_date date;
 -- ===== PAYMENT DATE (Update 80) =====
 alter table profiles add column payment_date date;
 
+-- ===== PAYMENT SCHEDULE (Update 121) =====
+alter table profiles add column payment_type text check (payment_type in ('pif', 'monthly', 'biweekly'));
+alter table profiles add column payment_amount numeric;
+
 -- ===== STANDALONE FORMS — intake / PAR-Q / waivers (Update 81) =====
 -- Independent of the checkin_forms/* tables above, which attach a question
 -- set to the recurring weekly check-in. These are assigned once, filled
