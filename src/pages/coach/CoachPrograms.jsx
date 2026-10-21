@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { normalizeTarget, normalizeReps, dash, effortText, effortMeaning } from '../../lib/targets'
 import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets } from '../../lib/weeks'
-import { parseProgramText } from '../../lib/parse'
+import { parseProgramText, parseBlockText, blockExerciseRows } from '../../lib/parse'
 import NotesBox from './NotesBox'
 
 const GROUP_COLORS = ['#FF6A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
@@ -620,6 +620,9 @@ export default function CoachPrograms() {
   const [pasteDay, setPasteDay] = useState(null)   // day id whose paste box is open
   const [pasteText, setPasteText] = useState('')
   const [pasteBusy, setPasteBusy] = useState(false)
+  const [blockPasteOpen, setBlockPasteOpen] = useState(false) // whole-block paste panel
+  const [blockPasteText, setBlockPasteText] = useState('')
+  const [blockPasteBusy, setBlockPasteBusy] = useState(false)
   const [exercises, setExercises] = useState({})  // dayId -> [exercises]
   const [newProgram, setNewProgram] = useState('')
   const [newWeeks, setNewWeeks] = useState(4)
@@ -905,6 +908,149 @@ export default function CoachPrograms() {
     setPasteDay(null)
     setPasteText('')
     loadDay(dayId)
+  }
+
+  // ---- paste a whole block ----
+  // Every workout heading becomes a new workout in this block, and each line's
+  // " > " week chain fills week_targets, so the progression is built in.
+  // Same rule as the day paste: preview first, and lines it can't read are
+  // shown and skipped rather than guessed at.
+  async function commitBlockPaste(block) {
+    const weeks = block.weeks || 4
+    const { days: pDays } = parseBlockText(blockPasteText, weeks)
+    const ready = pDays
+      .map(d => ({ ...d, good: d.exercises.filter(e => e.name && !e.issues.length) }))
+      .filter(d => d.good.length || d.warmup)
+    if (!ready.length) return
+    setBlockPasteBusy(true)
+    const rot = (rotations[block.id]?.length ? activeRot : null) || null
+    let pos = days[block.id]?.length || 0
+    let made = 0
+    for (const d of ready) {
+      const { data: newDay, error } = await supabase.from('program_days').insert({
+        program_id: block.program_id || open, block_id: block.id, day_label: d.label, day_number: d.dayNumber,
+        position: pos++, track: 'exercise', rotation_id: rot, warmup: d.warmup || '',
+      }).select().single()
+      if (error || !newDay) {
+        alert(`Stopped at "${d.label}": ${error?.message || 'could not create the workout'}.\n${made} workout(s) before it were added.`)
+        break
+      }
+      if (d.good.length) {
+        const rows = blockExerciseRows(d.good, weeks).map(r => ({ ...r, day_id: newDay.id }))
+        const { error: exErr } = await supabase.from('program_exercises').insert(rows)
+        if (exErr) {
+          alert(`"${d.label}" was created but its exercises didn't save: ${exErr.message}.\n${made} workout(s) before it were added in full.`)
+          break
+        }
+      }
+      made++
+    }
+    setBlockPasteBusy(false)
+    if (made === ready.length) { setBlockPasteOpen(false); setBlockPasteText('') }
+    setTrack('exercise')
+    loadDays(block.id)
+  }
+
+  // "3 × 5-6 RIR 2" for one week entry, or "4-6@2, 8-10@2" when sets differ
+  function weekText(w, type) {
+    if (w.setRows) return w.setRows.map(x => `${x.reps}${x.target !== '' ? '@' + x.target : ''}`).join(', ')
+    const eff = effortText(type, w.target)
+    return `${w.sets} × ${dash(w.reps)}${eff ? ' ' + eff : ''}`
+  }
+
+  function renderBlockPaste(block) {
+    const weeks = block.weeks || 4
+    const { days: pDays, skipped } = parseBlockText(blockPasteText, weeks)
+    const rots = rotations[block.id] || []
+    const rotName = rots.length ? (rots.find(r => r.id === activeRot)?.name || '') : ''
+    const existing = (days[block.id] || []).length
+    let goodCount = 0
+    let dayCount = 0
+    for (const d of pDays) {
+      const g = d.exercises.filter(e => e.name && !e.issues.length).length
+      goodCount += g
+      if (g || d.warmup) dayCount++
+    }
+    return (
+      <div className="card" style={{ padding: 12, marginBottom: 14, border: '1px solid var(--orange)', boxSizing: 'border-box', maxWidth: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+          <strong style={{ fontSize: 14 }}>Paste whole block → {block.name} ({weeks} weeks)</strong>
+          <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setBlockPasteOpen(false); setBlockPasteText('') }}>Close</button>
+        </div>
+        <textarea rows={10} value={blockPasteText} onChange={e => setBlockPasteText(e.target.value)}
+          placeholder={'=== Day 1: Upper A ===\nWarm-up: 5 min bike, band pull-aparts\nPogo Hops 2x15 rest 60s > 2x20 > 3x20 | Quick, stiff ankles\nA) Smith Bench 3x5-6 RIR 2 rest 3 min > 3x4-6 RIR 2 > 3x3-5 RIR 1-2 > 3x3-4 RIR 1\nB) Lat Pulldown 2x4-8 RIR 2 > RIR 2 > RIR 1-2 > RIR 0-1\n\n=== Day 2: Lower A ===\nA) Smith RDL 3x5-6 RIR 2 > 3x4-6 RIR 2 > 3x3-5 RIR 1-2 > 3x3-4 RIR 1'}
+          style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', padding: '8px 10px', fontSize: 12.5, fontFamily: 'inherit', resize: 'vertical' }} />
+        <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
+          Start each workout with a heading: <code>=== Day 1: Upper A ===</code> (the day number is optional). Then one exercise per line, same as the day paste.
+          Put <code> &gt; </code> between weeks: <code>3x5-6 RIR 2 &gt; 3x4-6 RIR 2 &gt; 3x3-5 RIR 1</code>. A week that leaves something out keeps it from the week before
+          (<code>&gt; RIR 1</code> only changes the target), and the last week repeats to the end of the block. Name, letter, rest and the note after <code>|</code> are set once, on week 1.
+          A line starting <code>Warm-up:</code> goes in that workout's warm-up box. No target means none is shown to the client — good for jumps, holds and intervals.
+        </p>
+
+        {(pDays.length > 0 || skipped.length > 0) && (
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {pDays.map((d, di) => {
+              const good = d.exercises.filter(e => e.name && !e.issues.length)
+              const bad = d.exercises.filter(e => !e.name || e.issues.length)
+              const rows = blockExerciseRows(good, weeks)
+              return (
+                <div key={di} style={{ borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+                  <strong style={{ fontSize: 12.5, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--orange-hot)' }}>
+                    Day {d.dayNumber}: {d.label}
+                  </strong>
+                  <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>{good.length} exercise{good.length === 1 ? '' : 's'}</span>
+                  {d.warmup && <p className="muted" style={{ fontSize: 11, margin: '2px 0', fontStyle: 'italic' }}>Warm-up: {d.warmup.replace(/\n/g, ' · ')}</p>}
+                  {rows.map((r, i) => {
+                    const wts = r.week_targets
+                    const same = wts.every(w => JSON.stringify(w) === JSON.stringify(wts[0]))
+                    const src = good[i]
+                    return (
+                      <div key={i} style={{ fontSize: 11.5, margin: '4px 0' }}>
+                        <span style={{ color: 'var(--orange)' }}>{r.letter || '·'}</span> <strong>{r.name}</strong>
+                        {r.metric !== 'reps' && <span style={{ color: 'var(--orange)' }}> · {r.metric}</span>}
+                        {r.rest && <span className="muted"> · rest {r.rest}</span>}
+                        <div className="muted" style={{ paddingLeft: 12 }}>
+                          {same
+                            ? <>All weeks: {weekText(wts[0], r.progression_type)}</>
+                            : wts.map((w, wi) => (
+                              <span key={wi} style={{ display: 'inline-block', marginRight: 10 }}>
+                                <span style={{ color: 'var(--orange)' }}>W{wi + 1}</span> {weekText(w, r.progression_type)}
+                              </span>
+                            ))}
+                        </div>
+                        {r.notes && <div className="muted" style={{ paddingLeft: 12, fontStyle: 'italic' }}>📝 {r.notes}</div>}
+                        {src.warnings.map((m, wi) => <div key={wi} style={{ paddingLeft: 12, color: 'var(--orange-hot)' }}>⚠ {m}</div>)}
+                      </div>
+                    )
+                  })}
+                  {bad.map((e, i) => (
+                    <p key={`b${i}`} style={{ fontSize: 11, margin: '3px 0', color: 'var(--red)' }}>
+                      skipped: {e.raw}<br /><span style={{ paddingLeft: 12 }}>→ {e.issues.join('; ') || 'no exercise name'}</span>
+                    </p>
+                  ))}
+                </div>
+              )
+            })}
+            {skipped.map((s, i) => (
+              <p key={`s${i}`} style={{ fontSize: 11, margin: '2px 0', color: 'var(--red)' }}>skipped: {s.raw} → {s.why}</p>
+            ))}
+          </div>
+        )}
+
+        {pDays.length === 0 && blockPasteText.trim() && (
+          <p style={{ fontSize: 11.5, marginTop: 8, color: 'var(--red)' }}>No workout headings found. Start each workout with a line like === Day 1: Upper A ===</p>
+        )}
+
+        <button className="btn" disabled={!dayCount || blockPasteBusy}
+          style={{ padding: '8px 14px', fontSize: 13, width: '100%', marginTop: 10, opacity: dayCount && !blockPasteBusy ? 1 : 0.4 }}
+          onClick={() => commitBlockPaste(block)}>
+          {blockPasteBusy ? 'Building…' : `Create ${dayCount} workout${dayCount === 1 ? '' : 's'} · ${goodCount} exercise${goodCount === 1 ? '' : 's'}`}
+        </button>
+        <p className="muted" style={{ fontSize: 10.5, marginTop: 4 }}>
+          Adds new workouts to this block{rotName ? ` in ${rotName}` : ''}.{existing ? ` The ${existing} workout${existing === 1 ? '' : 's'} already here stay as they are.` : ''}
+        </p>
+      </div>
+    )
   }
 
   // nextFreeLetter works off a list of exercise-shaped objects; this adapts the
@@ -1431,6 +1577,10 @@ export default function CoachPrograms() {
                       </span>
                     ))}
                     <button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => addBlock(p.id)}>+ Block</button>
+                    {activeBlock && (
+                      <button className={blockPasteOpen ? 'btn' : 'btn-ghost'} style={{ padding: '6px 12px', fontSize: 13 }}
+                        onClick={() => setBlockPasteOpen(o => !o)}>⇩ Paste whole block</button>
+                    )}
                     {pBlocks.length > 1 && activeBlock && (
                       <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12, color: 'var(--red)' }} onClick={() => deleteBlock(p.id, activeBlock.id)}>Delete block</button>
                     )}
@@ -1438,6 +1588,7 @@ export default function CoachPrograms() {
 
                   {activeBlock && (
                     <>
+                      {blockPasteOpen && renderBlockPaste(activeBlock)}
                       {(() => {
                         const rots = rotations[activeBlock.id] || []
                         const runWeeks = rots.length
