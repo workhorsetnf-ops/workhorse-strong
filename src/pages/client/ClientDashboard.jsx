@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { localDateStr, mondayOf, weekDaysFrom, resolveAssignment, dayShowsInWeek } from '../../lib/weeks'
 import { EventBanner } from '../coach/PhasePlanner'
-import { weekOfCoaching, nextCheckin, macroRows, progress, splitForWeek, DEFAULT_TODOS, weekCompletion, heightText, WEEKDAYS, mondayIndex } from '../../lib/dashboard'
+import { weekOfCoaching, nextCheckin, freqLabel, macroRows, progress, splitForWeek, DEFAULT_TODOS, weekCompletion, heightText, WEEKDAYS, mondayIndex } from '../../lib/dashboard'
 
 const DISPLAY_FONT = "'Oswald','Barlow',system-ui,sans-serif"
 const fmtDate = (d, opts = { month: 'short', day: 'numeric', year: 'numeric' }) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(undefined, opts) : '—')
@@ -120,7 +120,7 @@ export default function ClientDashboard({ profile }) {
   const kcal = Number(me?.calories) || macros.total.kcal
   const pr = progress(startW, curW, goalW)
   const wk = weekOfCoaching(start, today)
-  const next = nextCheckin({ checkinDay: me?.checkin_day, lastCheckin: checkins.last, start, today })
+  const next = nextCheckin({ checkinDay: me?.checkin_day, frequency: me?.checkin_frequency, lastCheckin: checkins.last, start, today })
   const done = weekCompletion(todos, ticks, days)
   const sgn = n => (n > 0 ? `+${n}` : `${n}`)
   const tickSet = new Set(ticks.map(k => `${k.todo_id}|${k.log_date}`))
@@ -139,7 +139,7 @@ export default function ClientDashboard({ profile }) {
         <Tile accent label="Daily calories" value={kcal ? kcal.toLocaleString() : '—'} sub="kcal per day" />
         <Tile label="Current weight" value={curW != null ? `${curW} lb` : '—'} sub={pr.change != null ? `${sgn(pr.change)} lb since start` : 'Log your weight'} />
         <Tile label="Phase" value={String(me?.phase || '—').toUpperCase()} sub={`${checkins.count} check-in${checkins.count === 1 ? '' : 's'} logged`} />
-        <Tile label="Next check-in" value={next ? fmtDate(next, { weekday: 'short', month: 'short', day: 'numeric' }) : '—'} sub={me?.checkin_day != null ? `Every ${WEEKDAYS[me.checkin_day]}` : 'Weekly'} />
+        <Tile label="Next check-in" value={next ? fmtDate(next, { weekday: 'short', month: 'short', day: 'numeric' }) : '—'} sub={me?.checkin_day != null ? `${freqLabel(me?.checkin_frequency).replace(/ \(.*\)/, '')} · ${WEEKDAYS[me.checkin_day]}` : freqLabel(me?.checkin_frequency).replace(/ \(.*\)/, '')} />
       </div>
 
       <Section title="This week's to-do" right={<span className="muted" style={{ fontSize: 11, fontWeight: 800 }}>WEEK OF {fmtDate(days[0], { month: 'short', day: 'numeric' }).toUpperCase()}</span>}>

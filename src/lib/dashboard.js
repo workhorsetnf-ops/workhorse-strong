@@ -15,18 +15,41 @@ export function weekOfCoaching(start, today) {
   return Math.max(1, Math.floor(daysBetween(start, today) / 7) + 1)
 }
 
-// Next check-in date. With a fixed day: the next time that weekday comes round
-// (today counts if they haven't checked in today). Without one: 7 days after
-// the last check-in, or a week after starting.
-export function nextCheckin({ checkinDay, lastCheckin, start, today }) {
-  if (checkinDay !== null && checkinDay !== undefined && checkinDay !== '') {
-    const diff = (Number(checkinDay) - mondayIndex(today) + 7) % 7
-    const done = lastCheckin === today
-    return addDays(today, diff === 0 && done ? 7 : diff)
+// Check-in frequency: weekly, every 2 weeks, or monthly (= every 4 weeks, so it
+// always lands on their check-in weekday).
+export const CHECKIN_FREQS = [['weekly', 'Weekly', 1], ['biweekly', 'Every 2 weeks', 2], ['monthly', 'Monthly (every 4 weeks)', 4]]
+export const freqWeeks = f => (CHECKIN_FREQS.find(x => x[0] === f) || CHECKIN_FREQS[0])[2]
+export const freqLabel = f => (CHECKIN_FREQS.find(x => x[0] === f) || CHECKIN_FREQS[0])[1]
+const hasDay = d => d !== null && d !== undefined && d !== ''
+
+// When the current check-in is due ('YYYY-MM-DD'), or null if it can't be known
+// (never checked in and no fixed day). The ONE rule every screen and the push
+// reminders use, so they always agree.
+//  - After a check-in: N weeks later (1, 2 or 4), moved to the nearest check-in
+//    weekday if one is set (so a day early or a few days late doesn't shift the
+//    schedule). With no fixed day: a day before N weeks, like the old rolling
+//    6-day reminder.
+//  - Never checked in, fixed day: the most recent check-in weekday on/before today.
+export function checkinDueDate({ checkinDay, frequency, lastCheckin, today }) {
+  const weeks = freqWeeks(frequency)
+  if (!lastCheckin) {
+    if (!hasDay(checkinDay)) return null
+    return addDays(today, -((mondayIndex(today) - Number(checkinDay) + 7) % 7))
   }
-  const base = lastCheckin || start
-  if (!base) return null
-  let next = addDays(base, 7)
+  const target = addDays(lastCheckin, weeks * 7)
+  if (!hasDay(checkinDay)) return addDays(target, -1)
+  let off = (Number(checkinDay) - mondayIndex(target) + 7) % 7
+  if (off > 3) off -= 7
+  return addDays(target, off)
+}
+
+// Next check-in date for the client dashboard: the due date, or today if late.
+// Without a fixed day or any check-in yet: a week after starting.
+export function nextCheckin({ checkinDay, frequency, lastCheckin, start, today }) {
+  const due = checkinDueDate({ checkinDay, frequency, lastCheckin, today })
+  if (due) return due < today ? today : due
+  if (!start) return null
+  let next = addDays(start, 7)
   while (next < today) next = addDays(next, 7)
   return next
 }

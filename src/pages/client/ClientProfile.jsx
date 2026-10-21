@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom'
 import { Bell } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { WEEKDAYS } from '../../lib/dashboard'
+import { WEEKDAYS, freqLabel } from '../../lib/dashboard'
 import { AvatarPicker } from '../Avatar'
 
 const lab = { fontSize: 11.5, display: 'block', marginBottom: 4 }
@@ -64,6 +64,7 @@ export default function ClientProfile() {
     ['Phase', p.phase ? p.phase[0].toUpperCase() + p.phase.slice(1) : '—'],
     ['Daily macros', macros],
     ['Check-in day', p.checkin_day != null ? WEEKDAYS[p.checkin_day] : '—'],
+    ['Check-ins', freqLabel(p.checkin_frequency)],
     ['Steps target', p.steps_target ? Number(p.steps_target).toLocaleString() : '—'],
     ['Water', p.water_oz ? `${p.water_oz} oz` : '—'],
     ['Goal weight', p.target_weight ? `${p.target_weight} lb` : '—'],

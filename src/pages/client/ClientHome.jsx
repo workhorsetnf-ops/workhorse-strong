@@ -4,6 +4,7 @@ import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, F
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr, logDate } from '../../lib/weeks'
+import { checkinDueDate, daysBetween } from '../../lib/dashboard'
 import ClientDashboard from './ClientDashboard'
 import { RemindersPrompt } from '../ReminderSettings'
 import Avatar from '../Avatar'
@@ -88,30 +89,16 @@ export default function ClientHome() {
     supabase.from('checkins').select('submitted_at').eq('client_id', profile.id)
       .order('submitted_at', { ascending: false }).limit(1).maybeSingle()
       .then(({ data }) => {
-        const lastCheckin = data?.submitted_at ? new Date(data.submitted_at) : null
-
-        if (profile.checkin_day === null || profile.checkin_day === undefined) {
-          // no fixed day set — fall back to the old rolling reminder
-          if (!lastCheckin) { setCheckinDue({ due: true, days: null, overdue: false }); return }
-          const days = Math.floor((Date.now() - lastCheckin.getTime()) / 864e5)
-          setCheckinDue({ due: days >= 6, days, overdue: days >= 8 })
-          return
-        }
-
-        // fixed weekly day: find the most recent occurrence of that day (0=Mon..6=Sun),
-        // on or before today — the reminder only fires once we've reached that day
-        // for this cycle, and clears once they've submitted since it arrived.
-        const today = new Date(); today.setHours(0, 0, 0, 0)
-        const todayDow = (today.getDay() + 6) % 7
-        const diff = (todayDow - profile.checkin_day + 7) % 7
-        const dueDate = new Date(today); dueDate.setDate(today.getDate() - diff)
-
-        const satisfiedThisCycle = lastCheckin && lastCheckin >= dueDate
-        if (satisfiedThisCycle) { setCheckinDue({ due: false }); return }
-
-        const daysPastDue = Math.floor((today - dueDate) / 864e5)
-        const days = lastCheckin ? Math.floor((Date.now() - lastCheckin.getTime()) / 864e5) : null
-        setCheckinDue({ due: true, days, overdue: daysPastDue >= 2 })
+        // Due date at their frequency (weekly / every 2 weeks / monthly), anchored
+        // to their check-in day if set; the reminder shows from the due date and
+        // clears once they submit. Same rule as the dashboard and push reminders.
+        const last = data?.submitted_at ? localDateStr(new Date(data.submitted_at)) : null
+        const today = localDateStr()
+        const due = checkinDueDate({ checkinDay: profile.checkin_day, frequency: profile.checkin_frequency, lastCheckin: last, today })
+        if (!due) { setCheckinDue({ due: true, days: null, overdue: false }); return }   // never checked in, no day set
+        const late = daysBetween(due, today)
+        if (late < 0) { setCheckinDue({ due: false }); return }
+        setCheckinDue({ due: true, days: last ? daysBetween(last, today) : null, overdue: late >= 2 })
       })
     supabase.from('standalone_form_assignments').select('id', { count: 'exact', head: true })
       .eq('client_id', profile.id).eq('status', 'pending')

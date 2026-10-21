@@ -6,6 +6,7 @@ import { WeekTable } from '../client/ClientProgress'
 
 const EMPTY_LOG = { client_id: '', weight: '', waist: '', sleep_avg: '', energy: 7, hunger: 5, notes: '' }
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+import { freqLabel } from '../../lib/dashboard'
 
 const EMPTY_SNAPSHOT = {
   status: 'pending', current_macros: '', training_program: '', cardio: '', steps: '', biofeedback: '',
@@ -72,6 +73,7 @@ function ClientFieldsStrip({ profile }) {
   const rows = [
     ['Start Date', profile.start_date ? fmtDate(profile.start_date) : '—'],
     ['Check-In Day', (profile.checkin_day ?? null) !== null ? WEEKDAYS[profile.checkin_day] : '—'],
+    ['Frequency', freqLabel(profile.checkin_frequency)],
     ['Phase', profile.phase ? profile.phase[0].toUpperCase() + profile.phase.slice(1) : '—'],
     ['Payment Plan', profile.payment_plan || '—'],
     ['Payment Date', profile.payment_date ? fmtDate(profile.payment_date) : '—'],
@@ -167,7 +169,7 @@ export default function CoachCheckins() {
   async function load() {
     const [{ data: c }, { data: p }] = await Promise.all([
       supabase.from('checkins').select('*').order('submitted_at', { ascending: false }).limit(200),
-      supabase.from('profiles').select('id, full_name, phase, checkin_day, status, payment_plan, payment_date, contract_ends, split_ends, start_date')
+      supabase.from('profiles').select('id, full_name, phase, checkin_day, checkin_frequency, status, payment_plan, payment_date, contract_ends, split_ends, start_date')
         .eq('role', 'client').neq('status', 'exited').order('full_name'),
     ])
     setCheckins(c || [])
@@ -390,6 +392,7 @@ export default function CoachCheckins() {
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                   {g.profile.start_date && <Chip>Since {fmtDate(g.profile.start_date)}</Chip>}
                   {g.profile.checkin_day != null && g.profile.checkin_day !== undefined && <Chip>{WEEKDAYS[g.profile.checkin_day]}</Chip>}
+                  {g.profile.checkin_frequency && g.profile.checkin_frequency !== 'weekly' && <Chip>{freqLabel(g.profile.checkin_frequency).replace(/ \(.*\)/, '')}</Chip>}
                   {g.profile.phase && <Chip><span style={{ textTransform: 'capitalize' }}>{g.profile.phase}</span></Chip>}
                   <Link to={`/coach/review/${g.profile.id}${latest?.period_start ? `?week=${latest.period_start}` : ''}`} onClick={e => e.stopPropagation()}
                     className="btn" style={{ padding: '4px 11px', fontSize: 12, textDecoration: 'none' }}>Week review</Link>

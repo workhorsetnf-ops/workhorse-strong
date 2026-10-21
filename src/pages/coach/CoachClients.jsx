@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { calcMacros } from '../../lib/macros'
+import { CHECKIN_FREQS } from '../../lib/dashboard'
 import Avatar, { AvatarPicker } from '../Avatar'
 import InviteClients from './InviteClients'
 import { callApi } from '../../lib/push'
@@ -99,7 +100,7 @@ export default function CoachClients() {
     const { data: r } = await supabase.from('client_ratings').select('*').eq('client_id', c.id).maybeSingle()
     setRating({ retention: r?.retention || null, mindset: r?.mindset || null, notes: r?.notes || '' })
     setCalcResult(null)
-    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null, status: c.status || 'active', payment_plan: c.payment_plan || '', contract_ends: c.contract_ends || '', split_ends: c.split_ends || '', start_date: c.start_date || '', payment_date: c.payment_date || '', goal: c.goal || '', target_weight: c.target_weight ?? '', age: c.age ?? '', height_ft: c.height_in ? Math.floor(c.height_in / 12) : '', height_inch: c.height_in ? c.height_in % 12 : '', steps_target: c.steps_target ?? '', water_oz: c.water_oz ?? '', limitations: c.limitations || '', phone: c.phone || '', event_name: c.event_name || '', event_date: c.event_date || '' })
+    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null, checkin_frequency: c.checkin_frequency || 'weekly', status: c.status || 'active', payment_plan: c.payment_plan || '', contract_ends: c.contract_ends || '', split_ends: c.split_ends || '', start_date: c.start_date || '', payment_date: c.payment_date || '', goal: c.goal || '', target_weight: c.target_weight ?? '', age: c.age ?? '', height_ft: c.height_in ? Math.floor(c.height_in / 12) : '', height_inch: c.height_in ? c.height_in % 12 : '', steps_target: c.steps_target ?? '', water_oz: c.water_oz ?? '', limitations: c.limitations || '', phone: c.phone || '', event_name: c.event_name || '', event_date: c.event_date || '' })
     setOriginalEmail(c.email || '')
     // Pull their pre-sale timeline in if they came through the pipeline.
     const hist = leadHistory[c.id]
@@ -128,6 +129,7 @@ export default function CoachClients() {
       protein_g: +form.protein_g || 0, carbs_g: +form.carbs_g || 0,
       fat_g: +form.fat_g || 0, calories: +form.calories || 0,
       checkin_day: form.checkin_day,
+      checkin_frequency: form.checkin_frequency || 'weekly',
       status: form.status,
       payment_plan: form.payment_plan?.trim() || null,
       contract_ends: form.contract_ends || null,
@@ -307,12 +309,18 @@ export default function CoachClients() {
                     </select>
                   </div>
                   <div>
-                    <label className="muted" style={{ fontSize: 11.5 }}>Check-in day (their weekly reminder anchors to this)</label>
+                    <label className="muted" style={{ fontSize: 11.5 }}>Check-in day (their reminder anchors to this)</label>
                     <select value={form.checkin_day === null ? '' : form.checkin_day} onChange={e => setForm({ ...form, checkin_day: e.target.value === '' ? null : +e.target.value })}>
                       <option value="">Not set — use rolling reminder</option>
                       {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((d, i) => (
                         <option key={i} value={i}>{d}</option>
                       ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="muted" style={{ fontSize: 11.5 }}>Check-in frequency</label>
+                    <select value={form.checkin_frequency || 'weekly'} onChange={e => setForm({ ...form, checkin_frequency: e.target.value })}>
+                      {CHECKIN_FREQS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                     </select>
                   </div>
                 </div>
