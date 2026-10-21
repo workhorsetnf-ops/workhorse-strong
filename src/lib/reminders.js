@@ -2,20 +2,18 @@
 // server job gathers the facts and does the sending.
 // One notification per person per slot at most: the evening one rolls
 // everything still open into a single message instead of three pings.
-import { addDays, mondayIndex, daysBetween } from './dashboard.js'
+import { daysBetween, checkinDueDate } from './dashboard.js'
 
 export const DEFAULT_PREFS = { workout: true, food: true, habits: true, checkin: true, messages: true, slipping: true }
 
-// Check-in state for a fixed weekly day (0 = Mon). lastCheckin: 'YYYY-MM-DD' or null.
-export function checkinState(checkinDay, lastCheckin, today) {
+// Check-in state for clients with a fixed check-in day (0 = Mon), at their
+// frequency (weekly / biweekly / monthly). lastCheckin: 'YYYY-MM-DD' or null.
+// Clients with no fixed day get no check-in pushes, as before.
+export function checkinState(checkinDay, lastCheckin, today, frequency = 'weekly') {
   if (checkinDay === null || checkinDay === undefined || checkinDay === '') return { due: false, overdueDays: 0 }
-  const back = (mondayIndex(today) - Number(checkinDay) + 7) % 7
-  const dueDate = addDays(today, -back)
-  const done = lastCheckin && lastCheckin >= addDays(dueDate, -1)   // a day early counts
-  // tomorrow is check-in day and they haven't already sent it early today
-  const tomorrow = back === 6 && !(lastCheckin && lastCheckin >= today)
-  if (done) return { due: false, overdueDays: 0, dueDate, tomorrow }
-  return { due: back === 0, overdueDays: back, dueDate, tomorrow }
+  const dueDate = checkinDueDate({ checkinDay, frequency, lastCheckin, today })
+  const late = daysBetween(dueDate, today)
+  return { due: late === 0, overdueDays: Math.max(0, late), dueDate, tomorrow: late === -1 }
 }
 
 const first = name => String(name || '').trim().split(/\s+/)[0] || ''
@@ -25,7 +23,7 @@ const first = name => String(name || '').trim().split(/\s+/)[0] || ''
 export function morningFor(f) {
   const p = { ...DEFAULT_PREFS, ...(f.prefs || {}) }
   if (p.checkin && f.checkin?.due) {
-    return { user_id: f.id, title: 'Check-in day ✅', body: `${first(f.name) ? first(f.name) + ', s' : 'S'}ubmit your weekly check-in today${f.sessionsToday?.length && p.workout ? `, and ${f.sessionsToday.join(' + ')} is on` : ''}.`, url: '/app/checkin', tag: 'morning' }
+    return { user_id: f.id, title: 'Check-in day ✅', body: `${first(f.name) ? first(f.name) + ', s' : 'S'}ubmit your check-in today${f.sessionsToday?.length && p.workout ? `, and ${f.sessionsToday.join(' + ')} is on` : ''}.`, url: '/app/checkin', tag: 'morning' }
   }
   if (p.workout && f.sessionsToday?.length && !f.trainedToday) {
     return { user_id: f.id, title: `Today: ${f.sessionsToday.join(' + ')} 💪`, body: 'Your session is loaded. Tap to start, and log as you go.', url: '/app/training', tag: 'morning' }

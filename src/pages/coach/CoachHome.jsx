@@ -3,12 +3,21 @@ import { Link } from 'react-router-dom'
 import { CheckSquare, Square, Plus, Repeat, Trash2, MessageCircle, ClipboardList, MoreVertical, Target } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { localDateStr, logDate } from '../../lib/weeks'
+import { checkinDueDate, daysBetween } from '../../lib/dashboard'
 import Avatar from '../Avatar'
 
 function startOfWeek(d = new Date()) {
   const day = (d.getDay() + 6) % 7 // Monday = 0
   const monday = new Date(d); monday.setDate(d.getDate() - day); monday.setHours(0,0,0,0)
   return monday
+}
+// Days past this client's check-in due date at their frequency (negative = not
+// due yet; 999 = never checked in and no day set).
+function checkinLate(c, checkins) {
+  const last = checkins?.find(ci => ci.client_id === c.id)
+  const today = localDateStr()
+  const due = checkinDueDate({ checkinDay: c.checkin_day, frequency: c.checkin_frequency, lastCheckin: last ? localDateStr(new Date(last.submitted_at)) : null, today })
+  return due ? daysBetween(due, today) : 999
 }
 function daysAgo(dateStr) { return Math.floor((Date.now() - new Date(dateStr).getTime()) / 864e5) }
 
@@ -135,11 +144,11 @@ export default function CoachHome() {
   async function load() {
     setLoading(true)
     const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }, { data: ratingsData }, { data: flagsData }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, protein_g, calories, created_at, avatar_url').eq('role', 'client').neq('status', 'exited').order('full_name'),
+      supabase.from('profiles').select('id, full_name, protein_g, calories, created_at, avatar_url, checkin_day, checkin_frequency').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('program_assignments').select('*'),
       supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text, logged_date').order('logged_at', { ascending: false }).limit(600),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(400),
-      supabase.from('checkins').select('client_id, submitted_at, notes, weight').order('submitted_at', { ascending: false }).limit(100),
+      supabase.from('checkins').select('client_id, submitted_at, notes, weight').gte('submitted_at', new Date(Date.now() - 60 * 864e5).toISOString()).order('submitted_at', { ascending: false }).limit(1000),
       supabase.from('messages').select('sender_id, recipient_id, created_at'),
       supabase.from('meal_logs').select('client_id, protein_g, logged_on').order('logged_on', { ascending: false }).limit(600),
       supabase.from('client_ratings').select('*'),
@@ -175,8 +184,7 @@ export default function CoachHome() {
       const exerciseDue = hasAssignment && (!lastWorkout || daysAgo(lastWorkout.logged_at) >= 3)
       const lastDaily = dailyLogs?.find(d => d.client_id === c.id)
       const lifestyleDue = !lastDaily || daysAgo(lastDaily.log_date) >= 2
-      const lastCheckin = checkins?.find(ci => ci.client_id === c.id)
-      const checkinDue = !lastCheckin || daysAgo(lastCheckin.submitted_at) >= 6
+      const checkinDue = checkinLate(c, checkins) >= 0
       const consultDue = !lastContact[c.id] || daysAgo(lastContact[c.id]) >= 5
 
       const last14Days = new Set(
@@ -237,9 +245,8 @@ export default function CoachHome() {
 
     const hp = {}
     for (const c of cl || []) {
-      const lastCheckin = checkins?.find(ci => ci.client_id === c.id)
-      const daysSinceCheckin = lastCheckin ? daysAgo(lastCheckin.submitted_at) : 999
-      const checkinLight = daysSinceCheckin <= 6 ? 'green' : daysSinceCheckin <= 9 ? 'yellow' : 'red'
+      const late = checkinLate(c, checkins)
+      const checkinLight = late <= 0 ? 'green' : late <= 3 ? 'yellow' : 'red'
 
       const s = st[c.id]
       const programLight = s.exercise ? 'red' : s.lifestyle ? 'yellow' : 'green'

@@ -31,7 +31,7 @@ export async function runSlot(sb, slot, today, tz) {
   const userIds = [...new Set((subs || []).map(s => s.user_id))]
   if (!userIds.length) return { people: 0, sent: 0 }
 
-  const { data: people } = await sb.from('profiles').select('id, role, full_name, status, checkin_day').in('id', userIds)
+  const { data: people } = await sb.from('profiles').select('id, role, full_name, status, checkin_day, checkin_frequency').in('id', userIds)
   const clients = (people || []).filter(p => p.role === 'client' && p.status !== 'paused' && p.status !== 'exited')
   const coaches = (people || []).filter(p => p.role === 'coach')
   const prefs = await prefsFor(sb, userIds)
@@ -62,7 +62,7 @@ async function gatherFacts(sb, clients, today, tz, prefs) {
     sb.from('daily_logs').select('client_id, trained').in('client_id', ids).eq('log_date', today),
     sb.from('client_habits').select('id, client_id').in('client_id', ids).eq('active', true),
     sb.from('habit_logs').select('client_id, habit_id').in('client_id', ids).eq('log_date', today),
-    sb.from('checkins').select('client_id, submitted_at').in('client_id', ids).gte('submitted_at', addDays(today, -21)).order('submitted_at', { ascending: false }),
+    sb.from('checkins').select('client_id, submitted_at').in('client_id', ids).gte('submitted_at', addDays(today, -45))   // monthly clients' last one is ~28 days back.order('submitted_at', { ascending: false }),
   ])
 
   // today's sessions per client, from their program's current block/week
@@ -94,7 +94,7 @@ async function gatherFacts(sb, clients, today, tz, prefs) {
       trainedToday: trained.has(c.id),
       foodLoggedToday: ate.has(c.id),
       habitsLeft: mine.filter(h => !ticked.has(h.id)).length,
-      checkin: checkinState(c.checkin_day, lastCk[c.id] || null, today),
+      checkin: checkinState(c.checkin_day, lastCk[c.id] || null, today, c.checkin_frequency),
     }
   })
 }
