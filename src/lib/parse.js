@@ -139,3 +139,181 @@ export function parseProgramText(text) {
   }
   return rows
 }
+
+// ---------------------------------------------------------------------------
+// Paste a whole block
+//
+// Same line notation as a day, plus two things:
+//
+//   === Day 1: Upper A ===                  <- a heading starts a new workout
+//   Warm-up: 5 min bike, band pull-aparts    <- goes in that workout's warm-up box
+//   A) Bench 3x5-6 RIR 2 > 3x4-6 RIR 2 > 3x3-5 RIR 1-2 > 3x3-4 RIR 1
+//   Pogo Hops 2x15 > 2x20 > 3x20 | Quick, stiff ankles
+//
+// " > " separates weeks. Anything a week leaves out carries over from the week
+// before ("> RIR 1" keeps the sets and reps, just changes the target), and the
+// last week given repeats to the end of the block, so a line with no ">" is the
+// same every week. Name, letter, rest and the note come from the first week.
+// ---------------------------------------------------------------------------
+
+// "=== Day 1: Upper A ===", "## Upper A", "== Lower B (Day 5) =="
+const BLOCK_HEADING = /^\s*(?:={2,}|#{1,3})\s*(.*?)\s*=*\s*$/
+const HEADING_DAY_FIRST = /^day\s*([1-7])\s*(?:[:\-–—|.)]\s*)?(.*)$/i
+const HEADING_DAY_LAST = /^(.*?)\s*[([]\s*day\s*([1-7])\s*[)\]]\s*$/i
+const WARMUP_LINE = /^\s*warm\s*-?\s*up\s*:\s*(.+)$/i
+// " > " or an arrow; a bare ">" with no spaces is left alone so a note
+// like "RIR >2" can't split a line by accident
+const WEEK_SPLIT = /\s+>\s+|\s*[→⇒]\s*/
+const NOTE_SPLIT = /\s(?:\||\/\/)\s*/
+
+function parseHeading(text) {
+  let label = clean(text)
+  let dayNumber = null
+  let m = label.match(HEADING_DAY_FIRST)
+  if (m) { dayNumber = +m[1]; label = clean(m[2]) }
+  else if ((m = label.match(HEADING_DAY_LAST))) { label = clean(m[1]); dayNumber = +m[2] }
+  return { label: label || (dayNumber ? `Day ${dayNumber}` : 'Workout'), dayNumber }
+}
+
+// One week's worth of "3x4-6 RIR 2". Reuses the line parser with a stand-in
+// name, so every notation the day paste accepts works here too.
+export function parseWeekSegment(seg) {
+  const r = parseExerciseLine('_ ' + seg)
+  const issues = []
+  if (!r) return { sets: null, reps: '', metric: 'reps', target: '', progression_type: null, setRows: null, rest: '', issues: ['empty week'] }
+  if (r.name !== '_') issues.push(`couldn't read "${clean(seg)}"`)
+  const hasTarget = r.target !== ''
+  return {
+    sets: r.sets, reps: r.reps, metric: r.metric, target: r.target,
+    // only claim a progression type when the week actually typed a target
+    progression_type: hasTarget ? r.progression_type : null,
+    setRows: r.setRows, rest: r.rest, issues,
+  }
+}
+
+// A full exercise line, including its week chain.
+export function parseBlockExerciseLine(raw) {
+  const original = clean(raw)
+  if (!original) return null
+  let head = original
+  let note = ''
+  const nm = head.match(NOTE_SPLIT)
+  if (nm) { note = clean(head.slice(nm.index + nm[0].length)); head = clean(head.slice(0, nm.index)) }
+
+  const parts = head.split(WEEK_SPLIT).map(clean)
+  const first = parseExerciseLine(parts[0])
+  if (!first) return null
+  const row = { ...first, notes: note, raw: original, warnings: [], weeks: [] }
+
+  let prev = {
+    sets: first.sets, reps: first.reps, target: first.target,
+    setRows: first.setRows ? first.setRows.map(x => ({ ...x })) : null,
+  }
+  row.weeks.push({ ...prev })
+
+  for (let i = 1; i < parts.length; i++) {
+    const seg = parts[i]
+    if (!seg) { row.issues.push(`week ${i + 1} is empty`); continue }
+    const s = parseWeekSegment(seg)
+    for (const msg of s.issues) row.issues.push(`week ${i + 1}: ${msg}`)
+    if (s.rest) row.warnings.push(`rest in week ${i + 1} ignored — rest is set once, on week 1`)
+    if (s.sets != null && s.metric !== first.metric) {
+      row.issues.push(`week ${i + 1} switches from ${first.metric} to ${s.metric} — keep the same kind of work all block`)
+    }
+    if (s.progression_type && s.progression_type !== first.progression_type) {
+      row.issues.push(`week ${i + 1} uses ${s.progression_type.toUpperCase()} but week 1 uses ${first.progression_type.toUpperCase()}`)
+    }
+    let next
+    if (s.setRows) {
+      next = { sets: s.setRows.length, reps: s.setRows[0].reps, target: s.setRows[0].target, setRows: s.setRows.map(x => ({ ...x })) }
+    } else if (s.sets != null) {
+      next = { sets: s.sets, reps: s.reps, target: s.target !== '' ? s.target : prev.target, setRows: null }
+    } else {
+      // target-only week ("> RIR 1"): keep the shape, change the effort
+      next = {
+        sets: prev.sets, reps: prev.reps, target: s.target !== '' ? s.target : prev.target,
+        setRows: prev.setRows && s.target !== '' ? prev.setRows.map(x => ({ ...x, target: s.target })) : prev.setRows,
+      }
+    }
+    row.weeks.push(next)
+    prev = next
+  }
+  return row
+}
+
+// Whole pasted block -> { days: [{ label, dayNumber, warmup, exercises }], skipped: [{ raw, why }] }
+// blockWeeks lets it flag a line that lists more weeks than the block has.
+export function parseBlockText(text, blockWeeks = 4) {
+  const days = []
+  const skipped = []
+  let cur = null
+  for (const rawLine of String(text || '').split(/\r?\n/)) {
+    const line = clean(rawLine)
+    if (!line) continue
+    const hm = line.match(BLOCK_HEADING)
+    if (hm && hm[1]) {
+      const { label, dayNumber } = parseHeading(hm[1])
+      const prevNum = days.length ? days[days.length - 1].dayNumber : 0
+      cur = { label, dayNumber: dayNumber || Math.min(7, prevNum + 1), warmup: '', exercises: [] }
+      days.push(cur)
+      continue
+    }
+    if (hm) continue // a bare "=====" divider
+    const wm = line.match(WARMUP_LINE)
+    if (wm) {
+      if (!cur) { skipped.push({ raw: line, why: 'warm-up before the first workout heading' }); continue }
+      cur.warmup = cur.warmup ? `${cur.warmup}\n${clean(wm[1])}` : clean(wm[1])
+      continue
+    }
+    const row = parseBlockExerciseLine(line)
+    if (!row) continue // a heading-style word like "PUSH" on its own
+    if (!cur) { skipped.push({ raw: line, why: 'before the first workout heading (=== Day 1: Upper A ===)' }); continue }
+    if (row.weeks.length > blockWeeks) {
+      row.issues.push(`${row.weeks.length} weeks listed but this block is ${blockWeeks} weeks`)
+    }
+    cur.exercises.push(row)
+  }
+  return { days, skipped }
+}
+
+// The program_exercises rows for one pasted workout (everything except
+// day_id, which the caller adds once the workout exists).
+// Letters typed in the paste are kept; a repeated letter moves to the next
+// free one. Lines without a letter stay unlettered (primers, finishers).
+export function blockExerciseRows(exercises, blockWeeks = 4) {
+  const used = new Set()
+  const typed = exercises.map(r => (r.letter || '').toUpperCase())
+  const rows = []
+  exercises.forEach((r, i) => {
+    let letter = typed[i]
+    if (letter && used.has(letter)) {
+      letter = ''
+      for (let c = 0; c < 26; c++) {
+        const L = String.fromCharCode(65 + c)
+        if (!used.has(L) && !typed.includes(L)) { letter = L; break }
+      }
+    }
+    if (letter) used.add(letter)
+    const metric = r.metric || 'reps'
+    const fallbackReps = metric === 'time' ? '30 sec' : metric === 'distance' ? '40 yd' : '8-12'
+    const week_targets = Array.from({ length: blockWeeks }, (_, w) => {
+      const src = r.weeks[Math.min(w, r.weeks.length - 1)] || {}
+      const entry = {
+        sets: src.sets || 3,
+        reps: String(src.reps || fallbackReps),
+        target: String(src.target ?? ''),
+      }
+      if (src.setRows) entry.setRows = src.setRows.map(x => ({ reps: String(x.reps), target: String(x.target) }))
+      return entry
+    })
+    const w1 = week_targets[0]
+    rows.push({
+      name: r.name, kind: 'exercise', description: '', tracking_type: '', letter,
+      video_url: '', notes: r.notes || '', icon_url: null,
+      metric, rest: r.rest || '', progression_type: r.progression_type || 'rir',
+      sets: w1.sets, reps: w1.reps, rir: w1.target,
+      week_targets, position: i,
+    })
+  })
+  return rows
+}
