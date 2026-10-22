@@ -6,7 +6,7 @@ import ReminderSettings from '../ReminderSettings'
 import {
   LayoutDashboard, Users, Bell, Video, Trophy, FileText, BookOpen, Map, Users2,
   ClipboardList, Library, ListChecks, CalendarCheck, MessageCircle, Quote, Target, Webcam,
-  FileCheck2, ClipboardSignature, Copy, BellRing } from 'lucide-react'
+  FileCheck2, ClipboardSignature, Copy, BellRing, Gauge } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import CoachHome from './CoachHome'
 import CoachClients from './CoachClients'
@@ -26,6 +26,7 @@ import CoachHealth from './CoachHealth'
 import CoachNutrition from './CoachNutrition'
 import CoachHub from './CoachHub'
 import CoachCheckins from './CoachCheckins'
+import CoachScorecard from './CoachScorecard'
 import CoachMessages from './CoachMessages'
 import CoachPipeline from './CoachPipeline'
 import CoachCalls from './CoachCalls'
@@ -59,6 +60,7 @@ export default function CoachDashboard() {
         <NavLink to="/coach/intake-forms"><FileCheck2 size={17} strokeWidth={2} /><span>Intake Forms</span></NavLink>
         <NavLink to="/coach/contracts"><ClipboardSignature size={17} strokeWidth={2} /><span>Contracts</span></NavLink>
         <NavLink to="/coach/checkins"><CalendarCheck size={17} strokeWidth={2} /><span>Check-ins</span></NavLink>
+        <NavLink to="/coach/scorecard"><Gauge size={17} strokeWidth={2} /><span>Scorecard</span></NavLink>
         <NavLink to="/coach/calls"><Webcam size={17} strokeWidth={2} /><span>Calls</span></NavLink>
         <NavLink to="/coach/messages"><MessageCircle size={17} strokeWidth={2} /><span>Messages</span></NavLink>
         <NavLink to="/coach/testimonials"><Quote size={17} strokeWidth={2} /><span>Testimonials</span></NavLink>
@@ -93,6 +95,7 @@ export default function CoachDashboard() {
           <Route path="nutrition/:clientId" element={<CoachNutrition />} />
           <Route path="testimonials" element={<CoachTestimonials />} />
           <Route path="checkins" element={<CoachCheckins />} />
+          <Route path="scorecard" element={<CoachScorecard />} />
           <Route path="calls" element={<CoachCalls />} />
           <Route path="messages" element={<CoachMessages />} />
           <Route path="notifications" element={<ReminderSettings />} />

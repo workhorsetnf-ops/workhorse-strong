@@ -37,6 +37,8 @@ export function eveningFor(f) {
   let url = '/app'
   if (p.workout && f.sessionsToday?.length && !f.trainedToday) { items.push(`${f.sessionsToday.join(' + ')} not logged`); url = '/app/training' }
   if (p.food && !f.foodLoggedToday) { items.push("log today's food"); if (url === '/app') url = '/app/nutrition' }
+  // tiered quick check-in: one line in tonight's roll-up, never a ping of its own
+  if (p.checkin && f.quickDue) items.push('quick check-in (30 sec)')
   if (p.habits && f.habitsLeft > 0) { items.push(`${f.habitsLeft} habit${f.habitsLeft === 1 ? '' : 's'} left`); if (url === '/app') url = '/app/habits' }
   if (p.checkin && f.checkin && !f.checkin.due && f.checkin.overdueDays >= 1 && f.checkin.overdueDays <= 3) { items.unshift(`check-in is ${f.checkin.overdueDays} day${f.checkin.overdueDays === 1 ? '' : 's'} late`); url = '/app/checkin' }
   else if (p.checkin && f.checkin?.due) { items.unshift('check-in still due today'); url = '/app/checkin' }

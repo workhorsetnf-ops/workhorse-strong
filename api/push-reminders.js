@@ -11,6 +11,7 @@ import { admin, sendToUsers, prefsFor, localDateIn } from './_push.js'
 import { resolveAssignment, dayShowsInWeek } from '../src/lib/weeks.js'
 import { splitForWeek, addDays } from '../src/lib/dashboard.js'
 import { checkinState, morningFor, eveningFor, coachDigest } from '../src/lib/reminders.js'
+import { quickDone, quickDue } from '../src/lib/adherence.js'
 
 export default async function handler(req, res) {
   if (process.env.CRON_SECRET && (req.headers.authorization || '') !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -31,7 +32,7 @@ export async function runSlot(sb, slot, today, tz) {
   const userIds = [...new Set((subs || []).map(s => s.user_id))]
   if (!userIds.length) return { people: 0, sent: 0 }
 
-  const { data: people } = await sb.from('profiles').select('id, role, full_name, status, checkin_day, checkin_frequency').in('id', userIds)
+  const { data: people } = await sb.from('profiles').select('id, role, full_name, status, checkin_day, checkin_frequency, adherence_tier').in('id', userIds)
   const clients = (people || []).filter(p => p.role === 'client' && p.status !== 'paused' && p.status !== 'exited')
   const coaches = (people || []).filter(p => p.role === 'coach')
   const prefs = await prefsFor(sb, userIds)
@@ -59,7 +60,8 @@ async function gatherFacts(sb, clients, today, tz, prefs) {
     sb.from('program_assignments').select('*').in('client_id', ids),
     sb.from('workout_logs').select('client_id, logged_at').in('client_id', ids).gte('logged_at', addDays(today, -1)),
     sb.from('meal_logs').select('client_id').in('client_id', ids).eq('logged_on', today),
-    sb.from('daily_logs').select('client_id, trained').in('client_id', ids).eq('log_date', today),
+    // the last week, for tiered quick check-ins (today's row also says if they trained)
+    sb.from('daily_logs').select('client_id, log_date, trained, weight, sleep_hours, readiness, quick_checkin_at').in('client_id', ids).gte('log_date', addDays(today, -7)).lte('log_date', today),
     sb.from('client_habits').select('id, client_id').in('client_id', ids).eq('active', true),
     sb.from('habit_logs').select('client_id, habit_id').in('client_id', ids).eq('log_date', today),
     // 45 days back so a monthly client's last check-in (~28 days ago) is seen; newest first
@@ -81,7 +83,9 @@ async function gatherFacts(sb, clients, today, tz, prefs) {
   }
 
   const trained = new Set((wl.data || []).filter(l => localDateIn(tz, new Date(l.logged_at)) === today).map(l => l.client_id))
-  for (const d of dl.data || []) if (d.trained) trained.add(d.client_id)
+  for (const d of dl.data || []) if (d.trained && d.log_date === today) trained.add(d.client_id)
+  const quickDates = {}
+  for (const d of dl.data || []) if (quickDone(d)) (quickDates[d.client_id] ||= new Set()).add(d.log_date)
   const ate = new Set((ml.data || []).map(l => l.client_id))
   const lastCk = {}
   for (const c of ck.data || []) if (!lastCk[c.client_id]) lastCk[c.client_id] = localDateIn(tz, new Date(c.submitted_at))
@@ -96,6 +100,7 @@ async function gatherFacts(sb, clients, today, tz, prefs) {
       foodLoggedToday: ate.has(c.id),
       habitsLeft: mine.filter(h => !ticked.has(h.id)).length,
       checkin: checkinState(c.checkin_day, lastCk[c.id] || null, today, c.checkin_frequency),
+      quickDue: quickDue(c.adherence_tier, quickDates[c.id] || new Set(), today),
     }
   })
 }
