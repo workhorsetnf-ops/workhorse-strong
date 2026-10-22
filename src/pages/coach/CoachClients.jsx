@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { calcMacros } from '../../lib/macros'
 import { CHECKIN_FREQS } from '../../lib/dashboard'
+import { PAYMENT_TYPES, nextPayment, paymentSummary, daysToPayment } from '../../lib/payments'
+import { localDateStr } from '../../lib/weeks'
 import Avatar, { AvatarPicker } from '../Avatar'
 import InviteClients from './InviteClients'
 import { callApi } from '../../lib/push'
@@ -100,7 +102,7 @@ export default function CoachClients() {
     const { data: r } = await supabase.from('client_ratings').select('*').eq('client_id', c.id).maybeSingle()
     setRating({ retention: r?.retention || null, mindset: r?.mindset || null, notes: r?.notes || '' })
     setCalcResult(null)
-    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null, checkin_frequency: c.checkin_frequency || 'weekly', status: c.status || 'active', payment_plan: c.payment_plan || '', contract_ends: c.contract_ends || '', split_ends: c.split_ends || '', start_date: c.start_date || '', payment_date: c.payment_date || '', goal: c.goal || '', target_weight: c.target_weight ?? '', age: c.age ?? '', height_ft: c.height_in ? Math.floor(c.height_in / 12) : '', height_inch: c.height_in ? c.height_in % 12 : '', steps_target: c.steps_target ?? '', water_oz: c.water_oz ?? '', limitations: c.limitations || '', phone: c.phone || '', event_name: c.event_name || '', event_date: c.event_date || '' })
+    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null, checkin_frequency: c.checkin_frequency || 'weekly', status: c.status || 'active', payment_plan: c.payment_plan || '', payment_type: c.payment_type || '', payment_amount: c.payment_amount ?? '', contract_ends: c.contract_ends || '', split_ends: c.split_ends || '', start_date: c.start_date || '', payment_date: c.payment_date || '', goal: c.goal || '', target_weight: c.target_weight ?? '', age: c.age ?? '', height_ft: c.height_in ? Math.floor(c.height_in / 12) : '', height_inch: c.height_in ? c.height_in % 12 : '', steps_target: c.steps_target ?? '', water_oz: c.water_oz ?? '', limitations: c.limitations || '', phone: c.phone || '', event_name: c.event_name || '', event_date: c.event_date || '' })
     setOriginalEmail(c.email || '')
     // Pull their pre-sale timeline in if they came through the pipeline.
     const hist = leadHistory[c.id]
@@ -132,6 +134,8 @@ export default function CoachClients() {
       checkin_frequency: form.checkin_frequency || 'weekly',
       status: form.status,
       payment_plan: form.payment_plan?.trim() || null,
+      payment_type: form.payment_type || null,
+      payment_amount: form.payment_amount === '' || form.payment_amount === null ? null : Number(form.payment_amount) || null,
       contract_ends: form.contract_ends || null,
       split_ends: form.split_ends || null,
       start_date: form.start_date || null,
@@ -340,15 +344,33 @@ export default function CoachClients() {
                       <input type="date" value={form.split_ends} onChange={e => setForm({ ...form, split_ends: e.target.value })} />
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 8, marginTop: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 1fr', gap: 8, marginTop: 8 }}>
                     <div>
-                      <label className="muted" style={{ fontSize: 11.5 }}>Payment plan</label>
-                      <input placeholder="e.g. $200/mo, autopay" value={form.payment_plan} onChange={e => setForm({ ...form, payment_plan: e.target.value })} />
+                      <label className="muted" style={{ fontSize: 11.5 }}>Payment</label>
+                      <select value={form.payment_type || ''} onChange={e => setForm({ ...form, payment_type: e.target.value })}>
+                        <option value="">Not set</option>
+                        {PAYMENT_TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                      </select>
                     </div>
                     <div>
-                      <label className="muted" style={{ fontSize: 11.5 }}>Payment date</label>
+                      <label className="muted" style={{ fontSize: 11.5 }}>{form.payment_type === 'pif' ? 'Amount paid ($)' : 'Amount ($)'}</label>
+                      <input inputMode="decimal" placeholder="optional" value={form.payment_amount ?? ''} onChange={e => setForm({ ...form, payment_amount: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="muted" style={{ fontSize: 11.5 }}>{form.payment_type === 'pif' ? 'Date paid' : form.payment_type ? 'A payment date' : 'Payment date'}</label>
                       <input type="date" value={form.payment_date} onChange={e => setForm({ ...form, payment_date: e.target.value })} />
                     </div>
+                  </div>
+                  {(form.payment_type === 'monthly' || form.payment_type === 'biweekly') && (
+                    <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+                      {form.payment_date
+                        ? <>Next payment: <strong style={{ color: 'var(--orange-hot)' }}>{new Date(nextPayment(form.payment_type, form.payment_date, localDateStr()) + 'T00:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</strong> · then every {form.payment_type === 'monthly' ? 'month on the same date' : '2 weeks'}, worked out automatically</>
+                        : 'Pick any one of their payment dates (e.g. the first). Every next payment is worked out from it.'}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 8 }}>
+                    <label className="muted" style={{ fontSize: 11.5 }}>Payment notes</label>
+                    <input placeholder="e.g. autopay via Stripe, 6-month contract" value={form.payment_plan} onChange={e => setForm({ ...form, payment_plan: e.target.value })} />
                   </div>
                 </div>
 
@@ -525,12 +547,12 @@ export default function CoachClients() {
                   <div className="muted" style={{ fontSize: 13, marginTop: 3, textTransform: 'capitalize' }}>
                     {c.phase} · P {c.protein_g} / C {c.carbs_g} / F {c.fat_g} · {c.calories} kcal
                   </div>
-                  {(c.start_date || c.payment_plan || c.payment_date || c.contract_ends || c.split_ends) && (
+                  {(c.start_date || c.payment_plan || c.payment_date || c.payment_type || c.contract_ends || c.split_ends) && (
                     <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
+                      {(() => { const d = daysToPayment(c, localDateStr()); return d !== null && d <= 3 ? <span style={{ color: 'var(--orange-hot)', fontWeight: 800 }}>{d === 0 ? 'Payment due today · ' : d === 1 ? 'Payment due tomorrow · ' : `Payment in ${d} days · `}</span> : null })()}
                       {[
                         c.start_date && `Started ${new Date(c.start_date + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`,
-                        c.payment_plan,
-                        c.payment_date && `Payment ${new Date(c.payment_date + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`,
+                        paymentSummary(c, localDateStr()),
                         c.contract_ends && `Contract ends ${new Date(c.contract_ends + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`,
                         c.split_ends && `Split ends ${new Date(c.split_ends + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`,
                       ].filter(Boolean).join(' · ')}

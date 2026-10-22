@@ -7,6 +7,8 @@ import { WeekTable } from '../client/ClientProgress'
 const EMPTY_LOG = { client_id: '', weight: '', waist: '', sleep_avg: '', energy: 7, hunger: 5, notes: '' }
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 import { freqLabel } from '../../lib/dashboard'
+import { paymentSummary } from '../../lib/payments'
+import { localDateStr } from '../../lib/weeks'
 
 const EMPTY_SNAPSHOT = {
   status: 'pending', current_macros: '', training_program: '', cardio: '', steps: '', biofeedback: '',
@@ -75,8 +77,7 @@ function ClientFieldsStrip({ profile }) {
     ['Check-In Day', (profile.checkin_day ?? null) !== null ? WEEKDAYS[profile.checkin_day] : '—'],
     ['Frequency', freqLabel(profile.checkin_frequency)],
     ['Phase', profile.phase ? profile.phase[0].toUpperCase() + profile.phase.slice(1) : '—'],
-    ['Payment Plan', profile.payment_plan || '—'],
-    ['Payment Date', profile.payment_date ? fmtDate(profile.payment_date) : '—'],
+    ['Payment', paymentSummary(profile, localDateStr()) || '—'],
     ['Contract Ends', profile.contract_ends ? fmtDate(profile.contract_ends) : '—'],
     ['Split Ends', profile.split_ends ? fmtDate(profile.split_ends) : '—'],
   ]
@@ -169,7 +170,7 @@ export default function CoachCheckins() {
   async function load() {
     const [{ data: c }, { data: p }] = await Promise.all([
       supabase.from('checkins').select('*').order('submitted_at', { ascending: false }).limit(200),
-      supabase.from('profiles').select('id, full_name, phase, checkin_day, checkin_frequency, status, payment_plan, payment_date, contract_ends, split_ends, start_date')
+      supabase.from('profiles').select('id, full_name, phase, checkin_day, checkin_frequency, status, payment_plan, payment_date, payment_type, payment_amount, contract_ends, split_ends, start_date')
         .eq('role', 'client').neq('status', 'exited').order('full_name'),
     ])
     setCheckins(c || [])
@@ -403,9 +404,9 @@ export default function CoachCheckins() {
                 </div>
               </div>
 
-              {(g.profile.payment_plan || g.profile.contract_ends || g.profile.split_ends) && (
+              {(g.profile.payment_plan || g.profile.payment_type || g.profile.payment_date || g.profile.contract_ends || g.profile.split_ends) && (
                 <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                  {g.profile.payment_plan && <>{g.profile.payment_plan}</>}
+                  {paymentSummary(g.profile, localDateStr())}
                   {g.profile.contract_ends && <> · Contract ends {fmtDate(g.profile.contract_ends)}</>}
                   {g.profile.split_ends && <> · Split ends {fmtDate(g.profile.split_ends)}</>}
                 </div>
