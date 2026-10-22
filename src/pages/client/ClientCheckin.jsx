@@ -40,15 +40,20 @@ export default function ClientCheckin() {
     if (!profile) return
     load()
     loadWeek()
-    supabase.from('checkin_form_assignments').select('form_id, checkin_forms(id, name)')
-      .eq('client_id', profile.id).maybeSingle()
-      .then(({ data }) => {
-        if (!data?.checkin_forms) return
-        setCustomForm(data.checkin_forms)
-        supabase.from('checkin_form_questions').select('*')
-          .eq('form_id', data.form_id).order('position')
-          .then(({ data: qs }) => setQuestions(qs || []))
-      })
+    // their own form if the coach assigned one, otherwise the default weekly form
+    ;(async () => {
+      const { data: a } = await supabase.from('checkin_form_assignments').select('form_id, checkin_forms(id, name, is_default)')
+        .eq('client_id', profile.id).maybeSingle()
+      let f = a?.checkin_forms || null
+      if (!f) {
+        const { data: d } = await supabase.from('checkin_forms').select('id, name, is_default').eq('is_default', true).maybeSingle()
+        f = d || null
+      }
+      if (!f) return
+      setCustomForm(f)
+      const { data: qs } = await supabase.from('checkin_form_questions').select('*').eq('form_id', f.id).order('position')
+      setQuestions(qs || [])
+    })()
   }, [profile])
 
   const week = lastNDays(7)
@@ -57,6 +62,28 @@ export default function ClientCheckin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [dailyRows, workoutDates, week.join()])
   const fewWeighIns = summary.days_weighed < 5
+
+  // Pre-fill the weight/waist and sleep questions from data the app already has,
+  // once, without overwriting anything the client has typed.
+  const r1 = n => (n === null || n === undefined || n === '' || isNaN(Number(n)) ? '' : String(Math.round(Number(n) * 10) / 10))
+  useEffect(() => {
+    if (!questions.length) return
+    setAnswers(prev => {
+      const next = { ...prev }
+      for (const q of questions) {
+        if (next[q.id] !== undefined) continue
+        if (q.qtype === 'body_prev') { const last = history[0]; if (last) next[q.id] = { weight: r1(last.weight), waist: r1(last.waist) } }
+        else if (q.qtype === 'body_now' && summary.weight != null) next[q.id] = { weight: r1(summary.weight), waist: '' }
+        else if (q.qtype === 'number' && q.options?.prefill && summary[q.options.prefill] != null) next[q.id] = r1(summary[q.options.prefill])
+      }
+      return next
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions, history, summary.weight, summary.sleep_avg])
+
+  const bodyNow = questions.find(q => q.qtype === 'body_now')
+  const usesDefault = !!customForm?.is_default
+  const bodyText = v => [v?.weight && `${v.weight} lbs`, v?.waist && `${v.waist} in`].filter(Boolean).join(', ')
 
   async function submit() {
     if (fewWeighIns && !window.confirm(`Only ${summary.days_weighed} of 7 weigh-ins are logged, so your weekly average won't be accurate. Submit anyway?`)) return
@@ -70,11 +97,18 @@ export default function ClientCheckin() {
     }
     const urls = photoRows.map(r => r.path)
     const form_responses = questions
-      .map(q => ({ label: q.label, value: answers[q.id] ?? '' }))
+      .map(q => ({
+        label: q.label,
+        // a 1-10 slider left on 5 is still an answer
+        value: q.qtype === 'scale' ? (answers[q.id] ?? '5') : (q.qtype === 'body_prev' || q.qtype === 'body_now') ? bodyText(answers[q.id]) : (answers[q.id] ?? ''),
+      }))
       .filter(r => String(r.value).trim() !== '')
+    const nowBody = bodyNow ? answers[bodyNow.id] : null
+    const waist = +(nowBody?.waist ?? form.waist) || null
+    const weight = summary.weight ?? (+nowBody?.weight || null)
     const { error } = await supabase.from('checkins').insert({
       client_id: profile.id,
-      weight: summary.weight, waist: +form.waist || null, sleep_avg: summary.sleep_avg,
+      weight, waist, sleep_avg: summary.sleep_avg,
       energy: summary.energy, hunger: summary.hunger, steps: summary.steps,
       adherence: summary.adherence, sessions: summary.sessions, cardio_min: summary.cardio_min,
       stress: summary.stress, digestion: summary.digestion,
@@ -119,10 +153,12 @@ export default function ClientCheckin() {
       </div>
 
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div>
-          <label className="muted" style={{ fontSize: 12 }}>Waist (in) — measure at the navel</label>
-          <input inputMode="decimal" placeholder="e.g. 36.5" value={form.waist} onChange={e => setForm({ ...form, waist: e.target.value })} />
-        </div>
+        {!bodyNow && (
+          <div>
+            <label className="muted" style={{ fontSize: 12 }}>Waist (in) — measure at the navel</label>
+            <input inputMode="decimal" placeholder="e.g. 36.5" value={form.waist} onChange={e => setForm({ ...form, waist: e.target.value })} />
+          </div>
+        )}
         {questions.map(q => (
           <div key={q.id}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
@@ -130,6 +166,20 @@ export default function ClientCheckin() {
             </div>
             {q.qtype === 'text' && (
               <textarea rows="2" value={answers[q.id] || ''} onChange={e => setAnswers(a => ({ ...a, [q.id]: e.target.value }))} />
+            )}
+            {(q.qtype === 'body_prev' || q.qtype === 'body_now') && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div><div className="muted" style={{ fontSize: 11.5 }}>Weight (lbs)</div>
+                    <input inputMode="decimal" placeholder="e.g. 150" value={answers[q.id]?.weight ?? ''} onChange={e => setAnswers(a => ({ ...a, [q.id]: { ...(a[q.id] || {}), weight: e.target.value } }))} /></div>
+                  <div><div className="muted" style={{ fontSize: 11.5 }}>Waist (in){q.qtype === 'body_now' ? ', at the navel' : ''}</div>
+                    <input inputMode="decimal" placeholder="e.g. 32" value={answers[q.id]?.waist ?? ''} onChange={e => setAnswers(a => ({ ...a, [q.id]: { ...(a[q.id] || {}), waist: e.target.value } }))} /></div>
+                </div>
+                <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>
+                  {q.qtype === 'body_prev' ? (history[0] ? 'Filled in from your last check-in. Fix it if it\'s off.' : 'Your first check-in: fill in what you were last week, if you know it.')
+                    : summary.weight != null ? `Weight filled in from your ${summary.days_weighed}-day average.` : 'Log your daily weigh-ins and this fills itself in.'}
+                </div>
+              </>
             )}
             {q.qtype === 'number' && (
               <input inputMode="decimal" value={answers[q.id] || ''} onChange={e => setAnswers(a => ({ ...a, [q.id]: e.target.value }))} />
@@ -151,7 +201,9 @@ export default function ClientCheckin() {
             )}
           </div>
         ))}
-        <textarea rows="3" placeholder="How did the week go? Shows, travel, sleep, anything I should know." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
+        {!usesDefault && (
+          <textarea rows="3" placeholder="How did the week go? Shows, travel, sleep, anything I should know." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
+        )}
         <div>
           <div className="eyebrow" style={{ fontSize: 10, marginBottom: 6 }}>Progress photos</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>

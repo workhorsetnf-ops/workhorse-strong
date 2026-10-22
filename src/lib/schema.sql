@@ -1883,3 +1883,6 @@ alter table profiles alter column adherence_tier set default 3;
 alter table profiles alter column tier_since set default current_date;
 alter table daily_logs add column if not exists quick_checkin_at timestamptz;
 alter table daily_logs add column if not exists note text;
+
+-- ===== DEFAULT WEEKLY CHECK-IN FORM (Update 123) =====
+-- see migration_update123_default_checkin.sql (adds is_default, body_prev/body_now question types, client read policies, seeds the form)
