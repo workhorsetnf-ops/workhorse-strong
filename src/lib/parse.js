@@ -50,8 +50,8 @@ export function workOf(raw) {
 const AT_TARGET = /@\s*([0-9]+(?:\.[0-9]+)?)\s*(%?)/
 const RIR_TARGET = /\bRIR\s*([0-9]+(?:\s*-\s*[0-9]+)?)/i
 const RPE_TARGET = /\bRPE\s*([0-9]+(?:\.[0-9]+)?)/i
-// longest unit first, so "3 min" isn't cut to "3 m"
-const REST = /\brest\s*([0-9]+\s*(?:secs|sec|s|mins|min|m)?)\b/i
+// "rest 2:30" first, then longest unit first, so "3 min" isn't cut to "3 m"
+const REST = /\brest\s*([0-9]+:[0-5][0-9]|[0-9]+\s*(?:secs|sec|s|mins|min|m)?)\b/i
 // one per-set chunk: "6-12@2" or "5 @ 80%"
 const PER_SET = /([0-9]+(?:\s*-\s*[0-9]+)?|AMRAP)\s*@\s*([0-9]+(?:\.[0-9]+)?)\s*(%?)/gi
 
@@ -161,6 +161,7 @@ const BLOCK_HEADING = /^\s*(?:={2,}|#{1,3})\s*(.*?)\s*=*\s*$/
 const HEADING_DAY_FIRST = /^day\s*([1-7])\s*(?:[:\-–—|.)]\s*)?(.*)$/i
 const HEADING_DAY_LAST = /^(.*?)\s*[([]\s*day\s*([1-7])\s*[)\]]\s*$/i
 const WARMUP_LINE = /^\s*warm\s*-?\s*up\s*:\s*(.+)$/i
+const COOLDOWN_LINE = /^\s*cool\s*-?\s*down\s*:\s*(.+)$/i
 // " > " or an arrow; a bare ">" with no spaces is left alone so a note
 // like "RIR >2" can't split a line by accident
 const WEEK_SPLIT = /\s+>\s+|\s*[→⇒]\s*/
@@ -254,7 +255,7 @@ export function parseBlockText(text, blockWeeks = 4) {
     if (hm && hm[1]) {
       const { label, dayNumber } = parseHeading(hm[1])
       const prevNum = days.length ? days[days.length - 1].dayNumber : 0
-      cur = { label, dayNumber: dayNumber || Math.min(7, prevNum + 1), warmup: '', exercises: [] }
+      cur = { label, dayNumber: dayNumber || Math.min(7, prevNum + 1), warmup: '', cooldown: '', exercises: [] }
       days.push(cur)
       continue
     }
@@ -263,6 +264,12 @@ export function parseBlockText(text, blockWeeks = 4) {
     if (wm) {
       if (!cur) { skipped.push({ raw: line, why: 'warm-up before the first workout heading' }); continue }
       cur.warmup = cur.warmup ? `${cur.warmup}\n${clean(wm[1])}` : clean(wm[1])
+      continue
+    }
+    const cm = line.match(COOLDOWN_LINE)
+    if (cm) {
+      if (!cur) { skipped.push({ raw: line, why: 'cool-down before the first workout heading' }); continue }
+      cur.cooldown = cur.cooldown ? `${cur.cooldown}\n${clean(cm[1])}` : clean(cm[1])
       continue
     }
     const row = parseBlockExerciseLine(line)

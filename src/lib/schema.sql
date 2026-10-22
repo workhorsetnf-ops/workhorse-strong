@@ -1886,3 +1886,17 @@ alter table daily_logs add column if not exists note text;
 
 -- ===== DEFAULT WEEKLY CHECK-IN FORM (Update 123) =====
 -- see migration_update123_default_checkin.sql (adds is_default, body_prev/body_now question types, client read policies, seeds the form)
+
+-- ===== WARM-UP / COOL-DOWN LIBRARY (Update 124) =====
+create table if not exists routine_library (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null default 'warmup' check (kind in ('warmup', 'cooldown')),
+  name text not null,
+  body text not null default '',
+  video_url text not null default '',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create unique index if not exists routine_library_kind_name on routine_library (kind, lower(name));
+alter table routine_library enable row level security;
+create policy "coach manages routines" on routine_library for all using (is_coach()) with check (is_coach());
