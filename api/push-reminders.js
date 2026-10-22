@@ -62,7 +62,8 @@ async function gatherFacts(sb, clients, today, tz, prefs) {
     sb.from('daily_logs').select('client_id, trained').in('client_id', ids).eq('log_date', today),
     sb.from('client_habits').select('id, client_id').in('client_id', ids).eq('active', true),
     sb.from('habit_logs').select('client_id, habit_id').in('client_id', ids).eq('log_date', today),
-    sb.from('checkins').select('client_id, submitted_at').in('client_id', ids).gte('submitted_at', addDays(today, -45))   // monthly clients' last one is ~28 days back.order('submitted_at', { ascending: false }),
+    // 45 days back so a monthly client's last check-in (~28 days ago) is seen; newest first
+    sb.from('checkins').select('client_id, submitted_at').in('client_id', ids).gte('submitted_at', addDays(today, -45)).order('submitted_at', { ascending: false }),
   ])
 
   // today's sessions per client, from their program's current block/week
