@@ -1875,3 +1875,11 @@ insert into join_link (id, code)
 alter table join_link enable row level security;
 drop policy if exists "coach manages join link" on join_link;
 create policy "coach manages join link" on join_link for all using (is_coach()) with check (is_coach());
+
+-- ===== ADHERENCE TIERS + QUICK CHECK-IN (Update 122) =====
+alter table profiles add column if not exists adherence_tier int check (adherence_tier in (1, 2, 3));
+alter table profiles add column if not exists tier_since date;
+alter table profiles alter column adherence_tier set default 3;
+alter table profiles alter column tier_since set default current_date;
+alter table daily_logs add column if not exists quick_checkin_at timestamptz;
+alter table daily_logs add column if not exists note text;

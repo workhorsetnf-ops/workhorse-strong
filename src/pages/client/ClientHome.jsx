@@ -8,6 +8,7 @@ import { checkinDueDate, daysBetween } from '../../lib/dashboard'
 import ClientDashboard from './ClientDashboard'
 import { RemindersPrompt } from '../ReminderSettings'
 import Avatar from '../Avatar'
+import QuickCheckin from './QuickCheckin'
 
 export default function ClientHome() {
   const { profile } = useAuth()
@@ -218,6 +219,8 @@ export default function ClientHome() {
         </Link>
       )}
 
+      <QuickCheckin profile={profile} />
+
       <RemindersPrompt />
 
       {profile && <ClientDashboard profile={profile} />}
@@ -233,6 +236,8 @@ export default function ClientHome() {
         </div>
       </div>
 
+      {/* clients on an adherence tier rate recovery in the quick check-in instead */}
+      {!profile?.adherence_tier && (
       <div className="card">
         <div className="eyebrow" style={{ fontSize: 10, marginBottom: 8 }}>How are you feeling today?</div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -249,6 +254,7 @@ export default function ClientHome() {
           <span>Rough</span><span>{readinessSaved ? 'Saved ✓' : 'Great'}</span>
         </div>
       </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
         <Link to="/app/calendar" style={{ textDecoration: 'none' }}>
