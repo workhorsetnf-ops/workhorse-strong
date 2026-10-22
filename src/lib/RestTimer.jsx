@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 function parseRestSeconds(text) {
   if (!text) return 90
   const t = text.toLowerCase()
+  const clock = t.match(/(\d+)\s*:\s*(\d{1,2})/)
+  if (clock) return +clock[1] * 60 + +clock[2]
   const min = t.match(/(\d+(\.\d+)?)\s*min/)
   const sec = t.match(/(\d+)\s*sec/)
   if (min) return Math.round(parseFloat(min[1]) * 60)

@@ -4,6 +4,8 @@ import { normalizeTarget, normalizeReps, dash, effortText, effortMeaning } from 
 import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets } from '../../lib/weeks'
 import { parseProgramText, parseBlockText, blockExerciseRows } from '../../lib/parse'
 import NotesBox from './NotesBox'
+import RoutineBox from './RoutineBox'
+import { resolveRoutine } from '../../lib/routines'
 
 const GROUP_COLORS = ['#FF6A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
 const prefixOf = l => (l || '').replace(/[0-9]/g, '')
@@ -627,6 +629,8 @@ export default function CoachPrograms() {
   const [newProgram, setNewProgram] = useState('')
   const [newWeeks, setNewWeeks] = useState(4)
   const [library, setLibrary] = useState([])
+  const [routines, setRoutines] = useState([])   // saved warm-ups / cool-downs
+  const loadRoutines = () => supabase.from('routine_library').select('*').order('name').then(({ data }) => setRoutines(data || []))
   const [condLib, setCondLib] = useState([])
   const [lifeLib, setLifeLib] = useState([])
   const [quickAdd, setQuickAdd] = useState({})
@@ -678,6 +682,7 @@ export default function CoachPrograms() {
     load()
     supabase.auth.getUser().then(({ data }) => setCoachUserId(data?.user?.id || null))
     supabase.from('exercise_library').select('*').order('name').then(({ data }) => setLibrary(data || []))
+    loadRoutines()
     supabase.from('conditioning_library').select('*').order('name').then(({ data }) => setCondLib(data || []))
     supabase.from('lifestyle_library').select('*').order('name').then(({ data }) => setLifeLib(data || []))
   }, [])
@@ -920,7 +925,7 @@ export default function CoachPrograms() {
     const { days: pDays } = parseBlockText(blockPasteText, weeks)
     const ready = pDays
       .map(d => ({ ...d, good: d.exercises.filter(e => e.name && !e.issues.length) }))
-      .filter(d => d.good.length || d.warmup)
+      .filter(d => d.good.length || d.warmup || d.cooldown)
     if (!ready.length) return
     setBlockPasteBusy(true)
     const rot = (rotations[block.id]?.length ? activeRot : null) || null
@@ -929,7 +934,10 @@ export default function CoachPrograms() {
     for (const d of ready) {
       const { data: newDay, error } = await supabase.from('program_days').insert({
         program_id: block.program_id || open, block_id: block.id, day_label: d.label, day_number: d.dayNumber,
-        position: pos++, track: 'exercise', rotation_id: rot, warmup: d.warmup || '',
+        position: pos++, track: 'exercise', rotation_id: rot,
+        // "Warm-up: Upper Prep" naming a saved routine copies the saved one in
+        ...(() => { const w = resolveRoutine(d.warmup, routines, 'warmup'), c = resolveRoutine(d.cooldown, routines, 'cooldown')
+          return { warmup: w.body || '', warmup_video: w.video, cooldown: c.body || '', cooldown_video: c.video } })(),
       }).select().single()
       if (error || !newDay) {
         alert(`Stopped at "${d.label}": ${error?.message || 'could not create the workout'}.\n${made} workout(s) before it were added.`)
@@ -969,7 +977,7 @@ export default function CoachPrograms() {
     for (const d of pDays) {
       const g = d.exercises.filter(e => e.name && !e.issues.length).length
       goodCount += g
-      if (g || d.warmup) dayCount++
+      if (g || d.warmup || d.cooldown) dayCount++
     }
     return (
       <div className="card" style={{ padding: 12, marginBottom: 14, border: '1px solid var(--orange)', boxSizing: 'border-box', maxWidth: '100%' }}>
@@ -978,7 +986,7 @@ export default function CoachPrograms() {
           <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setBlockPasteOpen(false); setBlockPasteText('') }}>Close</button>
         </div>
         <textarea rows={10} value={blockPasteText} onChange={e => setBlockPasteText(e.target.value)}
-          placeholder={'=== Day 1: Upper A ===\nWarm-up: 5 min bike, band pull-aparts\nPogo Hops 2x15 rest 60s > 2x20 > 3x20 | Quick, stiff ankles\nA) Smith Bench 3x5-6 RIR 2 rest 3 min > 3x4-6 RIR 2 > 3x3-5 RIR 1-2 > 3x3-4 RIR 1\nB) Lat Pulldown 2x4-8 RIR 2 > RIR 2 > RIR 1-2 > RIR 0-1\n\n=== Day 2: Lower A ===\nA) Smith RDL 3x5-6 RIR 2 > 3x4-6 RIR 2 > 3x3-5 RIR 1-2 > 3x3-4 RIR 1'}
+          placeholder={'=== Day 1: Upper A ===\nWarm-up: 5 min bike, band pull-aparts\nPogo Hops 2x15 rest 60s > 2x20 > 3x20 | Quick, stiff ankles\nA) Smith Bench 3x5-6 RIR 2 rest 3 min > 3x4-6 RIR 2 > 3x3-5 RIR 1-2 > 3x3-4 RIR 1\nB) Lat Pulldown 2x4-8 RIR 2 > RIR 2 > RIR 1-2 > RIR 0-1\nCool-down: couch stretch 60s each side\n\n=== Day 2: Lower A ===\nWarm-up: Lower Prep   <- the name of a saved warm-up pulls in the whole thing\nA) Smith RDL 3x5-6 RIR 2 > 3x4-6 RIR 2 > 3x3-5 RIR 1-2 > 3x3-4 RIR 1'}
           style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', padding: '8px 10px', fontSize: 12.5, fontFamily: 'inherit', resize: 'vertical' }} />
         <p className="muted" style={{ fontSize: 11, margin: '6px 0 0' }}>
           Start each workout with a heading: <code>=== Day 1: Upper A ===</code> (the day number is optional). Then one exercise per line, same as the day paste.
@@ -999,7 +1007,13 @@ export default function CoachPrograms() {
                     Day {d.dayNumber}: {d.label}
                   </strong>
                   <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>{good.length} exercise{good.length === 1 ? '' : 's'}</span>
-                  {d.warmup && <p className="muted" style={{ fontSize: 11, margin: '2px 0', fontStyle: 'italic' }}>Warm-up: {d.warmup.replace(/\n/g, ' · ')}</p>}
+                  {[['warmup', 'Warm-up'], ['cooldown', 'Cool-down']].map(([k, lab]) => {
+                    if (!d[k]) return null
+                    const r = resolveRoutine(d[k], routines, k)
+                    return <p key={k} className="muted" style={{ fontSize: 11, margin: '2px 0', fontStyle: 'italic' }}>
+                      {lab}: {r.saved ? <><strong style={{ color: 'var(--orange-hot)', fontStyle: 'normal' }}>☆ {r.saved.name}</strong> (from your library) · </> : null}{r.body.replace(/\n/g, ' · ')}
+                    </p>
+                  })}
                   {rows.map((r, i) => {
                     const wts = r.week_targets
                     const same = wts.every(w => JSON.stringify(w) === JSON.stringify(wts[0]))
@@ -1796,9 +1810,12 @@ export default function CoachPrograms() {
                                       <NotesBox label="Day notes" value={d.notes} hint="Shown at the top of this workout for the client."
                                         placeholder={'Focus today: explosive intent on every jump.\nKeep rest honest — use the timer.'}
                                         onSave={async v => { await supabase.from('program_days').update({ notes: v }).eq('id', d.id); loadDays(activeBlock.id) }} />
-                                      <NotesBox label="Warm-up" value={d.warmup} rows={5} hint="Shown above the exercises as the warm-up to do first."
+                                      <RoutineBox kind="warmup" text={d.warmup} video={d.warmup_video} library={routines} onLibraryChange={loadRoutines}
                                         placeholder={'3 min easy bike\n90/90 hip switches x 8\nBand pull-aparts x 15'}
-                                        onSave={async v => { await supabase.from('program_days').update({ warmup: v }).eq('id', d.id); loadDays(activeBlock.id) }} />
+                                        onSave={async ({ text, video }) => { await supabase.from('program_days').update({ warmup: text, warmup_video: video }).eq('id', d.id); loadDays(activeBlock.id) }} />
+                                      <RoutineBox kind="cooldown" text={d.cooldown} video={d.cooldown_video} library={routines} onLibraryChange={loadRoutines}
+                                        placeholder={'Couch stretch 60s each side\nChild\'s pose 60s\nBox breathing 2 min'}
+                                        onSave={async ({ text, video }) => { await supabase.from('program_days').update({ cooldown: text, cooldown_video: video }).eq('id', d.id); loadDays(activeBlock.id) }} />
                                     </div>
                                     <button className="btn-ghost" style={{ padding: '5px 9px', fontSize: 11.5, width: '100%', marginTop: 4 }}
                                       onClick={() => openPaste(d.id)}>
