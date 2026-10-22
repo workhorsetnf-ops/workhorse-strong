@@ -55,10 +55,13 @@ export default function CoachForms() {
 
   async function saveQuestion(formId, qId) {
     if (!editQ.label.trim()) return
+    const cur = questions.find(q => q.id === qId)
+    const keep = cur && cur.qtype === editQ.qtype && cur.options && !Array.isArray(cur.options) ? cur.options : []
     await supabase.from('checkin_form_questions').update({
       label: editQ.label.trim(),
       qtype: editQ.qtype,
-      options: editQ.qtype === 'choice' ? editQ.options.split(',').map(t => t.trim()).filter(Boolean) : []
+      // non-choice questions keep their extra settings (e.g. the sleep pre-fill)
+      options: editQ.qtype === 'choice' ? editQ.options.split(',').map(t => t.trim()).filter(Boolean) : keep
     }).eq('id', qId)
     setEditingQ(null)
     loadQuestions(formId)
@@ -84,7 +87,15 @@ export default function CoachForms() {
     load()
   }
 
-  const typeLabel = { text: 'Text answer', number: 'Number', scale: 'Scale 1–10', choice: 'Multiple choice' }
+  async function makeDefault(id) {
+    if (!confirm('Make this the default check-in for every client who doesn\'t have their own form?')) return
+    await supabase.from('checkin_forms').update({ is_default: false }).eq('is_default', true)
+    await supabase.from('checkin_forms').update({ is_default: true }).eq('id', id)
+    load()
+  }
+
+  const typeLabel = { text: 'Text answer', number: 'Number', scale: 'Scale 1–10', choice: 'Multiple choice', body_prev: 'Weight & waist: last week (pre-filled)', body_now: 'Weight & waist: this week (pre-filled)' }
+  const defaultForm = forms.find(f => f.is_default)
 
   return (
     <div>
@@ -102,11 +113,13 @@ export default function CoachForms() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
               <div>
                 <strong style={{ fontSize: 16 }}>{f.name}</strong>
+                {f.is_default && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 20, background: 'var(--orange)', color: '#000' }}>DEFAULT</span>}
                 <div className="muted" style={{ fontSize: 13, marginTop: 3 }}>
-                  Assigned to {assignments.filter(a => a.form_id === f.id).length} client(s)
+                  {f.is_default ? `Everyone without their own form · plus ${assignments.filter(a => a.form_id === f.id).length} assigned` : `Assigned to ${assignments.filter(a => a.form_id === f.id).length} client(s)`}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
+                {!f.is_default && <button className="btn-ghost" onClick={() => makeDefault(f.id)}>Make default</button>}
                 <button className="btn-ghost" onClick={() => openForm(f.id)}>{open === f.id ? 'Close' : 'Edit questions'}</button>
                 <button className="btn-ghost" style={{ color: 'var(--red)' }} onClick={() => deleteForm(f.id)}>Delete</button>
               </div>
@@ -125,6 +138,10 @@ export default function CoachForms() {
                             <option value="number">Number</option>
                             <option value="scale">Scale 1–10</option>
                             <option value="choice">Multiple choice</option>
+                            <option value="body_prev">Weight &amp; waist: last week (pre-filled)</option>
+                            <option value="body_now">Weight &amp; waist: this week (pre-filled)</option>
+                    <option value="body_prev">Weight &amp; waist: last week (pre-filled)</option>
+                    <option value="body_now">Weight &amp; waist: this week (pre-filled)</option>
                           </select>
                         </div>
                         {editQ.qtype === 'choice' && (
@@ -158,6 +175,8 @@ export default function CoachForms() {
                     <option value="number">Number</option>
                     <option value="scale">Scale 1–10</option>
                     <option value="choice">Multiple choice</option>
+                    <option value="body_prev">Weight &amp; waist: last week (pre-filled)</option>
+                    <option value="body_now">Weight &amp; waist: this week (pre-filled)</option>
                   </select>
                   <button className="btn" style={{ padding: '10px 16px', fontSize: 13 }} onClick={() => addQuestion(f.id)}>Add</button>
                 </div>
@@ -183,7 +202,7 @@ export default function CoachForms() {
                 <select style={{ width: 'auto', minWidth: 240 }}
                   value={assignments.find(a => a.client_id === c.id)?.form_id || ''}
                   onChange={e => assignForm(c.id, e.target.value)}>
-                  <option value="">Standard check-in only</option>
+                  <option value="">{defaultForm ? `Default: ${defaultForm.name}` : 'Standard check-in only'}</option>
                   {forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
               </td>
@@ -192,7 +211,7 @@ export default function CoachForms() {
         </tbody>
       </table>
       <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
-        Every client always gets the standard fields (weight, waist, sleep, energy, hunger, photos). An assigned form adds your custom questions on top.
+        Every check-in includes the 7-day averages from their Daily Log and progress photos automatically. Clients without their own form get the <strong>default</strong> form{defaultForm ? ` (${defaultForm.name})` : ''}; pick a different form here for anyone who needs one.
       </p>
     </div>
   )
