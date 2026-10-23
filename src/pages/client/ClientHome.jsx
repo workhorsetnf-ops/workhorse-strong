@@ -9,6 +9,7 @@ import ClientDashboard from './ClientDashboard'
 import { RemindersPrompt } from '../ReminderSettings'
 import Avatar from '../Avatar'
 import QuickCheckin from './QuickCheckin'
+import { countedLogs } from '../../lib/foodlog'
 
 export default function ClientHome() {
   const { profile } = useAuth()
@@ -33,10 +34,10 @@ export default function ClientHome() {
     supabase.from('client_hub').select('booking_url').eq('id', 1).maybeSingle()
       .then(({ data }) => setBookingUrl(data?.booking_url || ''))
     const today = localDateStr()
-    supabase.from('meal_logs').select('protein_g,carbs_g,fat_g')
+    supabase.from('meal_logs').select('protein_g,carbs_g,fat_g,meal,logged_on')
       .eq('client_id', profile.id).eq('logged_on', today)
       .then(({ data }) => {
-        const t = (data || []).reduce((a, m) => ({
+        const t = countedLogs(data || []).reduce((a, m) => ({
           p: a.p + m.protein_g, c: a.c + m.carbs_g, f: a.f + m.fat_g
         }), { p: 0, c: 0, f: 0 })
         setTodayMacros(t)

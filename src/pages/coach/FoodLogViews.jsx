@@ -66,12 +66,16 @@ export function DayLog({ logs, onRemove }) {
   if (!logs.length) return <p className="muted" style={{ fontSize: 13, padding: '6px 2px' }}>Nothing logged.</p>
   const td = { padding: '7px 5px', borderTop: '1px solid var(--line)', fontSize: 12.5, textAlign: 'center' }
   const hd = { ...td, whiteSpace: 'nowrap', fontSize: 11.5 }
+  const hasTotals = logs.some(l => l.meal === 'Daily totals')
   return (
     <div style={{ borderRadius: 8, overflow: 'hidden' }}>
+      {hasTotals && logs.some(l => l.meal !== 'Daily totals') && (
+        <p className="muted" style={{ fontSize: 11.5, margin: '0 2px 6px' }}>They logged daily totals for this day, so those count as the day. The meals below are shown for reference and aren't added on top.</p>
+      )}
       {byMeal(logs).map(({ meal, items }) => {
         const t = items.reduce((a, l) => ({ k: a.k + kcalOf(l), p: a.p + (+l.protein_g || 0), c: a.c + (+l.carbs_g || 0), f: a.f + (+l.fat_g || 0) }), { k: 0, p: 0, c: 0, f: 0 })
         return (
-          <table key={meal || '-'} style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 6 }}>
+          <table key={meal || '-'} style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 6, opacity: hasTotals && meal !== 'Daily totals' ? 0.55 : 1 }}>
             <thead><tr style={{ background: 'var(--steel)' }}>
               <th style={{ ...td, textAlign: 'left', color: 'var(--orange-hot)', fontWeight: 900, letterSpacing: '.06em', fontSize: 11.5, borderTop: '2px solid var(--orange)' }}>{(meal || 'Logged').toUpperCase()}</th>
               <th style={{ ...td, color: 'var(--orange-hot)', fontWeight: 900, borderTop: '2px solid var(--orange)' }}>{r0(t.k)}</th>
