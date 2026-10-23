@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { countedLogs } from '../../lib/foodlog'
 import { useParams, Link } from 'react-router-dom'
 import { ChevronLeft, Utensils, Dumbbell } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -187,7 +188,7 @@ export default function CoachClientLogs() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {dates.map(date => {
             const dayMeals = mealsByDay[date] || []
-            const totals = dayMeals.reduce((a, m) => ({
+            const totals = countedLogs(dayMeals).reduce((a, m) => ({
               p: a.p + (m.protein_g || 0), c: a.c + (m.carbs_g || 0), f: a.f + (m.fat_g || 0),
             }), { p: 0, c: 0, f: 0 })
             const cals = totals.p * 4 + totals.c * 4 + totals.f * 9

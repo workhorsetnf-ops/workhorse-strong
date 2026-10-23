@@ -1,11 +1,24 @@
 // Food log maths, matching the coaching sheet's Food Log tab.
 
 export const MEAL_SLOTS = ['Breakfast', 'Lunch', 'Snack', 'Dinner', 'Pre-Workout', 'Post-Workout', 'Optional', 'Other']
+// (Daily totals is deliberately not a slot: it's logged from its own card, not the slot picker.)
+
+// "Daily totals": a client logs the day's protein / carbs / fat in one go
+// instead of meal by meal. It's an ordinary meal_logs row with this as its
+// meal slot, and it counts as the WHOLE day: any meals also logged that day
+// stay visible but aren't added on top.
+export const DAILY_TOTALS = 'Daily totals'
+export const isDailyTotals = l => l?.meal === DAILY_TOTALS
+// The rows that count toward a day's numbers (works on one day or many).
+export function countedLogs(logs) {
+  const totalsDays = new Set((logs || []).filter(isDailyTotals).map(l => l.logged_on))
+  return (logs || []).filter(l => !totalsDays.has(l.logged_on) || isDailyTotals(l))
+}
 
 export const kcalOf = l => (Number(l.protein_g) || 0) * 4 + (Number(l.carbs_g) || 0) * 4 + (Number(l.fat_g) || 0) * 9
 
 export function totalsOf(logs) {
-  return logs.reduce((t, l) => ({
+  return countedLogs(logs).reduce((t, l) => ({
     items: t.items + 1,
     kcal: t.kcal + kcalOf(l),
     p: t.p + (Number(l.protein_g) || 0),
@@ -45,7 +58,7 @@ export function weekTable(logs, days, targets, today = null) {
 
 // Group a day's lines by meal slot in sheet order (unlabelled lines last).
 export function byMeal(logs) {
-  const order = m => { const i = MEAL_SLOTS.indexOf(m); return i < 0 ? 98 : i }
+  const order = m => { if (m === 'Daily totals') return -1; const i = MEAL_SLOTS.indexOf(m); return i < 0 ? 98 : i }
   const groups = new Map()
   for (const l of logs) {
     const k = l.meal || ''

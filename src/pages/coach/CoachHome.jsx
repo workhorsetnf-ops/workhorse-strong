@@ -4,6 +4,7 @@ import { CheckSquare, Square, Plus, Repeat, Trash2, MessageCircle, ClipboardList
 import { supabase } from '../../lib/supabase'
 import { localDateStr, logDate } from '../../lib/weeks'
 import { checkinDueDate, daysBetween } from '../../lib/dashboard'
+import { countedLogs } from '../../lib/foodlog'
 import Avatar from '../Avatar'
 
 function startOfWeek(d = new Date()) {
@@ -150,7 +151,7 @@ export default function CoachHome() {
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(400),
       supabase.from('checkins').select('client_id, submitted_at, notes, weight').gte('submitted_at', new Date(Date.now() - 60 * 864e5).toISOString()).order('submitted_at', { ascending: false }).limit(1000),
       supabase.from('messages').select('sender_id, recipient_id, created_at'),
-      supabase.from('meal_logs').select('client_id, protein_g, logged_on').order('logged_on', { ascending: false }).limit(600),
+      supabase.from('meal_logs').select('client_id, protein_g, logged_on, meal').order('logged_on', { ascending: false }).limit(600),
       supabase.from('client_ratings').select('*'),
       supabase.from('exercise_flags').select('*, program_exercises(name)').eq('resolved', false).order('created_at', { ascending: false }),
     ])
@@ -311,7 +312,7 @@ export default function CoachHome() {
       const target = c.protein_g
       if (target > 0 && meals.length > 0) {
         const byDay = {}
-        for (const m of meals) byDay[m.logged_on] = (byDay[m.logged_on] || 0) + (m.protein_g || 0)
+        for (const m of countedLogs(meals)) byDay[m.logged_on] = (byDay[m.logged_on] || 0) + (m.protein_g || 0)
         const recentDays = Object.entries(byDay).sort((a,b) => new Date(b[0]) - new Date(a[0])).slice(0, 5)
         const hitCount = recentDays.filter(([,p]) => p >= target * 0.9).length
         if (recentDays.length >= 3 && hitCount === recentDays.length) chips.push({ tone: 'good', text: 'Protein target hit consistently lately' })

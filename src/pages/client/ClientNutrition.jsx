@@ -4,7 +4,8 @@ import { useAuth } from '../../context/AuthContext'
 import { localDateStr } from '../../lib/weeks'
 import NutritionTabs from './NutritionTabs'
 import { mondayOf, weekDaysFrom } from '../../lib/weeks'
-import { MEAL_SLOTS, weekTable, planMealToLogs } from '../../lib/foodlog'
+import { MEAL_SLOTS, weekTable, planMealToLogs, countedLogs } from '../../lib/foodlog'
+import DailyTotalsCard from './DailyTotalsCard'
 import { itemMacros, sumMacros, targetsFrom } from '../../lib/mealplan'
 import { WeekTotals, DayLog } from '../coach/FoodLogViews'
 
@@ -209,7 +210,7 @@ export default function ClientNutrition() {
     load()
   }
 
-  const totals = meals.reduce((a, m) => ({
+  const totals = countedLogs(meals).reduce((a, m) => ({
     p: a.p + m.protein_g, c: a.c + m.carbs_g, f: a.f + m.fat_g
   }), { p: 0, c: 0, f: 0 })
 
@@ -236,6 +237,8 @@ export default function ClientNutrition() {
           {totals.p * 4 + totals.c * 4 + totals.f * 9} <span className="muted">/ {profile?.calories || 0} kcal</span>
         </div>
       </div>
+
+      <DailyTotalsCard clientId={profile.id} onSaved={load} />
 
       {plan.meals.length > 0 && (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
