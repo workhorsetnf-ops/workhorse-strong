@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { normalizeTarget, normalizeReps, dash, effortText, effortMeaning } from '../../lib/targets'
-import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets } from '../../lib/weeks'
+import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets, localDateStr } from '../../lib/weeks'
 import { CONDITIONING_COLOR, trackColor } from '../../lib/conditioning'
 import { parseProgramText, parseBlockText, blockExerciseRows } from '../../lib/parse'
 import NotesBox from './NotesBox'
@@ -1576,7 +1576,10 @@ export default function CoachPrograms() {
                       </button>
                       {auto && (
                         <span className="muted" style={{ fontSize: 12 }}>
-                          {derived ? `now on ${derived.block.name} · week ${derived.weekInBlock}` : 'no start date — falling back to the week above'}
+                          {derived ? `now on ${derived.block.name} · week ${derived.weekInBlock}`
+                            : !a.start_date ? 'no start date yet: using the block & week picked on the left'
+                            : a.start_date > localDateStr() ? `starts ${new Date(a.start_date + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' })}: counting begins then; until then, the block & week on the left`
+                            : `program finished (all ${(blocks[p.id] || []).reduce((t, b) => t + (b.weeks || 4), 0)} weeks done): staying on the block & week on the left`}
                         </span>
                       )}
                       {!auto && derived && (
