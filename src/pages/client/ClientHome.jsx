@@ -205,6 +205,18 @@ export default function ClientHome() {
         </div>
       )}
 
+      {(pendingContracts > 0 || pendingForms > 0) && (
+        <div className="card" style={{ borderLeft: '3px solid var(--orange)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--orange-hot)' }}>
+            Your coach sent you {[pendingContracts > 0 && `${pendingContracts === 1 ? 'an agreement' : pendingContracts + ' agreements'} to sign`, pendingForms > 0 && `${pendingForms === 1 ? 'a form' : pendingForms + ' forms'} to fill in`].filter(Boolean).join(' and ')}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {pendingContracts > 0 && <Link to="/app/contracts" className="btn" style={{ textDecoration: 'none', padding: '7px 14px', fontSize: 13 }}>Review &amp; sign</Link>}
+            {pendingForms > 0 && <Link to="/app/intake-forms" className={pendingContracts > 0 ? 'btn-ghost' : 'btn'} style={{ textDecoration: 'none', padding: '7px 14px', fontSize: 13 }}>Open {pendingForms === 1 ? 'form' : 'forms'}</Link>}
+          </div>
+        </div>
+      )}
+
       {checkinDue?.due && (
         <Link to="/app/checkin" style={{ display: 'block', textDecoration: 'none' }}>
           <div className="card" style={{ borderLeft: `3px solid ${checkinDue.overdue ? 'var(--red)' : 'var(--orange)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
