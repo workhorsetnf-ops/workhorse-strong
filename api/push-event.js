@@ -1,6 +1,7 @@
 // Instant notifications the app triggers after something happens:
 //   { type: 'message', to: <user id> }  new message (coach <-> client only)
 //   { type: 'checkin' }                  client submitted a check-in -> coach
+//   { type: 'paperwork', to: [ids], kind: 'contract'|'form', title }  coach sent a contract/form -> those clients
 // The server re-checks who is allowed to notify whom; the app can't spoof it.
 import { admin, sendToUsers, userFromReq, prefsFor } from './_push.js'
 
@@ -35,6 +36,23 @@ export default async function handler(req, res) {
       const prefs = await prefsFor(sb, ids)
       const want = ids.filter(id => !prefs[id] || prefs[id].checkin !== false)
       return res.json(await sendToUsers(sb, want, { title: `${first} checked in`, body: 'Their weekly check-in is ready to review.', url: `/coach/review/${me.id}`, tag: `checkin-${me.id}` }))
+    }
+
+    if (type === 'paperwork') {
+      if (me.role !== 'coach') return res.status(403).json({ error: 'Not allowed' })
+      const ids = Array.isArray(to) ? to.filter(x => typeof x === 'string').slice(0, 500) : []
+      if (!ids.length) return res.json({ skipped: 'nobody' })
+      const { data: recs } = await sb.from('profiles').select('id').in('id', ids).eq('role', 'client')
+      const clientIds = (recs || []).map(r => r.id)
+      const prefs = await prefsFor(sb, clientIds)
+      const want = clientIds.filter(id => !prefs[id] || prefs[id].messages !== false)
+      const isContract = req.body?.kind === 'contract'
+      const what = String(req.body?.title || '').slice(0, 80)
+      return res.json(await sendToUsers(sb, want, {
+        title: isContract ? 'Something to sign ✍️' : 'A quick form for you 📋',
+        body: `${first} sent you ${isContract ? 'an agreement' : 'a form'}${what ? `: ${what}` : ''}. Tap to open it.`,
+        url: isContract ? '/app/contracts' : '/app/intake-forms', tag: `paperwork-${isContract ? 'contract' : 'form'}`,
+      }))
     }
 
     res.status(400).json({ error: 'Unknown type' })

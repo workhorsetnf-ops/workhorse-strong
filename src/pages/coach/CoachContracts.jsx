@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { notifyEvent } from '../../lib/push'
+import RecipientPicker from './RecipientPicker'
 
 function resolveBody(body, client) {
   return (body || '')
@@ -29,12 +31,14 @@ export default function CoachContracts() {
   const [tplOpen, setTplOpen] = useState(false)
   const [editingTpl, setEditingTpl] = useState(null)
   const [tplForm, setTplForm] = useState({ name: '', body: '' })
-  const [sendForm, setSendForm] = useState({ client_id: '', template_id: '', title: '' })
+  const [sendForm, setSendForm] = useState({ template_id: '', title: '' })
+  const [recipients, setRecipients] = useState(new Set())
+  const [sending, setSending] = useState(false)
 
   async function load() {
     const [{ data: t }, { data: c }, { data: k }] = await Promise.all([
       supabase.from('contract_templates').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id, full_name').eq('role', 'client').order('full_name'),
+      supabase.from('profiles').select('id, full_name, status').eq('role', 'client').order('full_name'),
       supabase.from('contracts').select('*').order('sent_at', { ascending: false }),
     ])
     setTemplates(t || []); setClients(c || []); setContracts(k || [])
@@ -69,19 +73,23 @@ export default function CoachContracts() {
     load()
   }
 
+  // One contract per selected client, each with their own name filled in.
   async function sendContract() {
-    if (!sendForm.client_id || !sendForm.template_id) { alert('Pick a client and a template.'); return }
     const tpl = templates.find(t => t.id === sendForm.template_id)
-    const client = clients.find(c => c.id === sendForm.client_id)
-    if (!tpl || !client) return
-    const body = resolveBody(tpl.body, client)
+    const to = clients.filter(c => recipients.has(c.id))
+    if (!tpl || !to.length) { alert('Pick a template and at least one client.'); return }
+    if (to.length > 1 && !confirm(`Send "${sendForm.title.trim() || tpl.name}" to ${to.length} clients?`)) return
     const title = sendForm.title.trim() || tpl.name
-    const { error } = await supabase.from('contracts').insert({
-      template_id: tpl.id, client_id: client.id, title, body, status: 'sent',
-    })
+    setSending(true)
+    const { error } = await supabase.from('contracts').insert(to.map(client => ({
+      template_id: tpl.id, client_id: client.id, title, body: resolveBody(tpl.body, client), status: 'sent',
+    })))
+    setSending(false)
     if (error) { alert('Could not send: ' + error.message); return }
-    setSendForm({ client_id: '', template_id: '', title: '' })
+    notifyEvent('paperwork', { to: to.map(c => c.id), kind: 'contract', title })
+    setSendForm({ template_id: '', title: '' }); setRecipients(new Set())
     load()
+    alert(`Sent to ${to.length} client${to.length === 1 ? '' : 's'}. They'll see it at the top of their Home screen.`)
   }
 
   async function voidContract(id) {
@@ -91,7 +99,9 @@ export default function CoachContracts() {
   }
 
   const clientsById = Object.fromEntries(clients.map(c => [c.id, c]))
-  const previewClient = clients.find(c => c.id === sendForm.client_id)
+  const previewClient = clients.find(c => recipients.has(c.id))
+  // anyone with this template already waiting or signed (voided ones don't count)
+  const alreadyHas = new Set(contracts.filter(k => k.template_id === sendForm.template_id && k.status !== 'void').map(k => k.client_id))
   const previewTpl = templates.find(t => t.id === sendForm.template_id)
 
   return (
@@ -135,23 +145,22 @@ export default function CoachContracts() {
 
       <h2 style={{ fontSize: 18, marginBottom: 12 }}>Send a contract</h2>
       <div className="card" style={{ marginBottom: 28, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <select value={sendForm.client_id} onChange={e => setSendForm({ ...sendForm, client_id: e.target.value })}>
-            <option value="">Select client…</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.full_name || c.id.slice(0, 8)}</option>)}
-          </select>
-          <select value={sendForm.template_id} onChange={e => setSendForm({ ...sendForm, template_id: e.target.value })}>
-            <option value="">Select template…</option>
-            {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-        </div>
+        <select value={sendForm.template_id} onChange={e => setSendForm({ ...sendForm, template_id: e.target.value })}>
+          <option value="">Select template…</option>
+          {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <RecipientPicker clients={clients} selected={recipients} onChange={setRecipients}
+          already={sendForm.template_id ? alreadyHas : new Set()} alreadyLabel="already has it" />
         <input placeholder="Title (optional — defaults to the template name)" value={sendForm.title} onChange={e => setSendForm({ ...sendForm, title: e.target.value })} />
         {previewTpl && (
           <div className="muted" style={{ fontSize: 12.5, background: 'var(--steel)', borderRadius: 8, padding: '10px 12px', whiteSpace: 'pre-wrap', maxHeight: 160, overflowY: 'auto' }}>
             {resolveBody(previewTpl.body, previewClient)}
           </div>
         )}
-        <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={sendContract}>Send to client</button>
+        {previewTpl && previewClient && <span className="muted" style={{ fontSize: 11.5, marginTop: -4 }}>Preview shows {previewClient.full_name}'s copy; everyone gets their own name filled in.</span>}
+        <button className="btn" style={{ alignSelf: 'flex-start' }} disabled={sending || !recipients.size || !sendForm.template_id} onClick={sendContract}>
+          {sending ? 'Sending…' : recipients.size > 1 ? `Send to ${recipients.size} clients` : 'Send to client'}
+        </button>
       </div>
 
       <h2 style={{ fontSize: 18, marginBottom: 12 }}>Sent contracts</h2>

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { notifyEvent } from '../../lib/push'
+import RecipientPicker from './RecipientPicker'
 
 const TYPE_LABEL = { text: 'Text answer', number: 'Number', scale: 'Scale 1–10', choice: 'Multiple choice', yesno: 'Yes / No' }
 
@@ -16,11 +18,14 @@ export default function CoachIntakeForms() {
   const [editQ, setEditQ] = useState({ label: '', qtype: 'text', options: '', required: true })
   const [assignPick, setAssignPick] = useState({})
   const [openResponse, setOpenResponse] = useState(null)
+  const [bulkForm, setBulkForm] = useState('')
+  const [bulkTo, setBulkTo] = useState(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   async function load() {
     const [{ data: f }, { data: c }, { data: a }, { data: r }] = await Promise.all([
       supabase.from('standalone_forms').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id, full_name').eq('role', 'client').neq('status', 'exited').order('full_name'),
+      supabase.from('profiles').select('id, full_name, status').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('standalone_form_assignments').select('*'),
       supabase.from('standalone_form_responses').select('*').order('submitted_at', { ascending: false }).limit(100),
     ])
@@ -89,7 +94,25 @@ export default function CoachIntakeForms() {
       .upsert({ client_id: clientId, form_id: formId }, { onConflict: 'client_id,form_id' })
     if (error) { alert('Could not assign: ' + error.message); return }
     setAssignPick(p => ({ ...p, [clientId]: '' }))
+    notifyEvent('paperwork', { to: [clientId], kind: 'form', title: forms.find(f => f.id === formId)?.name || '' })
     load()
+  }
+
+  // One form to many clients. Anyone who already has it (pending or done) is
+  // left alone rather than reset.
+  async function sendBulk() {
+    const form = forms.find(f => f.id === bulkForm)
+    const have = new Set(assignments.filter(a => a.form_id === bulkForm).map(a => a.client_id))
+    const to = [...bulkTo].filter(id => !have.has(id))
+    if (!form || !to.length) { alert(bulkTo.size ? 'Everyone selected already has this form.' : 'Pick a form and at least one client.'); return }
+    if (to.length > 1 && !confirm(`Send "${form.name}" to ${to.length} clients?`)) return
+    setBulkBusy(true)
+    const { error } = await supabase.from('standalone_form_assignments').insert(to.map(client_id => ({ client_id, form_id: form.id })))
+    setBulkBusy(false)
+    if (error) { alert('Could not send: ' + error.message); return }
+    notifyEvent('paperwork', { to, kind: 'form', title: form.name })
+    setBulkTo(new Set()); load()
+    alert(`Sent to ${to.length} client${to.length === 1 ? '' : 's'}${bulkTo.size > to.length ? ` (${bulkTo.size - to.length} already had it)` : ''}. They'll see it at the top of their Home screen.`)
   }
 
   async function unassignForm(assignmentId) {
@@ -199,6 +222,21 @@ export default function CoachIntakeForms() {
           </div>
         ))}
         {forms.length === 0 && <div className="card muted">No forms yet — create one above.</div>}
+      </div>
+
+      <h2 style={{ fontSize: 18, marginBottom: 12 }}>Send a form to several clients</h2>
+      <div className="card" style={{ marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <select value={bulkForm} onChange={e => { setBulkForm(e.target.value); setBulkTo(new Set()) }}>
+          <option value="">Select form…</option>
+          {forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+        </select>
+        {bulkForm && (
+          <RecipientPicker clients={clients} selected={bulkTo} onChange={setBulkTo}
+            already={new Set(assignments.filter(a => a.form_id === bulkForm).map(a => a.client_id))} alreadyLabel="already has it" />
+        )}
+        <button className="btn" style={{ alignSelf: 'flex-start' }} disabled={bulkBusy || !bulkForm || !bulkTo.size} onClick={sendBulk}>
+          {bulkBusy ? 'Sending…' : `Send to ${bulkTo.size || ''} client${bulkTo.size === 1 ? '' : 's'}`.replace('  ', ' ')}
+        </button>
       </div>
 
       <h2 style={{ fontSize: 18, marginBottom: 12 }}>Assign to clients</h2>

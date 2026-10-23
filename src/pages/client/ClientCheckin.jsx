@@ -5,6 +5,8 @@ import { notifyEvent } from '../../lib/push'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr, lastNDays, summarizeWeek } from '../../lib/weeks'
 import { WeekTable } from './ClientProgress'
+import QuickCheckin from './QuickCheckin'
+import { checkinDueDate, addDays } from '../../lib/dashboard'
 
 export default function ClientCheckin() {
   const { profile } = useAuth()
@@ -20,11 +22,14 @@ export default function ClientCheckin() {
   const [history, setHistory] = useState([])
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
+  const [histLoaded, setHistLoaded] = useState(false)
+  const [early, setEarly] = useState(false)   // opened the weekly form before it's due
 
   async function load() {
     const { data } = await supabase.from('checkins').select('*')
       .eq('client_id', profile.id).order('submitted_at', { ascending: false }).limit(6)
     setHistory(data || [])
+    setHistLoaded(true)
   }
   async function loadWeek() {
     const days = lastNDays(7)
@@ -81,6 +86,16 @@ export default function ClientCheckin() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questions, history, summary.weight, summary.sleep_avg])
 
+  // The weekly form only opens when it's due (a day early is fine). Daily
+  // quick check-ins live at the top; clients were submitting the whole weekly
+  // form every day from this tab.
+  const today = localDateStr()
+  const lastSent = history[0]?.submitted_at ? localDateStr(new Date(history[0].submitted_at)) : null
+  const weeklyDue = checkinDueDate({ checkinDay: profile?.checkin_day, frequency: profile?.checkin_frequency, lastCheckin: lastSent, today })
+  const notDueYet = !!(lastSent && weeklyDue && weeklyDue > addDays(today, 1))
+  const showForm = histLoaded && (!notDueYet || early)
+  const fmtDay = d => new Date(d + 'T00:00:00').toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })
+
   const bodyNow = questions.find(q => q.qtype === 'body_now')
   const usesDefault = !!customForm?.is_default
   const bodyText = v => [v?.weight && `${v.weight} lbs`, v?.waist && `${v.waist} in`].filter(Boolean).join(', ')
@@ -127,16 +142,34 @@ export default function ClientCheckin() {
       setPhotos({ Front: null, Side: null, Back: null })
       load()
       setTimeout(() => setDone(false), 3000)
+      setEarly(false)
     }
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <header>
-        <div className="eyebrow">Weekly</div>
+        <div className="eyebrow">Check-in</div>
         <h1 style={{ fontSize: 24, marginTop: 4 }}>Check-in</h1>
       </header>
 
+      <QuickCheckin profile={profile} />
+
+      {histLoaded && notDueYet && !early && (
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="eyebrow" style={{ fontSize: 10 }}>Weekly check-in</div>
+          <div style={{ fontSize: 14.5, fontWeight: 700 }}>
+            <span style={{ color: 'var(--orange-hot)' }}>✓</span> Sent {new Date(history[0].submitted_at).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}. Next one is due <span style={{ color: 'var(--orange-hot)' }}>{fmtDay(weeklyDue)}</span>.
+          </div>
+          <div className="muted" style={{ fontSize: 13 }}>
+            Nothing to do here today.{profile?.adherence_tier ? ' Your daily quick check-in is the short one, on your Home screen and at the top of this page when it\'s due.' : ' Keep logging your Daily Log and it all gets averaged for you.'}
+          </div>
+          <button className="btn-ghost" style={{ alignSelf: 'flex-start', padding: '6px 12px', fontSize: 12.5 }} onClick={() => setEarly(true)}>Something changed? Open it early</button>
+        </div>
+      )}
+
+      {showForm && (<>
+      <div className="eyebrow" style={{ marginBottom: -8 }}>Weekly check-in{weeklyDue && weeklyDue > today ? ` · due ${fmtDay(weeklyDue)}` : ''}</div>
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
           <div className="eyebrow" style={{ fontSize: 10 }}>Your last 7 days</div>
@@ -220,8 +253,9 @@ export default function ClientCheckin() {
             ))}
           </div>
         </div>
-        <button className="btn" onClick={submit} disabled={busy}>{done ? 'Submitted ✓' : busy ? 'Submitting…' : 'Submit check-in'}</button>
+        <button className="btn" onClick={submit} disabled={busy}>{done ? 'Submitted ✓' : busy ? 'Submitting…' : 'Submit weekly check-in'}</button>
       </div>
+      </>)}
 
       {history.length > 0 && (
         <div>
