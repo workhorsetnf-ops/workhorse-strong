@@ -63,7 +63,7 @@ export default function CoachReview() {
       const [me, daily, wl, asg, meals, plan, habits, hlogs, supps, slogs, cplan, ms, cks] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', clientId).single(),
         q('daily_logs').gte('log_date', prevDays[0]).lte('log_date', days[6]),
-        q('workout_logs', 'logged_at, logged_date').gte('logged_at', new Date(prevDays[0] + 'T00:00:00').toISOString()),
+        q('workout_logs', 'logged_at, logged_date').neq('session_track', 'conditioning').gte('logged_at', new Date(prevDays[0] + 'T00:00:00').toISOString()),
         supabase.from('program_assignments').select('*').eq('client_id', clientId).maybeSingle(),
         q('meal_logs').gte('logged_on', days[0]).lte('logged_on', days[6]),
         supabase.from('meal_plans').select('*').eq('client_id', clientId).maybeSingle(),

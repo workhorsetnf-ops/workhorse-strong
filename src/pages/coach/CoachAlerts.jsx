@@ -18,7 +18,7 @@ export default function CoachAlerts() {
       supabase.from('program_blocks').select('*'),
       supabase.from('checkins').select('client_id, submitted_at, weight').order('submitted_at', { ascending: false }),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }),
-      supabase.from('workout_logs').select('client_id, logged_at, logged_date').order('logged_at', { ascending: false }),
+      supabase.from('workout_logs').select('client_id, logged_at, logged_date').neq('session_track', 'conditioning').order('logged_at', { ascending: false }),
       supabase.from('program_days').select('id, block_id, day_number, track'),
       supabase.from('meal_logs').select('client_id, logged_on').gte('logged_on', since30),
     ])

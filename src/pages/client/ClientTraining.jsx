@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext'
 import RestTimer from '../../lib/RestTimer'
 import IntervalTimer from '../../lib/IntervalTimer'
 import PlateCalc from '../../lib/PlateCalc'
+import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, programWeekDates, scheduledDate, withMoves, effectiveDate, workUnit, UNIT_LABEL, secondsToUnit } from '../../lib/conditioning'
 
 function roundTo5(n) { return Math.round(n / 5) * 5 }
 
@@ -119,6 +120,19 @@ export function fmtClock(s) {
 }
 
 const GRID_COLS_BIG ='34px minmax(0, 1fr) 70px 58px 50px 46px'
+// conditioning pieces log one number per round (time or distance), no load or RIR
+const GRID_COLS_CARDIO = '34px minmax(0, 1fr) 96px 42px'
+const GRID_COLS_CARDIO_BIG = '34px minmax(0, 1fr) 110px 46px'
+
+// The number in a prescribed piece of work, in the unit it's logged in:
+// "30s" -> 30, "20 min" -> 20, "1:30" -> 90, "400m" -> 400.
+export function workNumber(work, unit) {
+  const t = String(work || '').toLowerCase().trim()
+  const mm = t.match(/^(\d+):([0-5]\d)$/)
+  if (mm) return String(unit === 'min' ? Math.round((+mm[1] * 60 + +mm[2]) / 60) : +mm[1] * 60 + +mm[2])
+  const m = t.match(/(\d+(?:\.\d+)?)/)
+  return m ? String(Math.round(+m[1])) : ''
+}
 const cellStyleBig = {
   width: '100%', height: 50, boxSizing: 'border-box', padding: '0 4px', borderRadius: 11,
   fontSize: 18, fontWeight: 700, textAlign: 'center', fontVariantNumeric: 'tabular-nums',
@@ -138,6 +152,7 @@ export default function ClientTraining() {
   const [calMode, setCalMode] = useState(false)
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
   const [rotations, setRotations] = useState([])
+  const [moves, setMoves] = useState([]) // session_moves: conditioning sessions the client moved within a week
   const [days, setDays] = useState([])
   const [activeDay, setActiveDay] = useState(null)
   const [exercises, setExercises] = useState([])
@@ -225,6 +240,7 @@ export default function ClientTraining() {
           setRotations(r || [])
         }
       })
+    loadMoves()
     supabase.from('client_maxes').select('*').eq('client_id', profile.id)
       .then(({ data }) => {
         setMaxes(Object.fromEntries((data || []).map(m => [m.lift_name.toLowerCase(), m.max_weight])))
@@ -232,6 +248,34 @@ export default function ClientTraining() {
   }, [profile])
 
   const blockWeeks = block?.weeks || program?.weeks || 4
+
+  async function loadMoves() {
+    if (!profile) return
+    const { data } = await supabase.from('session_moves').select('*').eq('client_id', profile.id)
+    setMoves(data || [])
+  }
+
+  // Move a conditioning session to another day of this program week.
+  // Moving it back to where the program put it just removes the move.
+  async function moveSession(day, fromDate, toDate) {
+    if (!profile || !fromDate || !toDate) return
+    const prev = moves
+    const rest = moves.filter(m => !(m.day_id === day.id && m.from_date === fromDate))
+    setMoves(toDate === fromDate ? rest : [...rest, { client_id: profile.id, day_id: day.id, from_date: fromDate, to_date: toDate }])
+    const { error } = toDate === fromDate
+      ? await supabase.from('session_moves').delete().eq('client_id', profile.id).eq('day_id', day.id).eq('from_date', fromDate)
+      : await supabase.from('session_moves').upsert({ client_id: profile.id, day_id: day.id, from_date: fromDate, to_date: toDate }, { onConflict: 'client_id,day_id,from_date' })
+    if (error) { setMoves(prev); alert("Couldn't move it: " + error.message) }
+  }
+
+  // Which kind of session is open, and what unit a piece on it is logged in.
+  // Lifting days always use the normal weight / reps / RIR grid.
+  const sessionTrack = activeDay?.track || 'exercise'
+  const cardioDay = sessionTrack === 'conditioning'
+  function unitFor(ex) {
+    if (!cardioDay || ex.kind === 'conditioning') return null
+    return workUnit(weekTarget(ex).reps, ex.metric)
+  }
 
   function weekTarget(ex) {
     const wt = Array.isArray(ex.week_targets) ? ex.week_targets[week - 1] : null
@@ -256,7 +300,7 @@ export default function ClientTraining() {
 
   // What last session says to do today (add weight / add reps / hold / drop)
   function progressFor(ex) {
-    if (ex.kind === 'conditioning') return null
+    if (ex.kind === 'conditioning' || unitFor(ex)) return null
     const last = lastSession[ex.id]
     if (!last || !last.sets) return null
     const nums = Object.keys(last.sets).map(Number).sort((a, b) => a - b)
@@ -278,7 +322,7 @@ export default function ClientTraining() {
     if (last?.[field]) return String(last[field])
     const t = exSetTargets(ex)[i] || {}
     if (field === 'weight') return percentLoad(ex, t.target)
-    if (field === 'reps') return t.reps ? String(t.reps).split('-')[0] : ''
+    if (field === 'reps') return t.reps ? (unitFor(ex) ? workNumber(t.reps, unitFor(ex)) : String(t.reps).split('-')[0]) : ''
     if (field === 'rir') return ex.progression_type === 'percent' ? '' : dash(t.target ?? '')
     return ''
   }
@@ -293,9 +337,10 @@ export default function ClientTraining() {
     const filled = {
       // the progression call's load when there is one (up / drop), else last time's
       weight: s.weight || suggestion(ex, i, 'weight') || (last.weight ? String(last.weight) : percentLoad(ex, t.target)),
-      reps: s.reps || (last.reps ? String(last.reps) : ''),
+      reps: s.reps || (last.reps ? String(last.reps) : '') || (unitFor(ex) ? workNumber(t.reps, unitFor(ex)) : ''),
       rir: s.rir || (last.rir ? String(last.rir) : ''),
     }
+    if (unitFor(ex)) { filled.weight = s.weight || ''; filled.rir = s.rir || '' }
     autoSaveSet(ex.id, i + 1, filled, ex.name)
     return filled
   }
@@ -354,10 +399,10 @@ export default function ClientTraining() {
 
   // Enter moves weight → reps → RIR → next set's weight → next exercise
   function focusNext(exId, i, field) {
-    const order = ['weight', 'reps', 'rir']
     const keys = []
     for (const ex of exercises) {
       if (ex.kind === 'conditioning') continue
+      const order = unitFor(ex) ? ['reps'] : ['weight', 'reps', 'rir']
       ;(log[ex.id] || []).forEach((_, j) => order.forEach(f => keys.push(`${ex.id}|${j}|${f}`)))
     }
     const at = keys.indexOf(`${exId}|${i}|${field}`)
@@ -368,6 +413,7 @@ export default function ClientTraining() {
 
   function targetText(ex) {
     const { sets, reps, target } = weekTarget(ex)
+    if (target === '' || target === null || target === undefined) return `${sets} × ${dash(reps)}${ex.rest ? ` · rest ${ex.rest}` : ''}`
     if (ex.progression_type === 'percent') {
       const max = maxes[(ex.based_on_lift || ex.name).toLowerCase()]
       const load = max ? ` → ${roundTo5(max * (+target / 100))} lbs` : ''
@@ -527,6 +573,7 @@ export default function ClientTraining() {
   // Set 2 doesn't reset/cancel a pending save for Set 1 ----
   function autoSaveSet(exId, setNumber, s, exerciseName) {
     const key = `${exId}-${setNumber}`
+    const track = sessionTrack
     clearTimeout(saveTimers.current[key])
     saveTimers.current[key] = setTimeout(async () => {
       if (!s.weight && !s.reps) return // nothing worth saving yet
@@ -534,7 +581,7 @@ export default function ClientTraining() {
       await supabase.from('workout_logs').upsert({
         client_id: profile.id, exercise_id: exId, exercise_name: exerciseName,
         set_number: setNumber, weight: s.weight || null, reps: s.reps || null, rir: s.rir || null,
-        logged_date: todayStr(),
+        logged_date: todayStr(), session_track: track,
       }, { onConflict: 'client_id,exercise_id,set_number,logged_date' })
       setSavingSets(prev => { const n = new Set(prev); n.delete(key); return n })
     }, 900)
@@ -563,6 +610,7 @@ export default function ClientTraining() {
 
   function autoSaveResult(exId, value, exerciseName) {
     const key = `result-${exId}`
+    const track = sessionTrack
     clearTimeout(saveTimers.current[key])
     saveTimers.current[key] = setTimeout(async () => {
       if (!value?.toString().trim()) return
@@ -570,7 +618,7 @@ export default function ClientTraining() {
       await supabase.from('workout_logs').upsert({
         client_id: profile.id, exercise_id: exId, exercise_name: exerciseName,
         set_number: 1, result_text: value.toString().trim(),
-        logged_date: todayStr(),
+        logged_date: todayStr(), session_track: track,
       }, { onConflict: 'client_id,exercise_id,set_number,logged_date' })
       setSavingSets(prev => { const n = new Set(prev); n.delete(key); return n })
     }, 900)
@@ -590,7 +638,7 @@ export default function ClientTraining() {
         if (s.weight || s.reps) rows.push({
           client_id: profile.id, exercise_id: ex.id, exercise_name: ex.name,
           set_number: i + 1, weight: s.weight || null, reps: s.reps || null, rir: s.rir || null,
-          logged_date: todayStr(),
+          logged_date: todayStr(), session_track: sessionTrack,
         })
       })
     }
@@ -598,7 +646,7 @@ export default function ClientTraining() {
       if (ex.kind === 'conditioning' && (results[ex.id] || '').toString().trim()) {
         rows.push({
           client_id: profile.id, exercise_id: ex.id, exercise_name: ex.name, set_number: 1,
-          result_text: results[ex.id].toString().trim(), logged_date: todayStr(),
+          result_text: results[ex.id].toString().trim(), logged_date: todayStr(), session_track: sessionTrack,
         })
       }
     }
@@ -686,8 +734,75 @@ export default function ClientTraining() {
     )
   }
 
+  // Conditioning pieces: one number per round in the piece's own unit (secs,
+  // mins, metres, yards). Ticking an empty round logs what was prescribed, so
+  // a client who did exactly the session can tick through it.
+  function renderCardioGrid(ex, big = false) {
+    const unit = unitFor(ex)
+    const rows = log[ex.id] || []
+    const targets = exSetTargets(ex)
+    const last = lastSession[ex.id]
+    const cols = big ? GRID_COLS_CARDIO_BIG : GRID_COLS_CARDIO
+    const cStyle = big ? cellStyleBig : cellStyle
+    const short = { min: 'min', sec: 's', m: 'm', yd: 'yd' }[unit]
+    const anyLast = last && Object.keys(last.sets).length > 0
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+        {ex.metric === 'time' && (
+          <IntervalTimer rounds={rows.length || targets.length || 1} work={targets[0]?.reps || ex.reps} rest={ex.rest}
+            onRoundDone={(i, secs) => fillIfEmpty(ex.id, i, 'reps', secondsToUnit(secs, unit))} />
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, padding: '0 2px 2px', fontSize: 10.5, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>
+          <div>{rows.length > 1 ? 'Rnd' : ''}</div>
+          <div>Last</div>
+          <div style={{ textAlign: 'center' }}>{UNIT_LABEL[unit]}</div>
+          <div />
+        </div>
+        {rows.map((s, i) => {
+          const key = `${ex.id}-${i + 1}`
+          const isDone = doneSets.has(key)
+          const prev = last?.sets?.[i + 1]
+          const t = targets[i] || {}
+          const label = `${ex.name} round ${i + 1}`
+          return (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, alignItems: 'center', padding: '5px 2px', borderRadius: 10, background: isDone ? 'rgba(74,155,209,0.14)' : 'transparent', transition: 'background 0.2s' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
+                <span style={{ fontSize: big ? 17 : 15, fontWeight: 800 }}>{i + 1}</span>
+                {t.reps != null && t.reps !== '' && <span className="muted" style={{ fontSize: 10.5, whiteSpace: 'nowrap' }}>{dash(t.reps)}</span>}
+              </div>
+              <div className="muted" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {prev?.reps ? `${prev.reps} ${short}` : '—'}
+                {savingSets.has(key) && <div style={{ fontSize: 10 }}>Saving…</div>}
+              </div>
+              <input inputMode="numeric" aria-label={`${label} ${UNIT_LABEL[unit].toLowerCase()}`} value={s.reps}
+                placeholder={suggestion(ex, i, 'reps')} enterKeyHint="next"
+                ref={el => { cellRefs.current[`${ex.id}|${i}|reps`] = el }}
+                onChange={e => updateSet(ex.id, i, 'reps', e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); focusNext(ex.id, i, 'reps') } }}
+                style={cStyle} />
+              <button type="button" onClick={() => toggleDone(ex, i)}
+                aria-label={`${isDone ? 'Unmark' : 'Mark'} ${label} done`} aria-pressed={isDone}
+                style={{ width: big ? 46 : 42, height: big ? 46 : 42, padding: 0, borderRadius: 23, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 900, cursor: 'pointer',
+                  background: isDone ? CONDITIONING_COLOR : 'transparent', color: isDone ? '#06121B' : 'var(--muted)',
+                  border: isDone ? `1px solid ${CONDITIONING_COLOR}` : '1.5px solid #3A3A40' }}>
+                ✓
+              </button>
+            </div>
+          )
+        })}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', marginTop: 4, flexWrap: 'wrap' }}>
+          {anyLast
+            ? <button type="button" className="btn-ghost" onClick={() => copyLastWeek(ex)} style={{ padding: '8px 12px', fontSize: 12.5 }}>⧉ Copy last session</button>
+            : <span className="muted" style={{ fontSize: 11.5 }}>Tap ✓ if you did it as written — it logs the target for you</span>}
+          {!big && ex.metric !== 'time' && <RestTimer restText={ex.rest} />}
+        </div>
+      </div>
+    )
+  }
+
   // The set-by-set logging grid. `big` is the focus-mode size.
   function renderSetGrid(ex, big = false) {
+            if (unitFor(ex)) return renderCardioGrid(ex, big)
             const rows = log[ex.id] || []
             const targets = exSetTargets(ex)
             const last = lastSession[ex.id]
@@ -801,6 +916,56 @@ export default function ClientTraining() {
     )
   }
 
+  // ---------------- moving a conditioning session ----------------
+  // Only for this program week (by date), and only when there's a start date to
+  // turn Day N into a real day. The client can open and log any session any day
+  // regardless; moving is about where it sits on their schedule.
+  const thisWeekDates = startDate ? programWeekDates(startDate) : null
+  function sessionDateThisWeek(d) {
+    if (!thisWeekDates || d.track !== 'conditioning') return null
+    const from = scheduledDate(startDate, d.day_number)
+    return from ? effectiveDate(d.id, from, moves) : null
+  }
+  const weekdayShort = ymd => new Date(ymd + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' })
+
+  function renderMovePanel() {
+    if (!cardioDay || !thisWeekDates || calMode || awayMode) return null
+    const from = scheduledDate(startDate, activeDay.day_number)
+    if (!from) return null
+    const on = effectiveDate(activeDay.id, from, moves)
+    const today = localDateStr()
+    return (
+      <div className="card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, borderLeft: `3px solid ${CONDITIONING_COLOR}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13 }}>
+            <span className="muted">This week: </span>
+            <strong>{new Date(on + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</strong>
+          </span>
+          {on !== from && (
+            <button type="button" className="btn-ghost" style={{ padding: '3px 9px', fontSize: 11.5 }} onClick={() => moveSession(activeDay, from, from)}>
+              Move back to {weekdayShort(from)}
+            </button>
+          )}
+        </div>
+        <div role="group" aria-label="Move this session to another day" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
+          {thisWeekDates.map(dt => {
+            const sel = dt === on
+            return (
+              <button key={dt} type="button" aria-pressed={sel} onClick={() => !sel && moveSession(activeDay, from, dt)}
+                title={new Date(dt + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+                style={{ padding: '7px 0', borderRadius: 8, fontSize: 11.5, fontWeight: 800, cursor: sel ? 'default' : 'pointer', lineHeight: 1.2,
+                  background: sel ? CONDITIONING_COLOR : 'var(--steel)', color: sel ? '#06121B' : dt < today ? 'var(--muted)' : 'inherit',
+                  border: dt === today && !sel ? `1px solid ${CONDITIONING_COLOR}` : '1px solid transparent' }}>
+                {weekdayShort(dt).slice(0, 3)}<br /><span style={{ fontWeight: 600, fontSize: 10.5 }}>{Number(dt.slice(8))}</span>
+              </button>
+            )
+          })}
+        </div>
+        <span className="muted" style={{ fontSize: 11 }}>Tap a day to move this session. You can still log it on any day.</span>
+      </div>
+    )
+  }
+
   // ---------------- focus mode screens ----------------
   function renderFocus() {
     if (!exercises.length) return null
@@ -814,9 +979,12 @@ export default function ClientTraining() {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div>
-            <div className="eyebrow">Week {week}{totalSets ? ` · ${exercises.length} exercises · ${totalSets} sets` : ''}</div>
+            <div className="eyebrow" style={cardioDay ? { color: CONDITIONING_COLOR } : undefined}>
+              {cardioDay ? 'Conditioning · ' : ''}Week {week}{totalSets ? ` · ${exercises.length} ${cardioDay ? 'piece' : 'exercise'}${exercises.length === 1 ? '' : 's'} · ${totalSets} ${cardioDay ? 'rounds' : 'sets'}` : ''}
+            </div>
             <h2 style={{ fontSize: 34, lineHeight: 1, marginTop: 4, textTransform: 'uppercase' }}>{activeDay.day_label}</h2>
           </div>
+          {renderMovePanel()}
           {steps.map((st, si) => (
             <button key={si} type="button" onClick={() => goStep(si)} className="card"
               style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 9, width: '100%', color: 'inherit', font: 'inherit' }}>
@@ -848,7 +1016,7 @@ export default function ClientTraining() {
           ))}
           <button className="btn" style={{ height: 56, fontSize: 17, marginTop: 4 }}
             onClick={() => goStep(anyDone && firstOpen >= 0 ? firstOpen : 0)}>
-            {anyDone ? 'Continue workout' : 'Start workout'}
+            {anyDone ? (cardioDay ? 'Continue session' : 'Continue workout') : (cardioDay ? 'Start session' : 'Start workout')}
           </button>
           <button type="button" className="btn-ghost" style={{ padding: '8px 12px', fontSize: 12.5, alignSelf: 'center' }} onClick={() => setViewMode('list')}>
             Show everything on one page instead
@@ -862,18 +1030,27 @@ export default function ClientTraining() {
       for (const ex of lifts) (log[ex.id] || []).forEach((s, i) => {
         if (doneSets.has(`${ex.id}-${i + 1}`) && beatLast(s, lastSession[ex.id]?.sets?.[i + 1])) beat++
       })
+      // conditioning: total time worked, from the rounds they ticked
+      let workSecs = 0
+      for (const ex of lifts) {
+        const unit = unitFor(ex)
+        if (unit !== 'sec' && unit !== 'min') continue
+        ;(log[ex.id] || []).forEach((s, i) => {
+          if (doneSets.has(`${ex.id}-${i + 1}`)) workSecs += (Number(s.reps) || 0) * (unit === 'min' ? 60 : 1)
+        })
+      }
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', textAlign: 'center', paddingTop: 24 }}>
           <div style={{ width: 84, height: 84, borderRadius: 42, background: 'var(--orange)', color: '#140A02', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 42, fontWeight: 900 }}>✓</div>
-          <h2 style={{ fontSize: 38, lineHeight: 1, textTransform: 'uppercase' }}>Workout done</h2>
+          <h2 style={{ fontSize: 38, lineHeight: 1, textTransform: 'uppercase' }}>{cardioDay ? 'Session done' : 'Workout done'}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, width: '100%' }}>
             <div className="card" style={{ padding: '16px 10px' }}>
               <div style={{ fontSize: 34, fontWeight: 800, color: 'var(--orange-hot)', lineHeight: 1 }}>{doneCount}/{totalSets}</div>
-              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Sets logged</div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{cardioDay ? 'Rounds logged' : 'Sets logged'}</div>
             </div>
             <div className="card" style={{ padding: '16px 10px' }}>
-              <div style={{ fontSize: 34, fontWeight: 800, color: 'var(--orange-hot)', lineHeight: 1 }}>{beat}</div>
-              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Sets beat last time</div>
+              <div style={{ fontSize: 34, fontWeight: 800, color: 'var(--orange-hot)', lineHeight: 1 }}>{cardioDay ? fmtClock(Math.round(workSecs)) : beat}</div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{cardioDay ? 'Time worked' : 'Sets beat last time'}</div>
             </div>
           </div>
           {activeDay.cooldown && (
@@ -1057,9 +1234,19 @@ export default function ClientTraining() {
             style={{ padding: '10px 16px', fontSize: 13 }}
             onClick={() => setActiveDay(d)}>{d.day_label}</button>
         ))}
+        {!calMode && days.filter(d => d.track === 'conditioning' && dayShowsInWeek(d, rotations, week)).map(d => {
+          const on = sessionDateThisWeek(d)
+          return (
+            <button key={d.id} className={activeDay?.id === d.id ? 'btn' : 'btn-ghost'}
+              style={{ padding: '10px 16px', fontSize: 13, borderColor: activeDay?.id === d.id ? undefined : CONDITIONING_COLOR, color: activeDay?.id === d.id ? undefined : CONDITIONING_COLOR }}
+              onClick={() => setActiveDay(d)}>
+              {d.day_label}{on && <span style={{ opacity: 0.75, fontWeight: 600 }}> · {weekdayShort(on)}</span>}
+            </button>
+          )
+        })}
         {!calMode && days.filter(d => (d.track || 'exercise') === 'lifestyle' && dayShowsInWeek(d, rotations, week)).map(d => (
           <button key={d.id} className={activeDay?.id === d.id ? 'btn' : 'btn-ghost'}
-            style={{ padding: '10px 16px', fontSize: 13, borderColor: activeDay?.id === d.id ? undefined : '#3E8E7E', color: activeDay?.id === d.id ? undefined : '#3E8E7E' }}
+            style={{ padding: '10px 16px', fontSize: 13, borderColor: activeDay?.id === d.id ? undefined : LIFESTYLE_COLOR, color: activeDay?.id === d.id ? undefined : LIFESTYLE_COLOR }}
             onClick={() => setActiveDay(d)}>{d.day_label}</button>
         ))}
       </div>
@@ -1108,11 +1295,17 @@ export default function ClientTraining() {
         const sd = startDate ? new Date(startDate + 'T00:00:00') : null
         const today = new Date(); today.setHours(0, 0, 0, 0)
 
+        // a moved conditioning session leaves its program day and shows on the
+        // day the client picked (same rule as the Calendar page)
         function workoutsOn(dayNum) {
+          const ymd = localDateStr(new Date(y, m, dayNum))
+          return withMoves(ymd, scheduledOn(ymd), scheduledOn, moves)
+        }
+        function scheduledOn(ymd) {
           if (!sd || allBlocks.length === 0) return []
           // whole calendar days, not a millisecond division — an hour of DST
           // drift used to be enough to round a date onto the wrong day
-          const diff = daysBetween(startDate, new Date(y, m, dayNum))
+          const diff = daysBetween(startDate, new Date(ymd + 'T00:00:00'))
           if (diff === null || diff < 0) return []
           const resolved = resolveBlockWeek(allBlocks, Math.floor(diff / 7) + 1)
           if (!resolved) return []
@@ -1165,8 +1358,8 @@ export default function ClientTraining() {
                             setWeek(d.wk); setActiveDay(d); setCalMode(false)
                           }}
                           title={d.day_label}
-                          style={{ display: 'block', width: '100%', maxWidth: '100%', textAlign: 'left', background: 'none', padding: '1px 0', fontSize: 8.5, fontWeight: 800, lineHeight: 1.25, textTransform: 'uppercase', letterSpacing: '0.02em', color: (d.track || 'exercise') === 'lifestyle' ? '#3E8E7E' : 'var(--orange-hot)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                          {label}
+                          style={{ display: 'block', width: '100%', maxWidth: '100%', textAlign: 'left', background: 'none', padding: '1px 0', fontSize: 8.5, fontWeight: 800, lineHeight: 1.25, textTransform: 'uppercase', letterSpacing: '0.02em', color: trackColor(d.track), overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                          {d.movedFrom ? '↪ ' : ''}{label}
                         </button>
                       )
                     })}
@@ -1176,11 +1369,13 @@ export default function ClientTraining() {
               })}
             </div>
             <p className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>
-              <span style={{ color: 'var(--orange-hot)', fontWeight: 800 }}>■</span> Training · <span style={{ color: '#3E8E7E', fontWeight: 800 }}>■</span> Lifestyle — tap a session to open it
+              <span style={{ color: 'var(--orange-hot)', fontWeight: 800 }}>■</span> Training · <span style={{ color: CONDITIONING_COLOR, fontWeight: 800 }}>■</span> Conditioning · <span style={{ color: LIFESTYLE_COLOR, fontWeight: 800 }}>■</span> Lifestyle — tap a session to open it. ↪ = moved
             </p>
           </div>
         )
       })()}
+
+      {!calMode && !awayMode && activeDay && showList && renderMovePanel()}
 
       {!calMode && !awayMode && activeDay && (showList || screen === 'overview') && (activeDay.notes || activeDay.video_note || activeDay.warmup) && (
         <div className="card">

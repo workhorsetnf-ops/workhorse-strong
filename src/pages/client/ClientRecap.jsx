@@ -12,7 +12,7 @@ export default function ClientRecap() {
     const since = new Date(); since.setDate(since.getDate() - 30)
     const sinceStr = since.toISOString()
     Promise.all([
-      supabase.from('workout_logs').select('logged_at, weight, reps, logged_date').eq('client_id', profile.id).gte('logged_at', sinceStr),
+      supabase.from('workout_logs').select('logged_at, weight, reps, logged_date').eq('client_id', profile.id).neq('session_track', 'conditioning').gte('logged_at', sinceStr),
       supabase.from('daily_logs').select('log_date, weight, steps').eq('client_id', profile.id).gte('log_date', localDateStr(since)).order('log_date'),
       supabase.from('checkins').select('submitted_at').eq('client_id', profile.id).gte('submitted_at', sinceStr),
     ]).then(([{ data: logs }, { data: daily }, { data: checkins }]) => {

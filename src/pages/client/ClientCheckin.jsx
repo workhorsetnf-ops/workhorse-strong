@@ -30,7 +30,7 @@ export default function ClientCheckin() {
     const days = lastNDays(7)
     const [{ data: dl }, { data: wl }] = await Promise.all([
       supabase.from('daily_logs').select('*').eq('client_id', profile.id).gte('log_date', days[0]).lte('log_date', days[6]),
-      supabase.from('workout_logs').select('logged_at').eq('client_id', profile.id)
+      supabase.from('workout_logs').select('logged_at').eq('client_id', profile.id).neq('session_track', 'conditioning')
         .gte('logged_at', new Date(Date.now() - 9 * 864e5).toISOString()),
     ])
     setDailyRows(dl || [])

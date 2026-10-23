@@ -4,6 +4,7 @@ import { ChevronLeft, Utensils, Dumbbell } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { localDateStr, lastNDays, setTargets, resolveAssignment } from '../../lib/weeks'
 import { latestCalls, CALL_STYLE } from '../../lib/progression'
+import { CONDITIONING_COLOR } from '../../lib/conditioning'
 
 // Local dates throughout — toISOString() is UTC and moved evening logs onto the next day.
 function last7Dates() { return lastNDays(7) }
@@ -276,14 +277,20 @@ export default function CoachClientLogs() {
             <div key={day.date}>
               <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>{fmtDate(day.date)}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {Object.entries(day.exercises).map(([name, sets]) => (
-                  <div key={name} style={{ fontSize: 13, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <span>{name}</span>
-                    <span className="muted" style={{ textAlign: 'right' }}>
-                      {sets.map((s, i) => `${s.weight ? s.weight + '×' : ''}${s.reps || ''}${s.rir ? '@' + s.rir : ''}`).filter(Boolean).join(', ') || `${sets.length} set(s)`}
-                    </span>
-                  </div>
-                ))}
+                {Object.entries(day.exercises).map(([name, sets]) => {
+                  const cond = sets.some(x => x.session_track === 'conditioning')
+                  return (
+                    <div key={name} style={{ fontSize: 13, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <span>
+                        {name}
+                        {cond && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, letterSpacing: '.05em', color: CONDITIONING_COLOR }}>CONDITIONING</span>}
+                      </span>
+                      <span className="muted" style={{ textAlign: 'right' }}>
+                        {sets.map(s => s.result_text || `${s.weight ? s.weight + '×' : ''}${s.reps || ''}${s.rir ? '@' + s.rir : ''}`).filter(Boolean).join(', ') || `${sets.length} set(s)`}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           ))}

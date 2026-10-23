@@ -146,7 +146,7 @@ export default function CoachHome() {
     const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }, { data: ratingsData }, { data: flagsData }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, protein_g, calories, created_at, avatar_url, checkin_day, checkin_frequency').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('program_assignments').select('*'),
-      supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text, logged_date').order('logged_at', { ascending: false }).limit(600),
+      supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text, logged_date, session_track').order('logged_at', { ascending: false }).limit(600),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(400),
       supabase.from('checkins').select('client_id, submitted_at, notes, weight').gte('submitted_at', new Date(Date.now() - 60 * 864e5).toISOString()).order('submitted_at', { ascending: false }).limit(1000),
       supabase.from('messages').select('sender_id, recipient_id, created_at'),
@@ -170,8 +170,11 @@ export default function CoachHome() {
     setContacted(contactedSet)
     setLastContactMap(lastContact)
 
+    // Lifting compliance counts lifting sessions only; conditioning has its own
+    // place (Train page, logs) and the activity feed below still shows everything.
+    const liftLogs = (workoutLogs || []).filter(w => w.session_track !== 'conditioning')
     const sessionCounts = {}
-    for (const w of workoutLogs || []) {
+    for (const w of liftLogs) {
       const key = w.client_id
       ;(sessionCounts[key] ||= new Set()).add(logDate(w))
     }
@@ -180,7 +183,7 @@ export default function CoachHome() {
     const st = {}
     for (const c of cl || []) {
       const hasAssignment = assigns?.some(a => a.client_id === c.id)
-      const lastWorkout = workoutLogs?.find(w => w.client_id === c.id)
+      const lastWorkout = liftLogs.find(w => w.client_id === c.id)
       const exerciseDue = hasAssignment && (!lastWorkout || daysAgo(lastWorkout.logged_at) >= 3)
       const lastDaily = dailyLogs?.find(d => d.client_id === c.id)
       const lifestyleDue = !lastDaily || daysAgo(lastDaily.log_date) >= 2
@@ -188,7 +191,7 @@ export default function CoachHome() {
       const consultDue = !lastContact[c.id] || daysAgo(lastContact[c.id]) >= 5
 
       const last14Days = new Set(
-        (workoutLogs || []).filter(w => w.client_id === c.id && daysAgo(w.logged_at) <= 14).map(w => logDate(w))
+        liftLogs.filter(w => w.client_id === c.id && daysAgo(w.logged_at) <= 14).map(w => logDate(w))
       ).size
       const compliancePct = hasAssignment ? Math.round((last14Days / 8) * 100) : null // ~4x/wk expected over 2 weeks
 
@@ -199,7 +202,7 @@ export default function CoachHome() {
     // per-client expanded-view stats: last-28-day compliance grid, totals, streak, 30d percentages
     const cs = {}
     for (const c of cl || []) {
-      const workoutDates = new Set((workoutLogs || []).filter(w => w.client_id === c.id).map(w => logDate(w)))
+      const workoutDates = new Set(liftLogs.filter(w => w.client_id === c.id).map(w => logDate(w)))
       const lifestyleDates = new Set((dailyLogs || []).filter(d => d.client_id === c.id).map(d => d.log_date))
 
       const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -277,7 +280,7 @@ export default function CoachHome() {
     for (const c of cl || []) {
       const chips = []
       const daily = (dailyLogs || []).filter(d => d.client_id === c.id)
-      const workouts = (workoutLogs || []).filter(w => w.client_id === c.id)
+      const workouts = liftLogs.filter(w => w.client_id === c.id)
       const meals = (mealLogs || []).filter(m => m.client_id === c.id)
       const checkinsC = (checkins || []).filter(ci => ci.client_id === c.id)
 

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { localDateStr } from '../../lib/weeks'
+import { localDateStr, daysBetween } from '../../lib/weeks'
+import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, withMoves } from '../../lib/conditioning'
 
 export default function ClientCalendar() {
   const { profile } = useAuth()
@@ -15,6 +16,7 @@ export default function ClientCalendar() {
   const [checkinFormId, setCheckinFormId] = useState(null)
   const [month, setMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
   const [selected, setSelected] = useState(null)
+  const [moves, setMoves] = useState([]) // conditioning sessions the client moved
 
   useEffect(() => {
     if (!profile) return
@@ -31,6 +33,8 @@ export default function ClientCalendar() {
         }
         setDaysByBlock(byBlock)
       })
+    supabase.from('session_moves').select('*').eq('client_id', profile.id)
+      .then(({ data }) => setMoves(data || []))
     supabase.from('daily_logs').select('log_date').eq('client_id', profile.id)
       .then(({ data }) => setDailyLogDates(new Set((data || []).map(d => d.log_date))))
     supabase.from('checkins').select('submitted_at').eq('client_id', profile.id).order('submitted_at', { ascending: false }).limit(1).maybeSingle()
@@ -58,10 +62,14 @@ export default function ClientCalendar() {
   const lastCheckinDate = lastCheckin ? new Date(lastCheckin) : (sd || null)
 
   function daySessions(dayNum) {
+    const ymd = localDateStr(new Date(y, m, dayNum))
+    return withMoves(ymd, scheduledOn(ymd), scheduledOn, moves)
+  }
+  function scheduledOn(ymd) {
     if (!sd || allBlocks.length === 0) return []
-    const date = new Date(y, m, dayNum)
-    const diff = Math.round((date - sd) / 864e5)
-    if (diff < 0) return []
+    // whole calendar days, so a DST changeover can't shift a session a day
+    const diff = daysBetween(startDate, new Date(ymd + 'T00:00:00'))
+    if (diff === null || diff < 0) return []
     const resolved = resolveBlock(diff)
     if (!resolved) return []
     const dn = (diff % 7) + 1
@@ -123,8 +131,8 @@ export default function ClientCalendar() {
                   </span>
                 </div>
                 {shown.map(s => (
-                  <div key={s.id} style={{ fontSize: 8, fontWeight: 800, textTransform: 'uppercase', lineHeight: 1.3, color: (s.track || 'exercise') === 'lifestyle' ? '#3E8E7E' : 'var(--orange-hot)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                    {s.day_label}
+                  <div key={s.id} style={{ fontSize: 8, fontWeight: 800, textTransform: 'uppercase', lineHeight: 1.3, color: trackColor(s.track), overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                    {s.movedFrom ? '↪ ' : ''}{s.day_label}
                   </div>
                 ))}
                 {extra > 0 && <div className="muted" style={{ fontSize: 7.5 }}>+{extra}</div>}
@@ -134,7 +142,9 @@ export default function ClientCalendar() {
         </div>
         <div style={{ display: 'flex', gap: 12, marginTop: 10, flexWrap: 'wrap', fontSize: 10.5 }} className="muted">
           <span><span style={{ color: 'var(--orange-hot)' }}>■</span> Training</span>
-          <span><span style={{ color: '#3E8E7E' }}>■</span> Lifestyle</span>
+          <span><span style={{ color: CONDITIONING_COLOR }}>■</span> Conditioning</span>
+          <span><span style={{ color: LIFESTYLE_COLOR }}>■</span> Lifestyle</span>
+          <span>↪ Moved</span>
           <span><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4A6FA5', display: 'inline-block', marginRight: 3 }} />Logged</span>
           <span><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#9B7FE0', display: 'inline-block', marginRight: 3 }} />Check-in due</span>
         </div>
@@ -147,11 +157,14 @@ export default function ClientCalendar() {
             {sel.map(s => (
               <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--steel)', borderRadius: 6, padding: '8px 10px' }}>
                 <div>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: (s.track || 'exercise') === 'lifestyle' ? '#3E8E7E' : 'var(--orange-hot)' }}>{s.day_label}</span>
-                  <span className="muted" style={{ fontSize: 11.5, marginLeft: 8 }}>{s.blockName} · Wk {s.wk}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: trackColor(s.track) }}>{s.day_label}</span>
+                  <span className="muted" style={{ fontSize: 11.5, marginLeft: 8 }}>
+                    {s.blockName} · Wk {s.wk}
+                    {s.movedFrom && ` · moved from ${new Date(s.movedFrom + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' })}`}
+                  </span>
                 </div>
                 <button className="btn" style={{ padding: '7px 14px', fontSize: 12 }} onClick={() => openWorkout(s)}>
-                  {(s.track || 'exercise') === 'lifestyle' ? 'Open day →' : 'Start workout →'}
+                  {(s.track || 'exercise') === 'lifestyle' ? 'Open day →' : s.track === 'conditioning' ? 'Start session →' : 'Start workout →'}
                 </button>
               </div>
             ))}

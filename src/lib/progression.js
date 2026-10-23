@@ -71,6 +71,8 @@ export function latestCalls(logs, exById, week, dayOf, setTargetsFn) {
   const byEx = new Map()
   for (const l of logs) {
     if (!l.exercise_id || !exById[l.exercise_id]) continue
+    // weight/reps/RIR calls are for lifting; a conditioning round is time or distance
+    if (l.session_track === 'conditioning') continue
     const d = dayOf(l)
     const cur = byEx.get(l.exercise_id)
     if (!cur || d > cur.date) byEx.set(l.exercise_id, { date: d, sets: [l] })

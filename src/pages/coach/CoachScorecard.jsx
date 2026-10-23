@@ -46,7 +46,7 @@ export default function CoachScorecard() {
     const [daily, meals, workouts, habits, ticks, checkins, { data: asg }] = await Promise.all([
       fetchAll(() => supabase.from('daily_logs').select('client_id, log_date, weight, sleep_hours, readiness, trained, nutrition_hit, quick_checkin_at, note').in('client_id', ids).gte('log_date', since).order('log_date').order('id')),
       fetchAll(() => supabase.from('meal_logs').select('client_id, logged_on').in('client_id', ids).gte('logged_on', since).order('logged_on').order('id')),
-      fetchAll(() => supabase.from('workout_logs').select('client_id, logged_at, logged_date').in('client_id', ids).gte('logged_at', new Date(since + 'T00:00:00').toISOString()).order('logged_at').order('id')),
+      fetchAll(() => supabase.from('workout_logs').select('client_id, logged_at, logged_date').in('client_id', ids).neq('session_track', 'conditioning').gte('logged_at', new Date(since + 'T00:00:00').toISOString()).order('logged_at').order('id')),
       fetchAll(() => supabase.from('client_habits').select('id, client_id, created_at').in('client_id', ids).eq('active', true).order('created_at').order('id')),
       fetchAll(() => supabase.from('habit_logs').select('client_id, habit_id, log_date').in('client_id', ids).gte('log_date', since).order('log_date').order('id')),
       fetchAll(() => supabase.from('checkins').select('client_id, submitted_at').in('client_id', ids).gte('submitted_at', new Date(addDays(since, -70) + 'T00:00:00').toISOString()).order('submitted_at').order('id')),

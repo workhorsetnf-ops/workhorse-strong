@@ -1900,3 +1900,27 @@ create table if not exists routine_library (
 create unique index if not exists routine_library_kind_name on routine_library (kind, lower(name));
 alter table routine_library enable row level security;
 create policy "coach manages routines" on routine_library for all using (is_coach()) with check (is_coach());
+
+-- ===== CONDITIONING SESSIONS (Update 125) =====
+-- see migration_update125_conditioning.sql: program_days.track also allows
+-- 'conditioning', workout_logs.session_track tags each log with its session
+-- type, and session_moves lets a client move a conditioning session within its week.
+alter table program_days drop constraint if exists program_days_track_check;
+alter table program_days add constraint program_days_track_check check (track in ('exercise', 'lifestyle', 'conditioning'));
+alter table workout_logs add column if not exists session_track text not null default 'exercise'
+  check (session_track in ('exercise', 'lifestyle', 'conditioning'));
+create table if not exists session_moves (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references profiles(id) on delete cascade,
+  day_id uuid not null references program_days(id) on delete cascade,
+  from_date date not null,
+  to_date date not null,
+  created_at timestamptz default now(),
+  unique (client_id, day_id, from_date),
+  check (to_date between from_date - 6 and from_date + 6)
+);
+create index if not exists session_moves_client_dates on session_moves (client_id, to_date);
+alter table session_moves enable row level security;
+create policy "coach manages session moves" on session_moves for all using (is_coach()) with check (is_coach());
+create policy "client manages own session moves" on session_moves for all using (client_id = auth.uid()) with check (client_id = auth.uid());
+grant select, insert, update, delete on session_moves to authenticated;
