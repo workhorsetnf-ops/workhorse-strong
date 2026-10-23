@@ -146,6 +146,7 @@ export function parseProgramText(text) {
 // Same line notation as a day, plus two things:
 //
 //   === Day 1: Upper A ===                  <- a heading starts a new workout
+//   === Day 3: Bike Intervals (conditioning) ===   <- a conditioning session
 //   Warm-up: 5 min bike, band pull-aparts    <- goes in that workout's warm-up box
 //   A) Bench 3x5-6 RIR 2 > 3x4-6 RIR 2 > 3x3-5 RIR 1-2 > 3x3-4 RIR 1
 //   Pogo Hops 2x15 > 2x20 > 3x20 | Quick, stiff ankles
@@ -167,13 +168,27 @@ const COOLDOWN_LINE = /^\s*cool\s*-?\s*down\s*:\s*(.+)$/i
 const WEEK_SPLIT = /\s+>\s+|\s*[→⇒]\s*/
 const NOTE_SPLIT = /\s(?:\||\/\/)\s*/
 
+// "(conditioning)", "[cardio]" anywhere in a heading, or a heading that starts
+// with Conditioning / Cardio, makes it a conditioning session rather than a
+// workout: the client sees it separately and can move it within the week.
+const CONDITIONING_TAG = /\s*[([]\s*(?:conditioning|cardio)\s*[)\]]\s*/i
+const CONDITIONING_LEAD = /^(?:conditioning|cardio)\b/i
+
 function parseHeading(text) {
   let label = clean(text)
+  let track = 'exercise'
+  if (CONDITIONING_TAG.test(label)) { track = 'conditioning'; label = clean(label.replace(CONDITIONING_TAG, ' ')) }
   let dayNumber = null
   let m = label.match(HEADING_DAY_FIRST)
   if (m) { dayNumber = +m[1]; label = clean(m[2]) }
   else if ((m = label.match(HEADING_DAY_LAST))) { label = clean(m[1]); dayNumber = +m[2] }
-  return { label: label || (dayNumber ? `Day ${dayNumber}` : 'Workout'), dayNumber }
+  if (CONDITIONING_LEAD.test(label)) {
+    track = 'conditioning'
+    // "Conditioning: Zone 2" -> "Zone 2"; a bare "Conditioning B" keeps its name
+    const pm = label.match(/^(?:conditioning|cardio)\s*[:\-–—]\s*(.+)$/i)
+    if (pm) label = clean(pm[1])
+  }
+  return { label: label || (dayNumber ? `Day ${dayNumber}` : track === 'conditioning' ? 'Conditioning' : 'Workout'), dayNumber, track }
 }
 
 // One week's worth of "3x4-6 RIR 2". Reuses the line parser with a stand-in
@@ -242,7 +257,7 @@ export function parseBlockExerciseLine(raw) {
   return row
 }
 
-// Whole pasted block -> { days: [{ label, dayNumber, warmup, exercises }], skipped: [{ raw, why }] }
+// Whole pasted block -> { days: [{ label, dayNumber, track, warmup, exercises }], skipped: [{ raw, why }] }
 // blockWeeks lets it flag a line that lists more weeks than the block has.
 export function parseBlockText(text, blockWeeks = 4) {
   const days = []
@@ -253,9 +268,9 @@ export function parseBlockText(text, blockWeeks = 4) {
     if (!line) continue
     const hm = line.match(BLOCK_HEADING)
     if (hm && hm[1]) {
-      const { label, dayNumber } = parseHeading(hm[1])
+      const { label, dayNumber, track } = parseHeading(hm[1])
       const prevNum = days.length ? days[days.length - 1].dayNumber : 0
-      cur = { label, dayNumber: dayNumber || Math.min(7, prevNum + 1), warmup: '', cooldown: '', exercises: [] }
+      cur = { label, dayNumber: dayNumber || Math.min(7, prevNum + 1), track, warmup: '', cooldown: '', exercises: [] }
       days.push(cur)
       continue
     }

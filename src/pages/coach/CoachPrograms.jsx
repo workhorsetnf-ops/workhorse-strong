@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { normalizeTarget, normalizeReps, dash, effortText, effortMeaning } from '../../lib/targets'
 import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets } from '../../lib/weeks'
+import { CONDITIONING_COLOR, trackColor } from '../../lib/conditioning'
 import { parseProgramText, parseBlockText, blockExerciseRows } from '../../lib/parse'
 import NotesBox from './NotesBox'
 import RoutineBox from './RoutineBox'
@@ -531,12 +532,12 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
               await onAddDay(dn, label)
             }}
             style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', border: '1px solid #4a4a4a', borderRadius: 10, padding: '10px 12px', background: 'var(--coal)' }}>
-            <strong style={{ fontSize: 12.5, color: 'var(--orange-hot)', letterSpacing: '.06em' }}>+ ADD {track === 'lifestyle' ? 'LIFESTYLE CARD' : 'WORKOUT'}</strong>
+            <strong style={{ fontSize: 12.5, color: 'var(--orange-hot)', letterSpacing: '.06em' }}>+ ADD {track === 'lifestyle' ? 'LIFESTYLE CARD' : track === 'conditioning' ? 'CONDITIONING SESSION' : 'WORKOUT'}</strong>
             <select value={newDay.dn} onChange={e => setNewDay(n => ({ ...n, dn: e.target.value }))} aria-label="Day" style={{ width: 'auto', padding: '6px 8px', fontSize: 13 }}>
               <option value="">Next day</option>
               {[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>Day {n}</option>)}
             </select>
-            <input value={newDay.label} onChange={e => setNewDay(n => ({ ...n, label: e.target.value }))} placeholder={track === 'lifestyle' ? 'e.g. Recovery' : 'Workout name, e.g. Upper A'} aria-label="Workout name" style={{ maxWidth: 260, padding: '6px 9px', fontSize: 13 }} />
+            <input value={newDay.label} onChange={e => setNewDay(n => ({ ...n, label: e.target.value }))} placeholder={track === 'lifestyle' ? 'e.g. Recovery' : track === 'conditioning' ? 'e.g. Bike Intervals' : 'Workout name, e.g. Upper A'} aria-label="Workout name" style={{ maxWidth: 260, padding: '6px 9px', fontSize: 13 }} />
             <button type="submit" className="btn" disabled={!newDay.label.trim()} style={{ padding: '7px 14px', fontSize: 12.5 }}>Add</button>
           </form>
         )}
@@ -813,7 +814,9 @@ export default function CoachPrograms() {
   }
 
   async function addWorkout(blockId, dayNumber) {
-    const label = prompt(track === 'lifestyle' ? 'Lifestyle card name:' : 'Workout name (e.g. Upper A):', track === 'lifestyle' ? 'Lifestyle' : 'Workout')
+    const label = prompt(
+      track === 'lifestyle' ? 'Lifestyle card name:' : track === 'conditioning' ? 'Conditioning session name (e.g. Bike Intervals):' : 'Workout name (e.g. Upper A):',
+      track === 'lifestyle' ? 'Lifestyle' : track === 'conditioning' ? 'Conditioning' : 'Workout')
     if (!label) return
     const { error } = await supabase.from('program_days').insert({
       program_id: open, block_id: blockId, day_label: label, day_number: dayNumber,
@@ -851,15 +854,21 @@ export default function CoachPrograms() {
     const text = (fromLib?.name || quickAdd[dayId] || '').trim() || (kind === 'conditioning' ? 'Conditioning' : '')
     if (!text) return
     const list = exercises[dayId] || []
-    const metric = fromLib?.metric || 'reps'
+    // On a conditioning session a new piece defaults to timed intervals with
+    // no RIR (4 × 30 sec); anything from the library keeps its own metric.
+    const day = (days[block.id] || []).find(x => x.id === dayId)
+    const cond = (day?.track || track) === 'conditioning'
+    const metric = fromLib?.metric || (cond ? 'time' : 'reps')
+    const sets = cond ? 4 : 3
+    const target = cond ? '' : '2'
     const weeks = block.weeks || 4
     await supabase.from('program_exercises').insert({
       day_id: dayId, name: text, kind, description: desc,
       tracking_type: fromLib?.tracking_type || '',
       letter: nextFreeLetter(list),
       video_url: fromLib?.video_url || '', notes: fromLib?.notes || '', icon_url: fromLib?.icon_url || null,
-      metric, rest: '', progression_type: 'rir', sets: 3, reps: defaultReps(metric), rir: '2',
-      week_targets: Array.from({ length: weeks }, () => ({ sets: 3, reps: defaultReps(metric), target: '2' })),
+      metric, rest: cond ? '90s' : '', progression_type: 'rir', sets, reps: defaultReps(metric), rir: target,
+      week_targets: Array.from({ length: weeks }, () => ({ sets, reps: defaultReps(metric), target })),
       position: list.length,
     })
     setQuickAdd(q => ({ ...q, [dayId]: '' }))
@@ -882,10 +891,12 @@ export default function CoachPrograms() {
     const list = exercises[dayId] || []
     const weeks = block.weeks || 4
     const used = new Set(list.map(e => (e.letter || '').toUpperCase()).filter(Boolean))
+    // cardio has no RIR: on a conditioning session a line without a target stays without one
+    const cond = (days[block.id] || []).find(x => x.id === dayId)?.track === 'conditioning'
     const payload = rows.map((r, i) => {
       const sets = r.sets || 3
       const reps = r.reps || defaultReps('reps')
-      const target = r.target || '2'
+      const target = r.target || (cond ? '' : '2')
       const base = { sets, reps: String(reps), target: String(target) }
       // setRows only rides along when the line actually specified per-set work
       const entry = r.setRows
@@ -934,7 +945,7 @@ export default function CoachPrograms() {
     for (const d of ready) {
       const { data: newDay, error } = await supabase.from('program_days').insert({
         program_id: block.program_id || open, block_id: block.id, day_label: d.label, day_number: d.dayNumber,
-        position: pos++, track: 'exercise', rotation_id: rot,
+        position: pos++, track: d.track || 'exercise', rotation_id: rot,
         // "Warm-up: Upper Prep" naming a saved routine copies the saved one in
         ...(() => { const w = resolveRoutine(d.warmup, routines, 'warmup'), c = resolveRoutine(d.cooldown, routines, 'cooldown')
           return { warmup: w.body || '', warmup_video: w.video, cooldown: c.body || '', cooldown_video: c.video } })(),
@@ -955,7 +966,8 @@ export default function CoachPrograms() {
     }
     setBlockPasteBusy(false)
     if (made === ready.length) { setBlockPasteOpen(false); setBlockPasteText('') }
-    setTrack('exercise')
+    // land on what was pasted: conditioning only -> the Conditioning tab
+    setTrack(ready.every(d => d.track === 'conditioning') ? 'conditioning' : 'exercise')
     loadDays(block.id)
   }
 
@@ -993,6 +1005,8 @@ export default function CoachPrograms() {
           Put <code> &gt; </code> between weeks: <code>3x5-6 RIR 2 &gt; 3x4-6 RIR 2 &gt; 3x3-5 RIR 1</code>. A week that leaves something out keeps it from the week before
           (<code>&gt; RIR 1</code> only changes the target), and the last week repeats to the end of the block. Name, letter, rest and the note after <code>|</code> are set once, on week 1.
           A line starting <code>Warm-up:</code> goes in that workout's warm-up box. No target means none is shown to the client — good for jumps, holds and intervals.
+          Add <code>(conditioning)</code> to a heading, or start it with <code>Conditioning:</code>, to make a conditioning session the client can move within the week:
+          <code>=== Day 3: Bike Intervals (conditioning) ===</code> then <code>Assault bike 6x30s rest 90s &gt; 7x30s &gt; 8x30s</code> or <code>Incline walk 1x20 min &gt; 1x25 min &gt; 1x30 min</code>.
         </p>
 
         {(pDays.length > 0 || skipped.length > 0) && (
@@ -1003,9 +1017,10 @@ export default function CoachPrograms() {
               const rows = blockExerciseRows(good, weeks)
               return (
                 <div key={di} style={{ borderTop: '1px solid var(--line)', paddingTop: 8 }}>
-                  <strong style={{ fontSize: 12.5, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--orange-hot)' }}>
+                  <strong style={{ fontSize: 12.5, textTransform: 'uppercase', letterSpacing: '0.04em', color: trackColor(d.track) }}>
                     Day {d.dayNumber}: {d.label}
                   </strong>
+                  {d.track === 'conditioning' && <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', marginLeft: 6, padding: '1px 6px', borderRadius: 6, border: `1px solid ${CONDITIONING_COLOR}`, color: CONDITIONING_COLOR }}>CONDITIONING</span>}
                   <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>{good.length} exercise{good.length === 1 ? '' : 's'}</span>
                   {[['warmup', 'Warm-up'], ['cooldown', 'Cool-down']].map(([k, lab]) => {
                     if (!d[k]) return null
@@ -1659,6 +1674,7 @@ export default function CoachPrograms() {
                               </span>
                               <span style={{ display: 'inline-flex', gap: 4, marginLeft: 14 }}>
                                 <button className={track === 'exercise' ? 'btn' : 'btn-ghost'} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setTrack('exercise')}>Exercise</button>
+                                <button className={track === 'conditioning' ? 'btn' : 'btn-ghost'} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setTrack('conditioning')}>Conditioning</button>
                                 <button className={track === 'lifestyle' ? 'btn' : 'btn-ghost'} style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setTrack('lifestyle')}>Lifestyle</button>
                               </span>
                               <span className="muted" style={{ fontSize: 12.5, marginLeft: 8 }}>
@@ -1739,8 +1755,8 @@ export default function CoachPrograms() {
                                 const groups = chunkGroups(list)
                                 const selCount = selected[d.id]?.size || 0
                                 const qa = quickAdd[d.id] || ''
-                                const matches = track === 'exercise' && qa.trim() ? library.filter(l => (l.name + ' ' + l.category).toLowerCase().includes(qa.toLowerCase())).slice(0, 5) : []
-                                const condMatches = track === 'exercise' && qa.trim() ? condLib.filter(l => (l.name + ' ' + l.format + ' ' + l.instructions).toLowerCase().includes(qa.toLowerCase())).slice(0, 4) : []
+                                const matches = track !== 'lifestyle' && qa.trim() ? library.filter(l => (l.name + ' ' + l.category).toLowerCase().includes(qa.toLowerCase())).slice(0, 5) : []
+                                const condMatches = track !== 'lifestyle' && qa.trim() ? condLib.filter(l => (l.name + ' ' + l.format + ' ' + l.instructions).toLowerCase().includes(qa.toLowerCase())).slice(0, 4) : []
                                 const lifeMatches = track === 'lifestyle' && qa.trim() ? lifeLib.filter(l => (l.name + ' ' + l.category + ' ' + l.instructions).toLowerCase().includes(qa.toLowerCase())).slice(0, 5) : []
                                 return (
                                   <div key={d.id}
@@ -1887,7 +1903,7 @@ export default function CoachPrograms() {
                                       </div>
                                     )}
                                     <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: 11.5, width: '100%', marginTop: 5 }}
-                                      onClick={() => quickAddExercise(activeBlock, d.id, null, 'conditioning')}>{track === 'lifestyle' ? '+ Lifestyle block' : '+ Conditioning block'}</button>
+                                      onClick={() => quickAddExercise(activeBlock, d.id, null, 'conditioning')}>{track === 'lifestyle' ? '+ Lifestyle block' : track === 'conditioning' ? '+ Free-text block' : '+ Conditioning block'}</button>
                                   </div>
                                 )
                               })}

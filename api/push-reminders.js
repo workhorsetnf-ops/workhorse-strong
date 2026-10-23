@@ -58,7 +58,7 @@ async function gatherFacts(sb, clients, today, tz, prefs) {
   const ids = clients.map(c => c.id)
   const [asg, wl, ml, dl, habits, hl, ck] = await Promise.all([
     sb.from('program_assignments').select('*').in('client_id', ids),
-    sb.from('workout_logs').select('client_id, logged_at').in('client_id', ids).gte('logged_at', addDays(today, -1)),
+    sb.from('workout_logs').select('client_id, logged_at').in('client_id', ids).neq('session_track', 'conditioning').gte('logged_at', addDays(today, -1)),
     sb.from('meal_logs').select('client_id').in('client_id', ids).eq('logged_on', today),
     // the last week, for tiered quick check-ins (today's row also says if they trained)
     sb.from('daily_logs').select('client_id, log_date, trained, weight, sleep_hours, readiness, quick_checkin_at').in('client_id', ids).gte('log_date', addDays(today, -7)).lte('log_date', today),

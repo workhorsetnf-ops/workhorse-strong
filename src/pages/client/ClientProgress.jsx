@@ -118,7 +118,7 @@ export default function ClientProgress() {
     const sinceWorkouts = new Date(Date.now() - 9 * 864e5).toISOString()
     const [{ data }, { data: wl }] = await Promise.all([
       supabase.from('daily_logs').select('*').eq('client_id', profile.id).gte('log_date', since).order('log_date'),
-      supabase.from('workout_logs').select('logged_at').eq('client_id', profile.id).gte('logged_at', sinceWorkouts),
+      supabase.from('workout_logs').select('logged_at').eq('client_id', profile.id).neq('session_track', 'conditioning').gte('logged_at', sinceWorkouts),
     ])
     setLogs(data || [])
     setWorkoutDates(new Set((wl || []).map(w => localDateStr(new Date(w.logged_at)))))

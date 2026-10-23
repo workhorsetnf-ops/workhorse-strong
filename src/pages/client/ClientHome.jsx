@@ -69,7 +69,7 @@ export default function ClientHome() {
     const startOfWeek = new Date(nowForWeek); startOfWeek.setHours(0, 0, 0, 0); startOfWeek.setDate(nowForWeek.getDate() - weekDow)
     const weekStart = startOfWeek.toISOString()
     supabase.from('workout_logs').select('logged_at, logged_date')
-      .eq('client_id', profile.id).gte('logged_at', weekStart)
+      .eq('client_id', profile.id).neq('session_track', 'conditioning').gte('logged_at', weekStart)
       .then(({ data }) => {
         const days = new Set((data || []).map(l => logDate(l)))
         setWeekWorkouts(days.size)
