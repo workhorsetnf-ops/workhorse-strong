@@ -31,6 +31,7 @@ export default function ClientNutrition() {
   const week = weekDaysFrom(mondayOf(today))
   const [slot, setSlot] = useState(slotForNow())
   const [weekLogs, setWeekLogs] = useState([])
+  const [totalsDay, setTotalsDay] = useState(null)   // a day tapped in the week grid
   const [plan, setPlan] = useState({ meals: [], items: [], plan: null, me: null })
 
   async function load() {
@@ -238,7 +239,7 @@ export default function ClientNutrition() {
         </div>
       </div>
 
-      <DailyTotalsCard clientId={profile.id} onSaved={load} />
+      <DailyTotalsCard clientId={profile.id} onSaved={load} openDay={totalsDay} onClose={() => setTotalsDay(null)} />
 
       {plan.meals.length > 0 && (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -379,9 +380,10 @@ export default function ClientNutrition() {
       <div>
         <div style={{ borderBottom: '3px solid var(--orange)', paddingBottom: 4, marginBottom: 8, color: 'var(--orange-hot)', fontWeight: 900, fontSize: 13, letterSpacing: '.08em' }}>THIS WEEK · DAILY TOTALS</div>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <WeekTotals compact today={today} table={weekTable(weekLogs, week, targetsFrom(plan.me || profile, plan.plan), today)} targets={targetsFrom(plan.me || profile, plan.plan)} />
+          <WeekTotals compact today={today} table={weekTable(weekLogs, week, targetsFrom(plan.me || profile, plan.plan), today)} targets={targetsFrom(plan.me || profile, plan.plan)}
+            selected={totalsDay} onPick={d => { if (d <= today) setTotalsDay(d) }} />
         </div>
-        <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>On target = calories within 5% and protein at 95%+ of your targets.</p>
+        <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>Tap a day to type in its totals, like the old sheet. On target = calories within 5% and protein at 95%+ of your targets.</p>
       </div>
     </div>
   )
