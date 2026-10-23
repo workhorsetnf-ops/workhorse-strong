@@ -95,7 +95,7 @@ export default function ClientHome() {
         // clears once they submit. Same rule as the dashboard and push reminders.
         const last = data?.submitted_at ? localDateStr(new Date(data.submitted_at)) : null
         const today = localDateStr()
-        const due = checkinDueDate({ checkinDay: profile.checkin_day, frequency: profile.checkin_frequency, lastCheckin: last, today })
+        const due = checkinDueDate({ checkinDay: profile.checkin_day, frequency: profile.checkin_frequency, lastCheckin: last, today, startDate: profile.start_date })
         if (!due) { setCheckinDue({ due: true, days: null, overdue: false }); return }   // never checked in, no day set
         const late = daysBetween(due, today)
         if (late < 0) { setCheckinDue({ due: false }); return }

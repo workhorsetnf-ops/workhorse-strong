@@ -9,9 +9,9 @@ export const DEFAULT_PREFS = { workout: true, food: true, habits: true, checkin:
 // Check-in state for clients with a fixed check-in day (0 = Mon), at their
 // frequency (weekly / biweekly / monthly). lastCheckin: 'YYYY-MM-DD' or null.
 // Clients with no fixed day get no check-in pushes, as before.
-export function checkinState(checkinDay, lastCheckin, today, frequency = 'weekly') {
+export function checkinState(checkinDay, lastCheckin, today, frequency = 'weekly', startDate = null) {
   if (checkinDay === null || checkinDay === undefined || checkinDay === '') return { due: false, overdueDays: 0 }
-  const dueDate = checkinDueDate({ checkinDay, frequency, lastCheckin, today })
+  const dueDate = checkinDueDate({ checkinDay, frequency, lastCheckin, today, startDate })
   const late = daysBetween(dueDate, today)
   return { due: late === 0, overdueDays: Math.max(0, late), dueDate, tomorrow: late === -1 }
 }

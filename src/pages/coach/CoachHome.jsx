@@ -16,7 +16,7 @@ function startOfWeek(d = new Date()) {
 function checkinLate(c, checkins) {
   const last = checkins?.find(ci => ci.client_id === c.id)
   const today = localDateStr()
-  const due = checkinDueDate({ checkinDay: c.checkin_day, frequency: c.checkin_frequency, lastCheckin: last ? localDateStr(new Date(last.submitted_at)) : null, today })
+  const due = checkinDueDate({ checkinDay: c.checkin_day, frequency: c.checkin_frequency, lastCheckin: last ? localDateStr(new Date(last.submitted_at)) : null, today, startDate: c.start_date })
   return due ? daysBetween(due, today) : 999
 }
 function daysAgo(dateStr) { return Math.floor((Date.now() - new Date(dateStr).getTime()) / 864e5) }
@@ -144,7 +144,7 @@ export default function CoachHome() {
   async function load() {
     setLoading(true)
     const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }, { data: ratingsData }, { data: flagsData }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, protein_g, calories, created_at, avatar_url, checkin_day, checkin_frequency').eq('role', 'client').neq('status', 'exited').order('full_name'),
+      supabase.from('profiles').select('id, full_name, protein_g, calories, created_at, avatar_url, checkin_day, checkin_frequency, start_date').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('program_assignments').select('*'),
       supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text, logged_date, session_track').order('logged_at', { ascending: false }).limit(600),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(400),

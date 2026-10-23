@@ -86,7 +86,7 @@ export function weeklyCheckinFor({ checkinDay, frequency, startDate }, checkinDa
   if (startDate && startDate > end) return { required: 0, done }
   const before = checkinDates.filter(x => x < weekStart).sort()
   const last = before[before.length - 1] || null
-  const due = checkinDueDate({ checkinDay, frequency, lastCheckin: last, today: weekStart })
+  const due = checkinDueDate({ checkinDay, frequency, lastCheckin: last, today: weekStart, startDate })
   // never checked in and no fixed day: expect one a week once they've started
   if (!due) return { required: startDate && startDate <= end ? 1 : 0, done }
   return { required: due <= end ? 1 : 0, done }
