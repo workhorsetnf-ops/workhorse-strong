@@ -5,6 +5,9 @@ import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { Home, Dumbbell, Utensils, ClipboardCheck, LineChart, Video, Trophy, MessageCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { localDateStr } from '../../lib/weeks'
+import { checkinDueDate, addDays } from '../../lib/dashboard'
+import { quickDone, quickDue } from '../../lib/adherence'
 import ClientHome from './ClientHome'
 import ClientTraining from './ClientTraining'
 import ClientNutrition from './ClientNutrition'
@@ -43,12 +46,21 @@ export default function ClientApp() {
 
   async function refreshBadges() {
     if (!profile) return
-    const [{ count: msgCount }, { data: lastCheckin }, { data: myForms }] = await Promise.all([
+    const today = localDateStr()
+    const [{ count: msgCount }, { data: lastCheckin }, { data: myForms }, { data: recentDays }] = await Promise.all([
       supabase.from('messages').select('id', { count: 'exact', head: true }).eq('recipient_id', profile.id).is('read_at', null),
       supabase.from('checkins').select('submitted_at').eq('client_id', profile.id).order('submitted_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('form_checks').select('id').eq('client_id', profile.id),
+      profile.adherence_tier
+        ? supabase.from('daily_logs').select('log_date, weight, sleep_hours, readiness, quick_checkin_at').eq('client_id', profile.id).gte('log_date', addDays(today, -7)).lte('log_date', today)
+        : Promise.resolve({ data: [] }),
     ])
-    const checkinDue = !lastCheckin || (Date.now() - new Date(lastCheckin.submitted_at).getTime()) / 864e5 >= 6
+    // dot = weekly check-in open (its day has come) or today's quick check-in due
+    const due = checkinDueDate({ checkinDay: profile.checkin_day, frequency: profile.checkin_frequency, startDate: profile.start_date, today,
+      lastCheckin: lastCheckin?.submitted_at ? localDateStr(new Date(lastCheckin.submitted_at)) : null })
+    const weeklyOpen = !due || due <= today
+    const quickOpen = quickDue(profile.adherence_tier, new Set((recentDays || []).filter(quickDone).map(r => r.log_date)), today)
+    const checkinDue = weeklyOpen || quickOpen
 
     let filmChecks = false
     const formIds = (myForms || []).map(f => f.id)

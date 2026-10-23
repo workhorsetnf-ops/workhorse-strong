@@ -32,7 +32,7 @@ export async function runSlot(sb, slot, today, tz) {
   const userIds = [...new Set((subs || []).map(s => s.user_id))]
   if (!userIds.length) return { people: 0, sent: 0 }
 
-  const { data: people } = await sb.from('profiles').select('id, role, full_name, status, checkin_day, checkin_frequency, adherence_tier').in('id', userIds)
+  const { data: people } = await sb.from('profiles').select('id, role, full_name, status, checkin_day, checkin_frequency, adherence_tier, start_date').in('id', userIds)
   const clients = (people || []).filter(p => p.role === 'client' && p.status !== 'paused' && p.status !== 'exited')
   const coaches = (people || []).filter(p => p.role === 'coach')
   const prefs = await prefsFor(sb, userIds)
@@ -99,7 +99,7 @@ async function gatherFacts(sb, clients, today, tz, prefs) {
       trainedToday: trained.has(c.id),
       foodLoggedToday: ate.has(c.id),
       habitsLeft: mine.filter(h => !ticked.has(h.id)).length,
-      checkin: checkinState(c.checkin_day, lastCk[c.id] || null, today, c.checkin_frequency),
+      checkin: checkinState(c.checkin_day, lastCk[c.id] || null, today, c.checkin_frequency, c.start_date),
       quickDue: quickDue(c.adherence_tier, quickDates[c.id] || new Set(), today),
     }
   })
