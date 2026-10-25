@@ -5,6 +5,7 @@ import { CoachFoodLog, MacroCalculator } from './CoachFoodLog'
 import { supabase } from '../../lib/supabase'
 import { itemMacros, sumMacros, targetsFrom, STARTER_PLAN, fromFood, shoppingList, fmt0, fmt1, scaleToTargets } from '../../lib/mealplan'
 import { PlanTargets, ShoppingTable } from './MealPlanView'
+import FoodPicker from './FoodPicker'
 
 const DISPLAY_FONT = "'Oswald','Barlow',system-ui,sans-serif"
 
@@ -84,10 +85,16 @@ export default function CoachNutrition() {
   }
 
   // ---------- foods in a meal ----------
-  async function addItem(m) {
-    const text = (adding[m.id] || '').trim()
+  // Re-read the library when the food box gets focus, so foods added since the
+  // page opened (Library → Foods, or a SQL import) show up without a reload.
+  async function refreshLibrary() {
+    const { data } = await supabase.from('food_library').select('*').order('name')
+    if (data) setLibrary(data)
+  }
+  async function addItem(m, picked) {
+    const text = (picked ? picked.name : adding[m.id] || '').trim()
     if (!text) return
-    const f = findFood(text)
+    const f = picked || findFood(text)
     if (!f && !window.confirm(`"${text}" isn't in your food library, so its macros will show as 0. Add it anyway? (Add it under Library → Foods to get the numbers.)`)) return
     const n = items.filter(it => it.meal_id === m.id).length
     setAdding(a => ({ ...a, [m.id]: '' }))
@@ -269,12 +276,11 @@ export default function CoachNutrition() {
                         </td>
                       )}
                       <td colSpan={9} style={{ ...td, textAlign: 'left', borderTop: list.length ? td.borderTop : '2px solid var(--orange)' }}>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          <input list="food-lib" value={adding[m.id] || ''} placeholder="+ Add a food (type to search the library)" aria-label={`Add food to ${m.label}`}
-                            onChange={e => setAdding(a => ({ ...a, [m.id]: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') addItem(m) }}
-                            style={{ padding: '6px 8px', fontSize: 12.5, maxWidth: 320 }} />
-                          <button className="btn-ghost" onClick={() => addItem(m)} style={{ padding: '5px 10px', fontSize: 12 }}>Add</button>
-                        </div>
+                        <FoodPicker foods={library} value={adding[m.id] || ''} placeholder="+ Add a food (type to search the library)" ariaLabel={`Add food to ${m.label}`}
+                          onFocus={refreshLibrary}
+                          onChange={v => setAdding(a => ({ ...a, [m.id]: v }))}
+                          onPick={f => addItem(m, f)}
+                          onAddUnknown={() => addItem(m)} />
                       </td>
                     </tr>,
                     <tr key={m.id + 'tot'} style={{ background: 'var(--steel)' }}>
