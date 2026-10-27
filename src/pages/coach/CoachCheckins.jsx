@@ -8,7 +8,10 @@ const EMPTY_LOG = { client_id: '', weight: '', waist: '', sleep_avg: '', energy:
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 import { freqLabel } from '../../lib/dashboard'
 import { paymentSummary } from '../../lib/payments'
-import { localDateStr } from '../../lib/weeks'
+import { localDateStr, logDate, resolveAssignment, dayShowsInWeek } from '../../lib/weeks'
+import { splitForWeek, addDays } from '../../lib/dashboard'
+import { targetsFrom } from '../../lib/mealplan'
+import { checkinDays, checkinWeekStats, closeness } from '../../lib/checkinWeek'
 
 const EMPTY_SNAPSHOT = {
   status: 'pending', current_macros: '', training_program: '', cardio: '', steps: '', biofeedback: '',
@@ -105,6 +108,106 @@ function StatusBadge({ status }) {
   )
 }
 
+// Macros, workouts and steps for the week a check-in covers, read from what the
+// client actually logged. Loads when the card is opened.
+const CLOSE_COLOR = { good: 'var(--green)', ok: 'var(--orange-hot)', bad: 'var(--red)' }
+export function WeekNumbers({ c, profile }) {
+  const [st, setSt] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let live = true
+    ;(async () => {
+      const days = checkinDays(c)
+      const q = (t, sel = '*') => supabase.from(t).select(sel).eq('client_id', c.client_id)
+      const [meals, wl, daily, plan, asg] = await Promise.all([
+        q('meal_logs').gte('logged_on', days[0]).lte('logged_on', days[days.length - 1]),
+        // a day of slack each side: a set's logged_date can differ from its logged_at
+        q('workout_logs', '*').gte('logged_at', new Date(addDays(days[0], -1) + 'T00:00:00').toISOString())
+          .lt('logged_at', new Date(addDays(days[days.length - 1], 2) + 'T00:00:00').toISOString()),
+        q('daily_logs', 'log_date, steps, trained').gte('log_date', days[0]).lte('log_date', days[days.length - 1]),
+        supabase.from('meal_plans').select('*').eq('client_id', c.client_id).maybeSingle(),
+        supabase.from('program_assignments').select('*').eq('client_id', c.client_id).maybeSingle(),
+      ])
+      const firstErr = [meals, wl, daily].find(r => r.error)
+      if (firstErr) { if (live) setErr(firstErr.error.message); return }
+      // Planned workouts: the client's current block, same as their Train page.
+      let planned = null
+      if (asg.data) {
+        const { data: blocks } = await supabase.from('program_blocks').select('*').eq('program_id', asg.data.program_id).order('position')
+        const pos = resolveAssignment(asg.data, blocks || [])
+        if (pos.block) {
+          const [{ data: bd }, { data: rots }] = await Promise.all([
+            supabase.from('program_days').select('*').eq('block_id', pos.block.id),
+            supabase.from('program_rotations').select('*').eq('block_id', pos.block.id).order('position'),
+          ])
+          planned = splitForWeek(days, { startDate: asg.data.start_date, blockDays: bd || [], rotations: rots || [], weekInBlock: pos.weekInBlock, showsInWeek: dayShowsInWeek })
+            .filter(x => x.sessions.length).length
+        }
+      }
+      const workoutDates = new Set((wl.data || []).filter(r => (r.session_track || 'exercise') !== 'conditioning').map(logDate).filter(x => days.includes(x)))
+      const stats = checkinWeekStats({
+        days, today: localDateStr(), mealLogs: meals.data || [], targets: targetsFrom(profile, plan.data),
+        workoutDates, daily: daily.data || [], planned, stepsTarget: profile.steps_target,
+      })
+      if (live) setSt(stats)
+    })()
+    return () => { live = false }
+  }, [c.id, c.client_id, c.period_start, c.period_end, c.submitted_at, profile])
+
+  const box = { background: 'var(--steel)', borderRadius: 8, padding: '8px 10px' }
+  const lbl = { fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '.06em' }
+  if (err) return <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>Couldn't load this week's logs: {err}</div>
+  if (!st) return <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>Loading this week's logs…</div>
+
+  const n = st.nutrition, t = n.targets
+  const macro = (label, k, unit) => {
+    const v = n.avg?.[k]; const tone = closeness(n.hit?.[k])
+    return (
+      <div style={box} key={k}>
+        <div className="muted" style={lbl}>{label}</div>
+        <div style={{ fontSize: 15, fontWeight: 800, marginTop: 1, color: tone ? CLOSE_COLOR[tone] : 'var(--white)' }}>
+          {v == null ? '—' : Math.round(v).toLocaleString()}{v != null && unit}
+        </div>
+        <div className="muted" style={{ fontSize: 11 }}>
+          {t[k] ? <>target {Math.round(t[k]).toLocaleString()}{unit}{n.hit?.[k] != null && <> · {Math.round(n.hit[k] * 100)}%</>}</> : 'no target set'}
+        </div>
+      </div>
+    )
+  }
+  const w = st.workouts, s = st.steps
+  const wTone = w.planned ? (w.done >= w.planned ? 'good' : w.done >= w.planned - 1 ? 'ok' : 'bad') : null
+  const sTone = s.avg != null && s.target ? closeness(Math.min(1, s.avg / s.target)) : null
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div className="muted" style={{ fontSize: 11.5, marginBottom: 6 }}>
+        From their logs · food logged {n.loggedDays}/{checkinDays(c).length} days{n.loggedDays > 0 && t.kcal ? <> · on target {n.onTarget} of {n.loggedDays}</> : null}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(118px, 1fr))', gap: 6 }}>
+        {macro('Calories avg', 'kcal', '')}
+        {macro('Protein avg', 'p', 'g')}
+        {macro('Carbs avg', 'c', 'g')}
+        {macro('Fat avg', 'f', 'g')}
+        <div style={box}>
+          <div className="muted" style={lbl}>Workouts</div>
+          <div style={{ fontSize: 15, fontWeight: 800, marginTop: 1, color: wTone ? CLOSE_COLOR[wTone] : 'var(--white)' }}>
+            {w.done}{w.planned != null && <> / {w.planned}</>}
+          </div>
+          <div className="muted" style={{ fontSize: 11 }}>{w.planned != null ? 'done / planned' : 'days trained'}</div>
+        </div>
+        <div style={box}>
+          <div className="muted" style={lbl}>Steps avg</div>
+          <div style={{ fontSize: 15, fontWeight: 800, marginTop: 1, color: sTone ? CLOSE_COLOR[sTone] : 'var(--white)' }}>
+            {s.avg == null ? '—' : Math.round(s.avg).toLocaleString()}
+          </div>
+          <div className="muted" style={{ fontSize: 11 }}>
+            {s.target ? <>target {Number(s.target).toLocaleString()} · </> : null}{s.daysLogged}/{checkinDays(c).length} days
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Check-ins submitted after Update 85 carry the averaged week plus a snapshot of
 // every day, so the coach sees how the number was built — 7/7 weigh-ins is a
 // real average, 2/7 is a guess with extra steps.
@@ -127,9 +230,7 @@ function AutoWeek({ c, open, onToggle }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 6 }}>
         {stat('Weight avg', c.weight != null ? `${c.weight} lbs` : null)}
         {stat('Weigh-ins', `${c.days_weighed ?? 0}/7`, (c.days_weighed ?? 0) < 5)}
-        {stat('On plan', c.adherence != null ? `${Math.round(c.adherence * 100)}%` : null, c.adherence != null && c.adherence < 0.85)}
-        {stat('Sessions', c.sessions)}
-        {stat('Steps avg', c.steps != null ? Number(c.steps).toLocaleString() : null)}
+        {stat('Said on plan', c.adherence != null ? `${Math.round(c.adherence * 100)}%` : null, c.adherence != null && c.adherence < 0.85)}
         {stat('Sleep avg', c.sleep_avg != null ? `${c.sleep_avg}h` : null)}
         {stat('Cardio', c.cardio_min != null ? `${c.cardio_min} min` : null)}
         {stat('Waist', c.waist != null ? `${c.waist}"` : null)}
@@ -440,6 +541,7 @@ export default function CoachCheckins() {
                               {c.energy != null && <>Energy <strong style={{ color: 'var(--white)' }}>{c.energy}/10</strong> · </>}
                               {c.hunger != null && <>Hunger <strong style={{ color: 'var(--white)' }}>{c.hunger}/10</strong></>}
                             </div>}
+                        <WeekNumbers c={c} profile={g.profile} />
                         {c.notes && <p style={{ fontSize: 14, marginTop: 8, lineHeight: 1.5 }}>{c.notes}</p>}
 
                         {Array.isArray(c.form_responses) && c.form_responses.length > 0 && (
