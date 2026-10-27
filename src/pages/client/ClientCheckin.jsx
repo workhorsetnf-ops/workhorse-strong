@@ -103,11 +103,13 @@ export default function ClientCheckin() {
     if (fewWeighIns && !window.confirm(`Only ${summary.days_weighed} of 7 weigh-ins are logged, so your weekly average won't be accurate. Submit anyway?`)) return
     setBusy(true)
     const photoRows = []
+    const photoFails = []
     for (const [label, file] of Object.entries(photos)) {
       if (!file) continue
       const path = `${profile.id}/${Date.now()}-${label.toLowerCase()}-${file.name}`
       const { error } = await supabase.storage.from('checkin-photos').upload(path, file)
       if (!error) photoRows.push({ label, path })
+      else photoFails.push(label)
     }
     const urls = photoRows.map(r => r.path)
     const form_responses = questions
@@ -133,6 +135,14 @@ export default function ClientCheckin() {
       form_responses, form_name: customForm?.name || ''
     })
     setBusy(false)
+    // Used to fail silently: the button just re-enabled and nothing was saved,
+    // so the client thought they'd checked in and the coach saw nothing.
+    if (error) {
+      console.error('Check-in insert failed', error)
+      alert(`Your check-in didn't save, so your coach can't see it yet. Please screenshot this and send it to your coach.\n\n${error.message}`)
+      return
+    }
+    if (photoFails.length) alert(`Your check-in was saved, but these photos didn't upload: ${photoFails.join(', ')}. Try adding them again next time, or send them to your coach in Messages.`)
     if (!error) {
       notifyEvent('checkin')
       setDone(true)

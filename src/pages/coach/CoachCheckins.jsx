@@ -165,16 +165,20 @@ export default function CoachCheckins() {
   const [expanded, setExpanded] = useState(() => new Set())
   const [search, setSearch] = useState('')
   const [onlyNeedsReview, setOnlyNeedsReview] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [showDaily, setShowDaily] = useState(() => new Set())   // checkin ids with the 7-day table open
 
   async function load() {
-    const [{ data: c }, { data: p }] = await Promise.all([
+    // select('*') on profiles: naming columns made the whole query fail when one
+    // of them hadn't been added yet (a migration not run), which showed
+    // "No clients yet" even with clients and check-ins in the database.
+    const [{ data: c, error: ce }, { data: p, error: pe }] = await Promise.all([
       supabase.from('checkins').select('*').order('submitted_at', { ascending: false }).limit(200),
-      supabase.from('profiles').select('id, full_name, phase, checkin_day, checkin_frequency, status, payment_plan, payment_date, payment_type, payment_amount, contract_ends, split_ends, start_date')
-        .eq('role', 'client').neq('status', 'exited').order('full_name'),
+      supabase.from('profiles').select('*').eq('role', 'client').order('full_name'),
     ])
+    setLoadError(ce || pe ? (ce || pe).message : '')
     setCheckins(c || [])
-    setClients(p || [])
+    setClients((p || []).filter(x => x.status !== 'exited'))
     // Seed local edit state for any check-in we haven't already got a draft for —
     // this only fills in missing entries, so an in-progress edit on another card
     // (or this one) survives the reload a save triggers.
@@ -370,7 +374,8 @@ export default function CoachCheckins() {
         </button>
       </div>
 
-      {clients.length === 0 && <div className="card muted">No clients yet.</div>}
+      {loadError && <div className="card" style={{ color: '#ff8a80', marginBottom: 12 }}>Couldn't load check-ins: {loadError}</div>}
+      {!loadError && clients.length === 0 && <div className="card muted">No clients yet.</div>}
       {clients.length > 0 && filteredGroups.length === 0 && (
         <div className="card muted">{onlyNeedsReview ? 'Nothing needs review right now.' : 'No matches.'}</div>
       )}
