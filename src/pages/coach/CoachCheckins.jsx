@@ -12,6 +12,7 @@ import { localDateStr, logDate, resolveAssignment, dayShowsInWeek } from '../../
 import { splitForWeek, addDays } from '../../lib/dashboard'
 import { targetsFrom } from '../../lib/mealplan'
 import { checkinDays, checkinWeekStats, closeness } from '../../lib/checkinWeek'
+import { loadProgramLabels } from '../../lib/clientProgram'
 
 const EMPTY_SNAPSHOT = {
   status: 'pending', current_macros: '', training_program: '', cardio: '', steps: '', biofeedback: '',
@@ -74,8 +75,9 @@ function Chip({ children }) {
 // Read-only reference strip repeating the client-level fields (set on their
 // profile in Coach → Clients) on every individual check-in — mirrors how
 // each task carried its own copy of these custom fields on the Asana board.
-function ClientFieldsStrip({ profile }) {
+function ClientFieldsStrip({ profile, program }) {
   const rows = [
+    ['Training Program', program ? program.label : 'None assigned'],
     ['Start Date', profile.start_date ? fmtDate(profile.start_date) : '—'],
     ['Check-In Day', (profile.checkin_day ?? null) !== null ? WEEKDAYS[profile.checkin_day] : '—'],
     ['Frequency', freqLabel(profile.checkin_frequency)],
@@ -267,6 +269,7 @@ export default function CoachCheckins() {
   const [search, setSearch] = useState('')
   const [onlyNeedsReview, setOnlyNeedsReview] = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [programs, setPrograms] = useState({})   // clientId -> { label, ... }
   const [showDaily, setShowDaily] = useState(() => new Set())   // checkin ids with the 7-day table open
 
   async function load() {
@@ -280,6 +283,7 @@ export default function CoachCheckins() {
     setLoadError(ce || pe ? (ce || pe).message : '')
     setCheckins(c || [])
     setClients((p || []).filter(x => x.status !== 'exited'))
+    loadProgramLabels(supabase).then(setPrograms)
     // Seed local edit state for any check-in we haven't already got a draft for —
     // this only fills in missing entries, so an in-progress edit on another card
     // (or this one) survives the reload a save triggers.
@@ -525,7 +529,7 @@ export default function CoachCheckins() {
                     const snap = snapshot[c.id] || EMPTY_SNAPSHOT
                     return (
                       <div key={c.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 14 }}>
-                        <ClientFieldsStrip profile={g.profile} />
+                        <ClientFieldsStrip profile={g.profile} program={programs[g.profile.id]} />
                         <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                           <span className="muted" style={{ fontSize: 13 }}>{new Date(c.submitted_at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                           {!c.coach_feedback && <span style={{ color: 'var(--orange-hot)', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Needs review</span>}
