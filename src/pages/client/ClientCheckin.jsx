@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import CheckinEditor from '../CheckinEditor'
 import { notifyEvent } from '../../lib/push'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr, lastNDays, summarizeWeek } from '../../lib/weeks'
@@ -23,6 +24,7 @@ export default function ClientCheckin() {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
   const [histLoaded, setHistLoaded] = useState(false)
+  const [editingId, setEditingId] = useState(null)
 
   async function load() {
     const { data } = await supabase.from('checkins').select('*')
@@ -277,6 +279,14 @@ export default function ClientCheckin() {
                 <span>{new Date(c.submitted_at).toLocaleDateString()}</span>
                 <span className="muted">{c.weight ? `${c.weight} lbs${c.period_start ? ' (7-day avg)' : ''}` : ''}</span>
               </div>
+              {/* Editable until the coach marks it reviewed, e.g. sent before it was finished */}
+              {(c.status || 'pending') !== 'done' && editingId !== c.id && (
+                <button className="btn-ghost" style={{ marginTop: 8, padding: '5px 10px', fontSize: 12 }} onClick={() => setEditingId(c.id)}>Edit answers</button>
+              )}
+              {editingId === c.id && (
+                <CheckinEditor checkin={c} onCancel={() => setEditingId(null)}
+                  onSaved={row => { setHistory(h => h.map(x => x.id === row.id ? row : x)); setEditingId(null) }} />
+              )}
               {c.coach_feedback && (
                 <div style={{ marginTop: 8, borderLeft: '3px solid var(--orange)', paddingLeft: 10, fontSize: 13.5 }}>
                   <span className="eyebrow" style={{ fontSize: 10 }}>Coach feedback</span>
