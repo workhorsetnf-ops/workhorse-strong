@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { calcMacros } from '../../lib/macros'
 import { CHECKIN_FREQS } from '../../lib/dashboard'
+import { loadProgramLabels } from '../../lib/clientProgram'
 import { PAYMENT_TYPES, nextPayment, paymentSummary, daysToPayment } from '../../lib/payments'
 import { localDateStr } from '../../lib/weeks'
 import Avatar, { AvatarPicker } from '../Avatar'
@@ -31,10 +32,12 @@ export default function CoachClients() {
   const [calcResult, setCalcResult] = useState(null)
   const [statusFilter, setStatusFilter] = useState('current')   // current = active + paused; 'exited' = archived
   const [leadHistory, setLeadHistory] = useState({})   // profileId -> { lead, activity[] }
+  const [programs, setPrograms] = useState({})   // clientId -> { label, ... }
 
   async function load() {
     const { data } = await supabase.from('profiles').select('*').eq('role', 'client').order('full_name')
     setClients(data || [])
+    loadProgramLabels(supabase).then(setPrograms)
     // Which of these came in through the pipeline, so their pre-sale history shows on the client.
     // Ordered newest-first and first-write-wins, so a win-back lead doesn't hide the original.
     const { data: converted } = await supabase.from('leads').select('*')
@@ -546,6 +549,10 @@ export default function CoachClients() {
                   {c.email && <div className="muted" style={{ fontSize: 12.5, marginTop: 1 }}>{c.email}</div>}
                   <div className="muted" style={{ fontSize: 13, marginTop: 3, textTransform: 'capitalize' }}>
                     {c.phase} · P {c.protein_g} / C {c.carbs_g} / F {c.fat_g} · {c.calories} kcal
+                  </div>
+                  <div style={{ fontSize: 12.5, marginTop: 3 }}>
+                    <span className="muted">Program: </span>
+                    {programs[c.id] ? <strong style={{ fontWeight: 700 }}>{programs[c.id].label}</strong> : <span className="muted">None assigned</span>}
                   </div>
                   {(c.start_date || c.payment_plan || c.payment_date || c.payment_type || c.contract_ends || c.split_ends) && (
                     <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
