@@ -87,6 +87,15 @@ export default function ClientApp() {
     supabase.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', profile.id)
       .then(({ error }) => { if (!error) try { localStorage.setItem('ws-seen', String(Date.now())) } catch { /* ignore */ } })
   }, [profile?.id])
+  // re-count as soon as something is marked read, and when the app comes back
+  // to the foreground (e.g. after replying from a notification)
+  useEffect(() => {
+    const again = () => refreshBadges()
+    const vis = () => { if (document.visibilityState === 'visible') refreshBadges() }
+    window.addEventListener('ws-badges', again)
+    document.addEventListener('visibilitychange', vis)
+    return () => { window.removeEventListener('ws-badges', again); document.removeEventListener('visibilitychange', vis) }
+  }, [profile])
   // re-check whenever the client navigates — covers "just read it, badge should clear"
   useEffect(() => { const t = setTimeout(refreshBadges, 400); return () => clearTimeout(t) }, [location.pathname])
 

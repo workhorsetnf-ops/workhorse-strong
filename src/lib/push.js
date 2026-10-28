@@ -78,3 +78,21 @@ export async function callApi(path, body) {
 export function notifyEvent(type, extra) {
   callApi('/api/push-event', { type, ...extra }).catch(() => {})
 }
+
+// Once something has been read in the app, take its notification off the phone's
+// lock screen / notification centre too, so it doesn't sit there looking unread.
+// tag matches what the server sends: msg-<sender id>, grp-<group id>.
+export async function clearShownNotifications(tag) {
+  try {
+    if (!('serviceWorker' in navigator)) return
+    const reg = await navigator.serviceWorker.getRegistration()
+    if (!reg?.getNotifications) return
+    const shown = await reg.getNotifications(tag ? { tag } : undefined)
+    shown.forEach(n => n.close())
+  } catch { /* not supported here: nothing to clear */ }
+}
+
+// Ask the client nav to re-count its red dots right away (after marking read).
+export function badgesChanged() {
+  try { window.dispatchEvent(new Event('ws-badges')) } catch { /* ignore */ }
+}
