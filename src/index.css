@@ -249,6 +249,10 @@ a { color: var(--orange-hot); text-decoration: none; }
 }
 .bubble.me { align-self: flex-end; background: linear-gradient(135deg, var(--orange), #d64f00); border-bottom-right-radius: 3px; }
 .bubble.them { align-self: flex-start; background: var(--steel); border-bottom-left-radius: 3px; }
+/* delete button on group-chat bubbles: shows on hover, always on touch screens */
+.bubble .bubble-del { background: none; color: inherit; font-size: 11px; margin-left: 8px; padding: 0; opacity: 0; transition: opacity .15s; }
+.bubble:hover .bubble-del, .bubble .bubble-del:focus-visible { opacity: .55; }
+@media (hover: none) { .bubble .bubble-del { opacity: .4; } }
 
 table.data {
   width: 100%;
