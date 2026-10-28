@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { notifyEvent } from '../../lib/push'
+import { notifyEvent, clearShownNotifications } from '../../lib/push'
 import Avatar from '../Avatar'
 import { useAuth } from '../../context/AuthContext'
 import VoiceRecorder from '../../lib/VoiceRecorder'
@@ -35,8 +35,12 @@ export function sortByUnread(list, unread) {
   }).map(x => x[0])
 }
 async function markRead(me, other) {
+  clearShownNotifications(`msg-${other}`)
   const { error } = await supabase.rpc('mark_messages_read', { other_id: other })
-  if (error) await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('recipient_id', me).eq('sender_id', other).is('read_at', null)
+  if (error) {
+    const { error: e2 } = await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('recipient_id', me).eq('sender_id', other).is('read_at', null)
+    if (e2) console.warn('Could not mark messages read', error.message, e2.message)
+  }
 }
 
 export default function CoachMessages() {
@@ -91,9 +95,18 @@ export default function CoachMessages() {
   // message lights up that client's card without opening their thread.
   useEffect(() => {
     if (!profile) return
-    supabase.from('messages').select('sender_id, body, created_at').eq('recipient_id', profile.id).is('read_at', null)
+    const loadUnread = () => supabase.from('messages').select('sender_id, body, created_at').eq('recipient_id', profile.id).is('read_at', null)
       .order('created_at', { ascending: false }).limit(1000)
-      .then(({ data }) => setUnread(unreadBySender(data || [])))
+      .then(({ data }) => {
+        const u = unreadBySender(data || [])
+        const open = activeRef.current?.id
+        if (open && u[open]) { delete u[open]; markRead(profile.id, open) }
+        setUnread(u)
+      })
+    loadUnread()
+    // Coming back to the app (phone unlocked, read on another device): re-count.
+    const vis = () => { if (document.visibilityState === 'visible') { loadUnread(); loadGroups() } }
+    document.addEventListener('visibilitychange', vis)
     const channel = supabase.channel('coach-unread')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         const m = payload.new
@@ -102,15 +115,15 @@ export default function CoachMessages() {
         setUnread(u => addUnread(u, m))
       })
       .subscribe()
-    return () => supabase.removeChannel(channel)
+    return () => { supabase.removeChannel(channel); document.removeEventListener('visibilitychange', vis) }
   }, [profile])
 
   function openClient(c) {
     setActive(c); setActiveGroup(null); setPane('client')
-    if (unread[c.id]) {
-      setUnread(u => { const n = { ...u }; delete n[c.id]; return n })
-      markRead(profile.id, c.id)
-    }
+    // Always stamp read, even if the unread list hasn't loaded yet; otherwise it
+    // lands a moment later and lights this client up while their thread is open.
+    setUnread(u => { if (!u[c.id]) return u; const n = { ...u }; delete n[c.id]; return n })
+    markRead(profile.id, c.id)
   }
 
   useEffect(() => {

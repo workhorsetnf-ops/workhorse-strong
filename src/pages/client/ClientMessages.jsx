@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { notifyEvent } from '../../lib/push'
+import { notifyEvent, clearShownNotifications, badgesChanged } from '../../lib/push'
 import { useAuth } from '../../context/AuthContext'
 import VoiceRecorder from '../../lib/VoiceRecorder'
 import GroupThread from '../GroupThread'
@@ -8,8 +8,13 @@ import GroupThread from '../GroupThread'
 // Stamp the coach's messages as read. The function (Update 134) works without an
 // UPDATE policy on messages; the plain update is the fallback until it's installed.
 async function markRead(me, other) {
+  clearShownNotifications(`msg-${other}`)
   const { error } = await supabase.rpc('mark_messages_read', { other_id: other })
-  if (error) await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('recipient_id', me).eq('sender_id', other).is('read_at', null)
+  if (error) {
+    const { error: e2 } = await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('recipient_id', me).eq('sender_id', other).is('read_at', null)
+    if (e2) console.warn('Could not mark messages read', error.message, e2.message)
+  }
+  badgesChanged()   // the nav dot was counted before this finished
 }
 
 export default function ClientMessages() {

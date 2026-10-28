@@ -3,6 +3,13 @@ import { supabase } from '../lib/supabase'
 import { notifyEvent } from '../lib/push'
 import VoiceRecorder from '../lib/VoiceRecorder'
 import Avatar from './Avatar'
+import { clearShownNotifications, badgesChanged } from '../lib/push'
+
+// Stamp this group read, clear its notifications, and re-count the nav dot.
+function markGroupRead(gid) {
+  clearShownNotifications(`grp-${gid}`)
+  supabase.rpc('mark_group_read', { gid }).then(() => badgesChanged())
+}
 
 // One group chat, used by both the coach and client message pages.
 // Everyone in the group sees every message. Voice notes and files live in the
@@ -42,13 +49,13 @@ export default function GroupThread({ group, profile, isCoach = false, onManage,
       .then(({ data }) => { if (alive) setMsgs(data || []) })
     supabase.rpc('group_member_profiles', { gid })
       .then(({ data }) => { if (alive) setPeople(Object.fromEntries((data || []).map(p => [p.id, p]))) })
-    supabase.rpc('mark_group_read', { gid })
+    markGroupRead(gid)
 
     const channel = supabase.channel(`group-${gid}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_messages', filter: `group_id=eq.${gid}` }, payload => {
         const m = payload.new
         setMsgs(prev => prev.some(x => x.id === m.id) ? prev : [...prev, m])
-        if (m.sender_id !== profile.id) supabase.rpc('mark_group_read', { gid })
+        if (m.sender_id !== profile.id) markGroupRead(gid)
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'group_messages' }, payload => {
         setMsgs(prev => prev.filter(x => x.id !== payload.old.id))
