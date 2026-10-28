@@ -4,6 +4,7 @@
 //   { type: 'paperwork', to: [ids], kind: 'contract'|'form', title }  coach sent a contract/form -> those clients
 //   { type: 'group', group: <group id> }  new group-chat message -> the other members
 //   { type: 'broadcast', to: [ids] }      coach sent the same 1-on-1 message to many clients
+//   { type: 'announcement', id }          coach posted an announcement -> every active client
 // The server re-checks who is allowed to notify whom; the app can't spoof it.
 import { admin, sendToUsers, userFromReq, prefsFor } from './_push.js'
 
@@ -92,6 +93,19 @@ export default async function handler(req, res) {
       const want = got.filter(id => !prefs[id] || prefs[id].messages !== false)
       return res.json(await sendToUsers(sb, want, {
         title: `Message from ${first}`, body: String(sent[0].body || '').slice(0, 120), url: '/app/messages', tag: `msg-${me.id}`,
+      }))
+    }
+
+    if (type === 'announcement') {
+      if (me.role !== 'coach') return res.status(403).json({ error: 'Not allowed' })
+      const { data: a } = await sb.from('announcements').select('title, body, created_at, ended_at').eq('id', String(req.body?.id || '')).maybeSingle()
+      if (!a || a.ended_at || Date.now() - new Date(a.created_at).getTime() > 5 * 60 * 1000) return res.json({ skipped: 'no new announcement' })
+      const { data: recs } = await sb.from('profiles').select('id').eq('role', 'client').eq('status', 'active')
+      const ids = (recs || []).map(r => r.id)
+      const prefs = await prefsFor(sb, ids)
+      const want = ids.filter(id => !prefs[id] || prefs[id].messages !== false)
+      return res.json(await sendToUsers(sb, want, {
+        title: `📢 ${String(a.title).slice(0, 80)}`, body: String(a.body || 'Tap to read.').slice(0, 120), url: '/app', tag: 'announcement',
       }))
     }
 

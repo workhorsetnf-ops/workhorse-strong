@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext'
 import VoiceRecorder from '../../lib/VoiceRecorder'
 import GroupThread from '../GroupThread'
 import { NewGroup, ManageGroup, Broadcast } from './GroupPanels'
+import Announcements from './Announcements'
 
 // Group unread messages (newest first) by who sent them.
 export function unreadBySender(rows) {
@@ -210,6 +211,8 @@ export default function CoachMessages() {
                 <button className={pane === 'broadcast' ? 'btn' : 'btn-ghost'} style={{ flex: 1, fontSize: 11.5, padding: '8px 4px', whiteSpace: 'nowrap' }}
                   onClick={() => { setActive(null); setActiveGroup(null); setPane('broadcast') }}>📣 Broadcast</button>
               </div>
+              <button className={pane === 'announce' ? 'btn' : 'btn-ghost'} style={{ fontSize: 11.5, padding: '8px 4px', whiteSpace: 'nowrap' }}
+                onClick={() => { setActive(null); setActiveGroup(null); setPane('announce') }}>📢 Announcements</button>
               {groups.length > 0 && <div className="eyebrow" style={{ fontSize: 10, marginTop: 6 }}>Groups</div>}
               {groups.map(g => {
                 const isActive = activeGroup?.id === g.id && (pane === 'group' || pane === 'manage')
@@ -263,7 +266,9 @@ export default function CoachMessages() {
           )}
         </div>
         <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '65vh', overflowY: pane === 'client' || pane === 'group' ? undefined : 'auto' }}>
-          {pane === 'newGroup' ? (
+          {pane === 'announce' ? (
+            <Announcements coachId={profile.id} />
+          ) : pane === 'newGroup' ? (
             <NewGroup clients={clients} coachId={profile.id} onCancel={() => setPane('client')}
               onCreated={async g => { await loadGroups(); openGroup({ ...g, unread: 0 }) }} />
           ) : pane === 'broadcast' ? (

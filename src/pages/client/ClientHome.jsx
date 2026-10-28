@@ -9,6 +9,7 @@ import ClientDashboard from './ClientDashboard'
 import { RemindersPrompt } from '../ReminderSettings'
 import Avatar from '../Avatar'
 import QuickCheckin from './QuickCheckin'
+import AnnouncementBanner from './AnnouncementBanner'
 import { countedLogs } from '../../lib/foodlog'
 
 export default function ClientHome() {
@@ -175,6 +176,8 @@ export default function ClientHome() {
           <span className="muted" style={{ fontSize: 11, fontWeight: 700 }}>Profile</span>
         </Link>
       </header>
+
+      <AnnouncementBanner profile={profile} />
 
       {milestonePrompt && (
         <div className="card glow-behind" style={{ textAlign: 'center' }}>
