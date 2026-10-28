@@ -4,7 +4,7 @@
 // everything still open into a single message instead of three pings.
 import { daysBetween, checkinDueDate } from './dashboard.js'
 
-export const DEFAULT_PREFS = { workout: true, food: true, habits: true, checkin: true, messages: true, slipping: true }
+export const DEFAULT_PREFS = { workout: true, food: true, habits: true, checkin: true, messages: true, slipping: true, calls: true }
 
 // Check-in state for clients with a fixed check-in day (0 = Mon), at their
 // frequency (weekly / biweekly / monthly). lastCheckin: 'YYYY-MM-DD' or null.

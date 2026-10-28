@@ -10,6 +10,7 @@ import { RemindersPrompt } from '../ReminderSettings'
 import Avatar from '../Avatar'
 import QuickCheckin from './QuickCheckin'
 import AnnouncementBanner from './AnnouncementBanner'
+import NextCallCard from './NextCallCard'
 import { countedLogs } from '../../lib/foodlog'
 
 export default function ClientHome() {
@@ -178,6 +179,7 @@ export default function ClientHome() {
       </header>
 
       <AnnouncementBanner profile={profile} />
+      <NextCallCard profile={profile} />
 
       {milestonePrompt && (
         <div className="card glow-behind" style={{ textAlign: 'center' }}>

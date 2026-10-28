@@ -20,6 +20,12 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close()
   const url = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href
+  // A call link (Jitsi, Zoom, Meet...) opens on its own instead of pulling the
+  // app away from whatever screen it's on.
+  if (!url.startsWith(self.location.origin)) {
+    event.waitUntil(self.clients.openWindow(url))
+    return
+  }
   event.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     for (const w of wins) {
