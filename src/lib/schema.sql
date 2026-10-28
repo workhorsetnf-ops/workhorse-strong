@@ -1924,3 +1924,21 @@ alter table session_moves enable row level security;
 create policy "coach manages session moves" on session_moves for all using (is_coach()) with check (is_coach());
 create policy "client manages own session moves" on session_moves for all using (client_id = auth.uid()) with check (client_id = auth.uid());
 grant select, insert, update, delete on session_moves to authenticated;
+
+-- ===== UNREAD MESSAGES (Update 134) =====
+create or replace function mark_messages_read(other_id uuid)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare n int;
+begin
+  update messages set read_at = now()
+   where recipient_id = auth.uid() and sender_id = other_id and read_at is null;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+revoke all on function mark_messages_read(uuid) from public, anon;
+grant execute on function mark_messages_read(uuid) to authenticated;
+create index if not exists messages_unread_idx on messages (recipient_id, sender_id) where read_at is null;
