@@ -3,6 +3,7 @@ import { Plus, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { WeekTable } from '../client/ClientProgress'
+import CheckinEditor from '../CheckinEditor'
 
 const EMPTY_LOG = { client_id: '', weight: '', waist: '', sleep_avg: '', energy: 7, hunger: 5, notes: '' }
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -268,6 +269,7 @@ export default function CoachCheckins() {
   const [onlyNeedsReview, setOnlyNeedsReview] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [showDaily, setShowDaily] = useState(() => new Set())   // checkin ids with the 7-day table open
+  const [editingId, setEditingId] = useState(null)   // check-in whose responses are being edited
 
   async function load() {
     // select('*') on profiles: naming columns made the whole query fail when one
@@ -528,8 +530,17 @@ export default function CoachCheckins() {
                         <ClientFieldsStrip profile={g.profile} />
                         <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                           <span className="muted" style={{ fontSize: 13 }}>{new Date(c.submitted_at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-                          {!c.coach_feedback && <span style={{ color: 'var(--orange-hot)', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Needs review</span>}
+                          <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                            {!c.coach_feedback && <span style={{ color: 'var(--orange-hot)', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Needs review</span>}
+                            <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setEditingId(id => id === c.id ? null : c.id)}>
+                              {editingId === c.id ? 'Close editor' : 'Edit responses'}
+                            </button>
+                          </span>
                         </div>
+                        {editingId === c.id && (
+                          <CheckinEditor checkin={c} onCancel={() => setEditingId(null)}
+                            onSaved={row => { setCheckins(list => list.map(x => x.id === row.id ? row : x)); setEditingId(null) }} />
+                        )}
                         {c.period_start
                           ? <AutoWeek c={c} open={showDaily.has(c.id)} onToggle={() => setShowDaily(prev => {
                               const next = new Set(prev); if (next.has(c.id)) next.delete(c.id); else next.add(c.id); return next
