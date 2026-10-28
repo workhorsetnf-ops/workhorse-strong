@@ -339,3 +339,50 @@ export function blockExerciseRows(exercises, blockWeeks = 4) {
   })
   return rows
 }
+
+// ---------------------------------------------------------------------------
+// Library matching for pasted exercises
+// ---------------------------------------------------------------------------
+// A pasted line only carries a name, so the video, icon and default note come
+// from the exercise library when the name matches an entry there. The match is
+// the same one the table builder uses — exact name, ignoring capitals and
+// extra spaces — so "db rdl" never quietly picks up "DB RDL (deficit)".
+
+export function libraryKey(name) {
+  return clean(name).toLowerCase()
+}
+
+// libraries: arrays searched in order; the first match wins. Pass the exercise
+// library first so a conditioning-library entry with the same name can't
+// shadow it.
+export function buildLibraryIndex(...libraries) {
+  const index = new Map()
+  for (const lib of libraries) {
+    for (const item of lib || []) {
+      const k = libraryKey(item?.name)
+      if (k && !index.has(k)) index.set(k, item)
+    }
+  }
+  return index
+}
+
+export function findInLibrary(index, name) {
+  return index?.get(libraryKey(name)) || null
+}
+
+// Fill a program_exercises row from its library entry. The pasted note always
+// wins; the library's note is only used when the line didn't have one.
+export function withLibrary(row, item) {
+  if (!item) return row
+  return {
+    ...row,
+    video_url: item.video_url || row.video_url || '',
+    icon_url: item.icon_url || row.icon_url || null,
+    notes: row.notes || item.notes || '',
+  }
+}
+
+// Escape % and _ so a name used in an ilike filter matches only itself.
+export function ilikeExact(name) {
+  return String(name || '').trim().replace(/[\\%_]/g, m => '\\' + m)
+}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import FoodLibrary from './FoodLibrary'
 import RoutineLibrary from './RoutineLibrary'
+import { ilikeExact } from '../../lib/parse'
 
 const EMPTY_EX = { name: '', category: '', metric: 'reps', video_url: '', notes: '', icon_url: '' }
 const EMPTY_COND = { name: '', format: '', instructions: '', video_url: '' }
@@ -56,17 +57,22 @@ export default function CoachLibrary() {
     if (editingId === id) { setEditingId(null); setForm(EMPTY_EX) }
     load()
   }
-  async function pushIconEverywhere(item) {
-    if (!item.icon_url) { alert('This exercise has no icon set yet — add one first.'); return }
-    if (!confirm(`Apply this icon to every exercise named "${item.name}" across all your existing programs? This can't be undone in bulk (you'd need to remove them one by one).`)) return
-    setPushingId(item.id)
+  // Copy a library exercise's icon or video onto every program exercise with
+  // the same name (capitals ignored). Program exercises keep their own copy,
+  // so this is how a video added to the library today reaches programs
+  // built before it.
+  async function pushEverywhere(item, field) {
+    const what = field === 'icon_url' ? 'icon' : 'video'
+    if (!item[field]) { alert(`This exercise has no ${what} set yet — add one first.`); return }
+    if (!confirm(`Apply this ${what} to every exercise named "${item.name}" across all your existing programs? Any ${what} already on those exercises is replaced. This can't be undone in bulk.`)) return
+    setPushingId(`${item.id}:${field}`)
     const { data, error } = await supabase.from('program_exercises')
-      .update({ icon_url: item.icon_url })
-      .ilike('name', item.name)
+      .update({ [field]: item[field] })
+      .ilike('name', ilikeExact(item.name))
       .select('id')
     setPushingId(null)
     if (error) { alert('Could not apply: ' + error.message); return }
-    alert(`Done — updated ${data?.length || 0} exercise(s) named "${item.name}" across your programs.`)
+    alert(`Done — updated the ${what} on ${data?.length || 0} exercise(s) named "${item.name}" across your programs.`)
   }
 
   function editEx(i) {
@@ -181,7 +187,8 @@ export default function CoachLibrary() {
                   <td>{i.video_url ? <a href={i.video_url} target="_blank" rel="noreferrer">▶ Link</a> : <span className="muted">—</span>}</td>
                   <td className="muted" style={{ maxWidth: 240 }}>{i.notes || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    {i.icon_url && <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} disabled={pushingId === i.id} onClick={() => pushIconEverywhere(i)}>{pushingId === i.id ? 'Applying…' : 'Push icon'}</button>}
+                    {i.icon_url && <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} disabled={pushingId === `${i.id}:icon_url`} onClick={() => pushEverywhere(i, 'icon_url')}>{pushingId === `${i.id}:icon_url` ? 'Applying…' : 'Push icon'}</button>}
+                    {i.video_url && <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} disabled={pushingId === `${i.id}:video_url`} onClick={() => pushEverywhere(i, 'video_url')}>{pushingId === `${i.id}:video_url` ? 'Applying…' : 'Push video'}</button>}
                     <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => editEx(i)}>Edit</button>
                     <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, color: 'var(--red)' }} onClick={() => removeEx(i.id)}>✕</button>
                   </td>
@@ -273,6 +280,7 @@ export default function CoachLibrary() {
                   <td className="muted" style={{ maxWidth: 340 }}>{i.instructions || '—'}</td>
                   <td>{i.video_url ? <a href={i.video_url} target="_blank" rel="noreferrer">▶ Link</a> : <span className="muted">—</span>}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
+                    {i.video_url && <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} disabled={pushingId === `${i.id}:video_url`} onClick={() => pushEverywhere(i, 'video_url')}>{pushingId === `${i.id}:video_url` ? 'Applying…' : 'Push video'}</button>}
                     <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => editCond(i)}>Edit</button>
                     <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, color: 'var(--red)' }} onClick={() => removeCond(i.id)}>✕</button>
                   </td>
