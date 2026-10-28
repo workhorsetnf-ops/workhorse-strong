@@ -5,6 +5,37 @@ import Avatar from '../Avatar'
 import { useAuth } from '../../context/AuthContext'
 import VoiceRecorder from '../../lib/VoiceRecorder'
 
+// Group unread messages (newest first) by who sent them.
+export function unreadBySender(rows) {
+  const out = {}
+  for (const m of rows) {
+    const k = m.sender_id
+    if (!out[k]) out[k] = { count: 0, last: m.created_at, preview: previewOf(m.body) }
+    out[k].count++
+    if (m.created_at > out[k].last) { out[k].last = m.created_at; out[k].preview = previewOf(m.body) }
+  }
+  return out
+}
+export function addUnread(u, m) {
+  const cur = u[m.sender_id]
+  return { ...u, [m.sender_id]: { count: (cur?.count || 0) + 1, last: m.created_at, preview: previewOf(m.body) } }
+}
+const previewOf = body => String(body || '').replace(/\s+/g, ' ').trim().slice(0, 60)
+// Clients with unread messages first (newest message on top), then everyone else as listed.
+export function sortByUnread(list, unread) {
+  return list.map((c, i) => [c, i]).sort((a, b) => {
+    const ua = unread[a[0].id], ub = unread[b[0].id]
+    if (ua && ub) return String(ub.last).localeCompare(String(ua.last))
+    if (ua) return -1
+    if (ub) return 1
+    return a[1] - b[1]
+  }).map(x => x[0])
+}
+async function markRead(me, other) {
+  const { error } = await supabase.rpc('mark_messages_read', { other_id: other })
+  if (error) await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('recipient_id', me).eq('sender_id', other).is('read_at', null)
+}
+
 export default function CoachMessages() {
   const { profile } = useAuth()
   const [clients, setClients] = useState([])
@@ -19,6 +50,35 @@ export default function CoachMessages() {
   const [newTpl, setNewTpl] = useState({ label: '', body: '' })
   const bottomRef = useRef(null)
   const [showArchived, setShowArchived] = useState(false)
+  const [unread, setUnread] = useState({})   // clientId -> { count, last: created_at, preview }
+  const activeRef = useRef(null)
+  activeRef.current = active
+
+  // Unread messages from each client: loaded once, then kept live so a new
+  // message lights up that client's card without opening their thread.
+  useEffect(() => {
+    if (!profile) return
+    supabase.from('messages').select('sender_id, body, created_at').eq('recipient_id', profile.id).is('read_at', null)
+      .order('created_at', { ascending: false }).limit(1000)
+      .then(({ data }) => setUnread(unreadBySender(data || [])))
+    const channel = supabase.channel('coach-unread')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+        const m = payload.new
+        if (m.recipient_id !== profile.id) return
+        if (activeRef.current?.id === m.sender_id) { markRead(profile.id, m.sender_id); return }   // their thread is open
+        setUnread(u => addUnread(u, m))
+      })
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [profile])
+
+  function openClient(c) {
+    setActive(c)
+    if (unread[c.id]) {
+      setUnread(u => { const n = { ...u }; delete n[c.id]; return n })
+      markRead(profile.id, c.id)
+    }
+  }
 
   useEffect(() => {
     supabase.from('profiles').select('id, full_name, avatar_url, status').eq('role', 'client').order('full_name')
@@ -109,13 +169,27 @@ export default function CoachMessages() {
       <h1 style={{ fontSize: 28, margin: '6px 0 20px' }}>Messages</h1>
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {clients.filter(c => showArchived || c.status !== 'exited').map(c => (
-            <button key={c.id} className={active?.id === c.id ? 'btn' : 'btn-ghost'}
-              style={{ textAlign: 'left', fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => setActive(c)}>
-              <Avatar url={c.avatar_url} name={c.full_name} size={26} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name || c.id.slice(0, 8)}</span>
-            </button>
-          ))}
+          {Object.keys(unread).length > 0 && (
+            <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--orange-hot)', textTransform: 'uppercase', letterSpacing: '.06em', padding: '0 2px 2px' }}>
+              {Object.keys(unread).length} {Object.keys(unread).length === 1 ? 'client has' : 'clients have'} new messages
+            </div>
+          )}
+          {sortByUnread(clients.filter(c => showArchived || c.status !== 'exited' || unread[c.id]), unread).map(c => {
+            const u = unread[c.id], isActive = active?.id === c.id
+            return (
+              <button key={c.id} className={isActive ? 'btn' : 'btn-ghost'} aria-label={u ? `${c.full_name}, ${u.count} new` : c.full_name}
+                style={{ textAlign: 'left', fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 8, position: 'relative',
+                  ...(u && !isActive ? { borderColor: 'var(--orange)', background: 'rgba(255,106,0,0.14)', boxShadow: '0 0 0 1px var(--orange) inset' } : {}) }}
+                onClick={() => openClient(c)}>
+                <Avatar url={c.avatar_url} name={c.full_name} size={26} />
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: u ? 800 : undefined }}>{c.full_name || c.id.slice(0, 8)}</span>
+                  {u && <span style={{ display: 'block', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--orange-hot)', fontWeight: 600 }}>{u.preview || 'New message'}</span>}
+                </span>
+                {u && <span style={{ flexShrink: 0, minWidth: 20, height: 20, borderRadius: 10, background: 'var(--orange)', color: '#000', fontSize: 11.5, fontWeight: 900, display: 'grid', placeItems: 'center', padding: '0 6px' }}>{u.count > 99 ? '99+' : u.count}</span>}
+              </button>
+            )
+          })}
           {clients.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No clients yet.</p>}
           {clients.some(c => c.status === 'exited') && (
             <button onClick={() => setShowArchived(v => !v)} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 12, textAlign: 'left', padding: '6px 2px', cursor: 'pointer', textDecoration: 'underline' }}>

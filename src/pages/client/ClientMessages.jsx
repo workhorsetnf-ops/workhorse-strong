@@ -4,6 +4,13 @@ import { notifyEvent } from '../../lib/push'
 import { useAuth } from '../../context/AuthContext'
 import VoiceRecorder from '../../lib/VoiceRecorder'
 
+// Stamp the coach's messages as read. The function (Update 134) works without an
+// UPDATE policy on messages; the plain update is the fallback until it's installed.
+async function markRead(me, other) {
+  const { error } = await supabase.rpc('mark_messages_read', { other_id: other })
+  if (error) await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('recipient_id', me).eq('sender_id', other).is('read_at', null)
+}
+
 export default function ClientMessages() {
   const { profile } = useAuth()
   const [coachId, setCoachId] = useState(null)
@@ -27,9 +34,7 @@ export default function ClientMessages() {
       .then(({ data }) => setMsgs(data || []))
 
     // mark any incoming unread messages as read now that this tab is open
-    supabase.from('messages').update({ read_at: new Date().toISOString() })
-      .eq('recipient_id', profile.id).eq('sender_id', coachId).is('read_at', null)
-      .then(() => {})
+    markRead(profile.id, coachId)
 
     const channel = supabase.channel('client-chat')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
@@ -37,7 +42,7 @@ export default function ClientMessages() {
         if ((m.sender_id === coachId && m.recipient_id === profile.id) ||
             (m.sender_id === profile.id && m.recipient_id === coachId)) {
           setMsgs(prev => prev.some(x => x.id === m.id) ? prev : [...prev, m])
-          if (m.sender_id === coachId) supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('id', m.id).then(() => {})
+          if (m.sender_id === coachId) markRead(profile.id, coachId)
         }
       })
       .subscribe()
