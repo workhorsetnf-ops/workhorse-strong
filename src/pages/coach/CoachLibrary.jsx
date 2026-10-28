@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import FoodLibrary from './FoodLibrary'
 import RoutineLibrary from './RoutineLibrary'
-import { ilikeExact } from '../../lib/parse'
+import { matchProgramExercises } from '../../lib/exmatch'
 
 const EMPTY_EX = { name: '', category: '', metric: 'reps', video_url: '', notes: '', icon_url: '' }
 const EMPTY_COND = { name: '', format: '', instructions: '', video_url: '' }
@@ -14,6 +14,7 @@ export default function CoachLibrary() {
   const [items, setItems] = useState([])
   const [uploadingIcon, setUploadingIcon] = useState(false)
   const [pushingId, setPushingId] = useState(null)
+  const [pushPanel, setPushPanel] = useState(null)   // { item, groups, picked:Set(name), fields:{icon_url,video_url}, rename }
   const [cond, setCond] = useState([])
   const [life, setLife] = useState([])
   const [q, setQ] = useState('')
@@ -57,22 +58,47 @@ export default function CoachLibrary() {
     if (editingId === id) { setEditingId(null); setForm(EMPTY_EX) }
     load()
   }
-  // Copy a library exercise's icon or video onto every program exercise with
-  // the same name (capitals ignored). Program exercises keep their own copy,
-  // so this is how a video added to the library today reaches programs
-  // built before it.
+  // Copy a library exercise's icon/video onto program exercises. Program
+  // exercises keep their own copy, so this is how media added to the library
+  // reaches programs built before it. Names are matched ignoring capitals,
+  // spacing and punctuation; if a program spells it differently, close
+  // matches are offered to pick from instead of silently updating nothing.
   async function pushEverywhere(item, field) {
-    const what = field === 'icon_url' ? 'icon' : 'video'
-    if (!item[field]) { alert(`This exercise has no ${what} set yet — add one first.`); return }
-    if (!confirm(`Apply this ${what} to every exercise named "${item.name}" across all your existing programs? Any ${what} already on those exercises is replaced. This can't be undone in bulk.`)) return
     setPushingId(`${item.id}:${field}`)
-    const { data, error } = await supabase.from('program_exercises')
-      .update({ [field]: item[field] })
-      .ilike('name', ilikeExact(item.name))
-      .select('id')
+    const rows = []
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase.from('program_exercises').select('id, name').range(from, from + 999)
+      if (error) { setPushingId(null); alert('Could not load program exercises: ' + error.message); return }
+      rows.push(...(data || []))
+      if (!data || data.length < 1000) break
+    }
     setPushingId(null)
-    if (error) { alert('Could not apply: ' + error.message); return }
-    alert(`Done — updated the ${what} on ${data?.length || 0} exercise(s) named "${item.name}" across your programs.`)
+    const { exact, similar } = matchProgramExercises(item.name, rows)
+    setPushPanel({
+      item, exact, similar,
+      picked: new Set(exact.map(g => g.name)),
+      fields: { icon_url: false, video_url: false, [field]: true },
+      rename: false, busy: false,
+    })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  async function applyPush() {
+    const p = pushPanel
+    const groups = [...p.exact, ...p.similar].filter(g => p.picked.has(g.name))
+    const ids = groups.flatMap(g => g.ids)
+    const patch = {}
+    if (p.fields.icon_url && p.item.icon_url) patch.icon_url = p.item.icon_url
+    if (p.fields.video_url && p.item.video_url) patch.video_url = p.item.video_url
+    if (p.rename) patch.name = p.item.name
+    if (!ids.length || !Object.keys(patch).length) return
+    setPushPanel({ ...p, busy: true })
+    for (let i = 0; i < ids.length; i += 200) {
+      const { error } = await supabase.from('program_exercises').update(patch).in('id', ids.slice(i, i + 200))
+      if (error) { setPushPanel({ ...p, busy: false }); alert('Could not apply: ' + error.message); return }
+    }
+    setPushPanel(null)
+    alert(`Done. Updated ${ids.length} exercise${ids.length === 1 ? '' : 's'} across your programs.`)
   }
 
   function editEx(i) {
@@ -140,6 +166,7 @@ export default function CoachLibrary() {
         <button className={tab === 'foods' ? 'btn' : 'btn-ghost'} onClick={() => { setTab('foods'); setEditingId(null) }}>Foods</button>
       </div>
 
+      {pushPanel && <PushPanel p={pushPanel} setP={setPushPanel} apply={applyPush} />}
       {tab === 'foods' && <FoodLibrary />}
       {tab === 'routines' && <RoutineLibrary />}
 
@@ -289,6 +316,47 @@ export default function CoachLibrary() {
               {filteredCond.length === 0 && <tr><td colSpan="5" className="muted">Nothing here yet.</td></tr>}
             </tbody>
           </table>
+        </>
+      )}
+    </div>
+  )
+}
+
+function PushPanel({ p, setP, apply }) {
+  const toggle = name => { const n = new Set(p.picked); n.has(name) ? n.delete(name) : n.add(name); setP({ ...p, picked: n }) }
+  const count = [...p.exact, ...p.similar].filter(g => p.picked.has(g.name)).reduce((s, g) => s + g.count, 0)
+  const row = g => (
+    <label key={g.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: '1px solid var(--line)', cursor: 'pointer', fontSize: 14 }}>
+      <input type="checkbox" checked={p.picked.has(g.name)} onChange={() => toggle(g.name)} style={{ width: 18, height: 18, accentColor: 'var(--orange)' }} />
+      <span style={{ flex: 1 }}>{g.name}</span>
+      <span className="muted" style={{ fontSize: 12 }}>in {g.count} program spot{g.count === 1 ? '' : 's'}</span>
+    </label>
+  )
+  const nothing = !p.exact.length && !p.similar.length
+  return (
+    <div className="card" style={{ marginBottom: 14, borderColor: 'var(--orange)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <strong style={{ fontSize: 15 }}>Push “{p.item.name}” to programs</strong>
+        <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setP(null)}>Close</button>
+      </div>
+      <div style={{ display: 'flex', gap: 16, fontSize: 13, marginBottom: 8 }}>
+        {p.item.icon_url && <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" style={{ width: 'auto' }} checked={!!p.fields.icon_url} onChange={e => setP({ ...p, fields: { ...p.fields, icon_url: e.target.checked } })} /> Icon</label>}
+        {p.item.video_url && <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" style={{ width: 'auto' }} checked={!!p.fields.video_url} onChange={e => setP({ ...p, fields: { ...p.fields, video_url: e.target.checked } })} /> Video</label>}
+      </div>
+      {nothing && <p className="muted" style={{ fontSize: 13 }}>No program exercise has this name or anything close to it. Add it to a program from the library search and it carries the icon and video automatically.</p>}
+      {p.exact.length > 0 && <div className="eyebrow" style={{ marginTop: 6 }}>Same name</div>}
+      {p.exact.map(row)}
+      {p.similar.length > 0 && <div className="eyebrow" style={{ marginTop: 10 }}>{p.exact.length ? 'Similar names (tick any that are the same exercise)' : 'No exact name match. Similar names, tick any that are the same exercise'}</div>}
+      {p.similar.map(row)}
+      {!nothing && (
+        <>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginTop: 10 }}>
+            <input type="checkbox" style={{ width: 'auto' }} checked={p.rename} onChange={e => setP({ ...p, rename: e.target.checked })} />
+            Also rename the ticked ones to “{p.item.name}” so future pushes match
+          </label>
+          <button className="btn" style={{ marginTop: 10, padding: '9px 16px', fontSize: 13 }} disabled={p.busy || !count || (!p.fields.icon_url && !p.fields.video_url && !p.rename)} onClick={apply}>
+            {p.busy ? 'Applying…' : `Apply to ${count} exercise${count === 1 ? '' : 's'}`}
+          </button>
         </>
       )}
     </div>
