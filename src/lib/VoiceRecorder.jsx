@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react'
 import { supabase } from './supabase'
 
-// Records a short voice note, uploads to the given storage folder, and calls onSent(path) when done.
-export default function VoiceRecorder({ userId, onSent }) {
+// Records a short voice note, uploads it, and calls onSent(path) when done.
+// Defaults to the 1-on-1 voice-notes bucket under the user's own folder; group
+// chats pass bucket="group-files" and folder="<group id>/<user id>".
+export default function VoiceRecorder({ userId, onSent, bucket = 'voice-notes', folder }) {
   const [recording, setRecording] = useState(false)
   const [seconds, setSeconds] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -21,8 +23,8 @@ export default function VoiceRecorder({ userId, onSent }) {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
         if (blob.size > 500) {
           setBusy(true)
-          const path = `${userId}/${Date.now()}.webm`
-          const { error } = await supabase.storage.from('voice-notes').upload(path, blob)
+          const path = `${folder || userId}/${Date.now()}.webm`
+          const { error } = await supabase.storage.from(bucket).upload(path, blob)
           if (error) {
             alert('Could not upload voice note: ' + error.message)
           } else {

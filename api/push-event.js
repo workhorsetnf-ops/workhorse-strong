@@ -2,6 +2,8 @@
 //   { type: 'message', to: <user id> }  new message (coach <-> client only)
 //   { type: 'checkin' }                  client submitted a check-in -> coach
 //   { type: 'paperwork', to: [ids], kind: 'contract'|'form', title }  coach sent a contract/form -> those clients
+//   { type: 'group', group: <group id> }  new group-chat message -> the other members
+//   { type: 'broadcast', to: [ids] }      coach sent the same 1-on-1 message to many clients
 // The server re-checks who is allowed to notify whom; the app can't spoof it.
 import { admin, sendToUsers, userFromReq, prefsFor } from './_push.js'
 
@@ -52,6 +54,44 @@ export default async function handler(req, res) {
         title: isContract ? 'Something to sign ✍️' : 'A quick form for you 📋',
         body: `${first} sent you ${isContract ? 'an agreement' : 'a form'}${what ? `: ${what}` : ''}. Tap to open it.`,
         url: isContract ? '/app/contracts' : '/app/intake-forms', tag: `paperwork-${isContract ? 'contract' : 'form'}`,
+      }))
+    }
+
+    if (type === 'group') {
+      const gid = String(req.body?.group || '')
+      const { data: g } = await sb.from('message_groups').select('id, name, archived').eq('id', gid).maybeSingle()
+      if (!g) return res.status(404).json({ error: 'No such group' })
+      const { data: mem } = await sb.from('message_group_members').select('profile_id, profiles(role)').eq('group_id', gid)
+      const members = mem || []
+      if (me.role !== 'coach' && !members.some(m => m.profile_id === me.id)) return res.status(403).json({ error: 'Not allowed' })
+      const { data: m } = await sb.from('group_messages').select('body, created_at').eq('group_id', gid).eq('sender_id', me.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      if (!m || Date.now() - new Date(m.created_at).getTime() > 5 * 60 * 1000) return res.json({ skipped: 'no recent message' })
+      const others = members.filter(x => x.profile_id !== me.id)
+      const prefs = await prefsFor(sb, others.map(x => x.profile_id))
+      const want = others.filter(x => !prefs[x.profile_id] || prefs[x.profile_id].messages !== false)
+      const msg = { title: `${first} in ${g.name}`, body: String(m.body || '').slice(0, 120), tag: `grp-${gid}` }
+      const coaches = want.filter(x => x.profiles?.role === 'coach').map(x => x.profile_id)
+      const clients = want.filter(x => x.profiles?.role !== 'coach').map(x => x.profile_id)
+      const [a, b] = await Promise.all([
+        sendToUsers(sb, coaches, { ...msg, url: '/coach/messages' }),
+        sendToUsers(sb, clients, { ...msg, url: '/app/messages' }),
+      ])
+      return res.json({ sent: (a.sent || 0) + (b.sent || 0) })
+    }
+
+    if (type === 'broadcast') {
+      if (me.role !== 'coach') return res.status(403).json({ error: 'Not allowed' })
+      const ids = Array.isArray(to) ? to.filter(x => typeof x === 'string').slice(0, 500) : []
+      if (!ids.length) return res.json({ skipped: 'nobody' })
+      // only people who really just got a message from me
+      const since = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+      const { data: sent } = await sb.from('messages').select('recipient_id, body').eq('sender_id', me.id).in('recipient_id', ids).gte('created_at', since)
+      const got = [...new Set((sent || []).map(r => r.recipient_id))]
+      if (!got.length) return res.json({ skipped: 'no recent message' })
+      const prefs = await prefsFor(sb, got)
+      const want = got.filter(id => !prefs[id] || prefs[id].messages !== false)
+      return res.json(await sendToUsers(sb, want, {
+        title: `Message from ${first}`, body: String(sent[0].body || '').slice(0, 120), url: '/app/messages', tag: `msg-${me.id}`,
       }))
     }
 

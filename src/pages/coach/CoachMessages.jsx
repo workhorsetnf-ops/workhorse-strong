@@ -4,6 +4,8 @@ import { notifyEvent } from '../../lib/push'
 import Avatar from '../Avatar'
 import { useAuth } from '../../context/AuthContext'
 import VoiceRecorder from '../../lib/VoiceRecorder'
+import GroupThread from '../GroupThread'
+import { NewGroup, ManageGroup, Broadcast } from './GroupPanels'
 
 // Group unread messages (newest first) by who sent them.
 export function unreadBySender(rows) {
@@ -53,6 +55,36 @@ export default function CoachMessages() {
   const [unread, setUnread] = useState({})   // clientId -> { count, last: created_at, preview }
   const activeRef = useRef(null)
   activeRef.current = active
+  // Right-hand pane: a client's 1-on-1 thread, a group chat, or one of the
+  // coach panels (new group / manage group / broadcast).
+  const [pane, setPane] = useState('client')
+  const [groups, setGroups] = useState([])          // from my_groups(): id, name, archived, unread, last_at…
+  const [activeGroup, setActiveGroup] = useState(null)
+  const [groupsReady, setGroupsReady] = useState(true) // false until migration 137 is run
+  const [flash, setFlash] = useState('')
+
+  async function loadGroups() {
+    const { data, error } = await supabase.rpc('my_groups')
+    if (error) { setGroupsReady(false); return }
+    setGroupsReady(true)
+    setGroups(data || [])
+  }
+  useEffect(() => { if (profile) loadGroups() }, [profile])
+
+  // A new group message anywhere bumps that group's unread count (or refreshes
+  // its preview if it's the one open).
+  useEffect(() => {
+    if (!profile || !groupsReady) return
+    const channel = supabase.channel('coach-group-unread')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_messages' }, () => loadGroups())
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [profile, groupsReady])
+
+  function openGroup(g) {
+    setActive(null); setActiveGroup(g); setPane('group')
+    setGroups(list => list.map(x => x.id === g.id ? { ...x, unread: 0 } : x))
+  }
 
   // Unread messages from each client: loaded once, then kept live so a new
   // message lights up that client's card without opening their thread.
@@ -73,7 +105,7 @@ export default function CoachMessages() {
   }, [profile])
 
   function openClient(c) {
-    setActive(c)
+    setActive(c); setActiveGroup(null); setPane('client')
     if (unread[c.id]) {
       setUnread(u => { const n = { ...u }; delete n[c.id]; return n })
       markRead(profile.id, c.id)
@@ -167,8 +199,41 @@ export default function CoachMessages() {
     <div>
       <div className="eyebrow">Roster</div>
       <h1 style={{ fontSize: 28, margin: '6px 0 20px' }}>Messages</h1>
+      {flash && <div className="card" style={{ padding: '8px 12px', marginBottom: 12, borderColor: 'var(--green)', fontSize: 13.5 }}>{flash}</div>}
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {groupsReady ? (
+            <>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className={pane === 'newGroup' ? 'btn' : 'btn-ghost'} style={{ flex: 1, fontSize: 11.5, padding: '8px 4px', whiteSpace: 'nowrap' }}
+                  onClick={() => { setActive(null); setActiveGroup(null); setPane('newGroup') }}>+ Group</button>
+                <button className={pane === 'broadcast' ? 'btn' : 'btn-ghost'} style={{ flex: 1, fontSize: 11.5, padding: '8px 4px', whiteSpace: 'nowrap' }}
+                  onClick={() => { setActive(null); setActiveGroup(null); setPane('broadcast') }}>📣 Broadcast</button>
+              </div>
+              {groups.length > 0 && <div className="eyebrow" style={{ fontSize: 10, marginTop: 6 }}>Groups</div>}
+              {groups.map(g => {
+                const isActive = activeGroup?.id === g.id && (pane === 'group' || pane === 'manage')
+                const u = g.unread > 0 && !isActive
+                return (
+                  <button key={g.id} className={isActive ? 'btn' : 'btn-ghost'} onClick={() => openGroup(g)}
+                    style={{ textAlign: 'left', fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 8, opacity: g.archived ? 0.6 : 1,
+                      ...(u ? { borderColor: 'var(--orange)', background: 'rgba(255,106,0,0.14)', boxShadow: '0 0 0 1px var(--orange) inset' } : {}) }}>
+                    <span style={{ width: 26, height: 26, borderRadius: 13, background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 13, flexShrink: 0 }}>👥</span>
+                    <span style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: u ? 800 : undefined }}>{g.name}</span>
+                      <span className="muted" style={{ display: 'block', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(u ? { color: 'var(--orange-hot)', fontWeight: 600 } : {}) }}>
+                        {g.archived ? 'Archived' : (g.last_body || `${g.member_count} members`)}
+                      </span>
+                    </span>
+                    {u && <span style={{ flexShrink: 0, minWidth: 20, height: 20, borderRadius: 10, background: 'var(--orange)', color: '#000', fontSize: 11.5, fontWeight: 900, display: 'grid', placeItems: 'center', padding: '0 6px' }}>{g.unread > 99 ? '99+' : g.unread}</span>}
+                  </button>
+                )
+              })}
+              <div className="eyebrow" style={{ fontSize: 10, marginTop: 6 }}>Clients</div>
+            </>
+          ) : (
+            <p className="muted" style={{ fontSize: 11.5, margin: '0 2px 4px' }}>Group chats need migration_update137 run in Supabase.</p>
+          )}
           {Object.keys(unread).length > 0 && (
             <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--orange-hot)', textTransform: 'uppercase', letterSpacing: '.06em', padding: '0 2px 2px' }}>
               {Object.keys(unread).length} {Object.keys(unread).length === 1 ? 'client has' : 'clients have'} new messages
@@ -197,9 +262,21 @@ export default function CoachMessages() {
             </button>
           )}
         </div>
-        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '65vh' }}>
-          {!active
-            ? <p className="muted" style={{ margin: 'auto' }}>Select a client.</p>
+        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '65vh', overflowY: pane === 'client' || pane === 'group' ? undefined : 'auto' }}>
+          {pane === 'newGroup' ? (
+            <NewGroup clients={clients} coachId={profile.id} onCancel={() => setPane('client')}
+              onCreated={async g => { await loadGroups(); openGroup({ ...g, unread: 0 }) }} />
+          ) : pane === 'broadcast' ? (
+            <Broadcast clients={clients} coachId={profile.id} onCancel={() => setPane('client')}
+              onDone={n => { setPane('client'); setFlash(`Sent to ${n} client${n === 1 ? '' : 's'}.`); setTimeout(() => setFlash(''), 4000) }} />
+          ) : pane === 'manage' && activeGroup ? (
+            <ManageGroup group={activeGroup} clients={clients} coachId={profile.id} onClose={() => setPane('group')}
+              onSaved={g => { setActiveGroup(g); setPane('group'); loadGroups() }}
+              onDeleted={() => { setActiveGroup(null); setPane('client'); loadGroups() }} />
+          ) : pane === 'group' && activeGroup ? (
+            <GroupThread key={activeGroup.id} group={activeGroup} profile={profile} isCoach height="100%" onManage={() => setPane('manage')} />
+          ) : !active
+            ? <p className="muted" style={{ margin: 'auto' }}>Select a client or group.</p>
             : <>
                 <div className="chat-scroll" style={{ flex: 1, overflowY: 'auto', paddingBottom: 10 }}>
                   {msgs.map(m => (

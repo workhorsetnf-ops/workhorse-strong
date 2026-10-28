@@ -70,7 +70,11 @@ export default function ClientApp() {
       filmChecks = (count || 0) > 0
     }
 
-    setBadges({ messages: (msgCount || 0) > 0, checkin: checkinDue, filmChecks })
+    // unread group-chat messages light the same dot (no-op before migration 137)
+    const { data: grp, error: grpErr } = await supabase.rpc('my_groups')
+    const groupUnread = !grpErr && (grp || []).some(g => g.unread > 0)
+
+    setBadges({ messages: (msgCount || 0) > 0 || groupUnread, checkin: checkinDue, filmChecks })
   }
 
   useEffect(() => { refreshBadges() }, [profile])
