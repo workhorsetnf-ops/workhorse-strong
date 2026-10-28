@@ -3,10 +3,29 @@ import { supabase } from '../../lib/supabase'
 import { normalizeTarget, normalizeReps, dash, effortText, effortMeaning } from '../../lib/targets'
 import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets, localDateStr } from '../../lib/weeks'
 import { CONDITIONING_COLOR, trackColor } from '../../lib/conditioning'
-import { parseProgramText, parseBlockText, blockExerciseRows } from '../../lib/parse'
+import { parseProgramText, parseBlockText, blockExerciseRows, buildLibraryIndex, findInLibrary, withLibrary } from '../../lib/parse'
 import NotesBox from './NotesBox'
 import RoutineBox from './RoutineBox'
 import { resolveRoutine } from '../../lib/routines'
+
+// Paste preview: shows whether a line matched a library exercise and what it
+// will pick up from it, so a misspelled name is caught before it's saved.
+function LibraryTag({ item }) {
+  if (!item) return <span style={{ fontSize: 10, fontWeight: 700, marginLeft: 6, color: 'var(--orange-hot)' }}>not in library</span>
+  const bits = [item.video_url && '▶ video', item.icon_url && 'icon'].filter(Boolean)
+  return <span style={{ fontSize: 10, fontWeight: 700, marginLeft: 6, color: 'var(--green, #3E8E7E)' }}>✓ library{bits.length ? ` · ${bits.join(' + ')}` : ''}</span>
+}
+
+function MissingFromLibrary({ names }) {
+  if (!names.length) return null
+  return (
+    <div style={{ marginTop: 8, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--orange-hot)', fontSize: 11 }}>
+      <strong style={{ color: 'var(--orange-hot)' }}>{names.length} name{names.length === 1 ? '' : 's'} not in your library</strong>
+      <span className="muted"> — these save with no video or icon. Fix the spelling to match the library, or add them in Library first.</span>
+      <div className="muted" style={{ marginTop: 3 }}>{names.join(' · ')}</div>
+    </div>
+  )
+}
 
 const GROUP_COLORS = ['#FF6A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
 const prefixOf = l => (l || '').replace(/[0-9]/g, '')
@@ -634,6 +653,9 @@ export default function CoachPrograms() {
   const loadRoutines = () => supabase.from('routine_library').select('*').order('name').then(({ data }) => setRoutines(data || []))
   const [condLib, setCondLib] = useState([])
   const [lifeLib, setLifeLib] = useState([])
+  // Name -> library entry, so pasted exercises pick up their video, icon and
+  // default note. Exercise library first; the conditioning library only has videos.
+  const libIndex = buildLibraryIndex(library, condLib)
   const [quickAdd, setQuickAdd] = useState({})
   const [expanded, setExpanded] = useState(null)
   const [edit, setEdit] = useState(null)
@@ -907,7 +929,7 @@ export default function CoachPrograms() {
       let letter = (r.letter || '').toUpperCase()
       if (!letter || used.has(letter)) letter = nextFreeLetter([...list, ...payloadSoFar(used)])
       used.add(letter)
-      return {
+      return withLibrary({
         day_id: dayId, name: r.name, kind: 'exercise', description: '',
         tracking_type: '', letter,
         video_url: '', notes: r.notes || '', icon_url: null,
@@ -915,7 +937,7 @@ export default function CoachPrograms() {
         sets, reps: String(reps), rir: String(target),
         week_targets: Array.from({ length: weeks }, () => ({ ...entry, setRows: entry.setRows ? entry.setRows.map(x => ({ ...x })) : undefined })),
         position: list.length + i,
-      }
+      }, findInLibrary(libIndex, r.name))
     })
     // strip the undefined setRows key so it never lands in the JSON as null
     for (const p of payload) p.week_targets = p.week_targets.map(w => (w.setRows ? w : (({ setRows, ...rest }) => rest)(w)))
@@ -955,7 +977,7 @@ export default function CoachPrograms() {
         break
       }
       if (d.good.length) {
-        const rows = blockExerciseRows(d.good, weeks).map(r => ({ ...r, day_id: newDay.id }))
+        const rows = blockExerciseRows(d.good, weeks).map(r => withLibrary({ ...r, day_id: newDay.id }, findInLibrary(libIndex, r.name)))
         const { error: exErr } = await supabase.from('program_exercises').insert(rows)
         if (exErr) {
           alert(`"${d.label}" was created but its exercises didn't save: ${exErr.message}.\n${made} workout(s) before it were added in full.`)
@@ -986,8 +1008,11 @@ export default function CoachPrograms() {
     const existing = (days[block.id] || []).length
     let goodCount = 0
     let dayCount = 0
+    const missing = new Set()
     for (const d of pDays) {
-      const g = d.exercises.filter(e => e.name && !e.issues.length).length
+      const gl = d.exercises.filter(e => e.name && !e.issues.length)
+      const g = gl.length
+      for (const e of gl) if (!findInLibrary(libIndex, e.name)) missing.add(e.name)
       goodCount += g
       if (g || d.warmup || d.cooldown) dayCount++
     }
@@ -1036,6 +1061,7 @@ export default function CoachPrograms() {
                     return (
                       <div key={i} style={{ fontSize: 11.5, margin: '4px 0' }}>
                         <span style={{ color: 'var(--orange)' }}>{r.letter || '·'}</span> <strong>{r.name}</strong>
+                        <LibraryTag item={findInLibrary(libIndex, r.name)} />
                         {r.metric !== 'reps' && <span style={{ color: 'var(--orange)' }}> · {r.metric}</span>}
                         {r.rest && <span className="muted"> · rest {r.rest}</span>}
                         <div className="muted" style={{ paddingLeft: 12 }}>
@@ -1065,6 +1091,8 @@ export default function CoachPrograms() {
             ))}
           </div>
         )}
+
+        <MissingFromLibrary names={[...missing]} />
 
         {pDays.length === 0 && blockPasteText.trim() && (
           <p style={{ fontSize: 11.5, marginTop: 8, color: 'var(--red)' }}>No workout headings found. Start each workout with a line like === Day 1: Upper A ===</p>
@@ -1858,6 +1886,7 @@ export default function CoachPrograms() {
                                               {good.map((r, i) => (
                                                 <p key={i} className="muted" style={{ fontSize: 11, margin: '2px 0' }}>
                                                   <span style={{ color: 'var(--orange)' }}>{r.letter || '·'}</span> {r.name}
+                                                  <LibraryTag item={findInLibrary(libIndex, r.name)} />
                                                   {' — '}
                                                   {r.setRows
                                                     ? r.setRows.map(x => `${x.reps}@${x.target}`).join(', ')
@@ -1871,6 +1900,7 @@ export default function CoachPrograms() {
                                                   skipped: {r.raw || '(blank)'}
                                                 </p>
                                               ))}
+                                              <MissingFromLibrary names={[...new Set(good.filter(r => !findInLibrary(libIndex, r.name)).map(r => r.name))]} />
                                             </div>
                                           )}
                                           <button className="btn" disabled={!good.length || pasteBusy}
