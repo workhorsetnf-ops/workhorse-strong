@@ -4,10 +4,10 @@
 // Nothing is saved here; the client confirms and edits before logging.
 // Env: ANTHROPIC_API_KEY (required), ANTHROPIC_MODEL (optional).
 import { admin, userFromReq } from './_push.js'
-import { photoPrompt, parsePhotoAi, DAILY_PHOTO_LIMIT } from '../src/lib/photoFood.js'
+import { photoPrompt, parsePhotoAi, DAILY_PHOTO_LIMIT, PHOTO_TOOL } from '../src/lib/photoFood.js'
+import { askClaude } from './_claude.js'
 
 export const config = { api: { bodyParser: { sizeLimit: '4mb' } } }
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5'
 const TZ = process.env.COACH_TIMEZONE || 'America/New_York'
 
 export default async function handler(req, res) {
@@ -32,18 +32,12 @@ export async function runFoodPhoto(sb, me, body, res, fetchFn) {
   if (used >= DAILY_PHOTO_LIMIT) return res.status(429).json({ error: `That’s ${DAILY_PHOTO_LIMIT} photos today, the daily limit. Search or scan for the rest.` })
 
   const { system, user } = photoPrompt(String(body.note || ''))
-  const r = await fetchFn('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({
-      model: MODEL, max_tokens: 900, system,
-      messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: user }] }],
-    }),
-  })
-  const out = await r.json().catch(() => ({}))
-  if (!r.ok) return res.status(502).json({ error: `Couldn’t read the photo: ${out?.error?.message || r.status}` })
-  const text = (out.content || []).filter(c => c.type === 'text').map(c => c.text).join('')
-  const result = parsePhotoAi(text)
+  let ans
+  try {
+    ans = await askClaude({ system, tool: PHOTO_TOOL, maxTokens: 1200, fetchFn,
+      content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: user }] })
+  } catch (e) { return res.status(502).json({ error: `Couldn’t read the photo: ${e.message}` }) }
+  const result = parsePhotoAi(ans.data)
   await sb.from('ai_usage').upsert({ user_id: me.id, kind: 'food_photo', day, count: used + 1 }, { onConflict: 'user_id,kind,day' })
   return res.json({ ...result, left: DAILY_PHOTO_LIMIT - used - 1 })
 }
