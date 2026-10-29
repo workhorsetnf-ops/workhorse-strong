@@ -19,11 +19,14 @@ export function photoPrompt(note = '') {
 const n = v => (Number.isFinite(Number(v)) ? Number(v) : 0)
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
 
-export function parsePhotoAi(text) {
-  const s = String(text || '')
-  const a = s.indexOf('{'), b = s.lastIndexOf('}')
-  if (a === -1 || b <= a) throw new Error('Could not read the estimate. Try again.')
-  const o = JSON.parse(s.slice(a, b + 1))
+export function parsePhotoAi(input) {
+  let o = input
+  if (!o || typeof o !== 'object') {
+    const s = String(input || '')
+    const a = s.indexOf('{'), b = s.lastIndexOf('}')
+    if (a === -1 || b <= a) throw new Error('Could not read the estimate. Try again.')
+    o = JSON.parse(s.slice(a, b + 1))
+  }
   const items = (Array.isArray(o.items) ? o.items : []).slice(0, 12).map(i => ({
     name: String(i.name || 'Food').slice(0, 80),
     grams: Math.round(clamp(n(i.grams), 1, 3000)),
@@ -52,4 +55,21 @@ export function photoRows(items, { clientId, date, slot }) {
     return { client_id: clientId, logged_on: date, meal: slot, meal_name: `📷 ${i.name} — ${Math.round(i.grams)}g`, grams: Math.round(i.grams),
       protein_g: t.p, carbs_g: t.c, fat_g: t.f, fiber_g: t.fiber, source: 'photo', estimated: true }
   })
+}
+
+export const PHOTO_TOOL = {
+  name: 'meal_estimate',
+  description: 'Return the foods seen in the meal photo with estimated grams and nutrition per 100 g.',
+  schema: {
+    type: 'object',
+    properties: {
+      items: { type: 'array', items: { type: 'object', properties: {
+        name: { type: 'string' }, grams: { type: 'number' },
+        per100: { type: 'object', properties: { kcal: { type: 'number' }, p: { type: 'number' }, c: { type: 'number' }, f: { type: 'number' }, fiber: { type: 'number' } }, required: ['kcal', 'p', 'c', 'f'] },
+      }, required: ['name', 'grams', 'per100'] } },
+      confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+      warning: { type: 'string' },
+    },
+    required: ['items', 'confidence'],
+  },
 }

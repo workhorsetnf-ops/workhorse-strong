@@ -56,13 +56,30 @@ export function buildPrompt(facts, examples = [], painNotes = []) {
 }
 
 // Pull the JSON object out of the model's text, tolerating code fences.
-export function parseAi(text) {
-  const s = String(text || '')
-  const a = s.indexOf('{'), b = s.lastIndexOf('}')
-  if (a === -1 || b <= a) throw new Error('The AI reply was not in the expected format.')
-  const o = JSON.parse(s.slice(a, b + 1))
+export function parseAi(input) {
+  let o = input
+  if (!o || typeof o !== 'object') {
+    const s = String(input || '')
+    const a = s.indexOf('{'), b = s.lastIndexOf('}')
+    if (a === -1 || b <= a) throw new Error(`The AI reply was not in the expected format${s ? `: “${s.slice(0, 120)}…”` : ' (empty reply)'}. Tap Summarize again.`)
+    o = JSON.parse(s.slice(a, b + 1))
+  }
   const list = v => (Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean).slice(0, 6) : [])
   const reply = String(o.reply || '').trim()
   if (!reply) throw new Error('The AI did not draft a reply.')
   return { summary: list(o.summary), watch: list(o.watch), reply }
+}
+
+export const SUMMARY_TOOL = {
+  name: 'checkin_summary',
+  description: 'Return the weekly summary for the coach and the drafted reply to the client.',
+  schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'array', items: { type: 'string' }, description: '3-5 short bullets for the coach, most important first' },
+      watch: { type: 'array', items: { type: 'string' }, description: '0-3 short risks or things to ask about' },
+      reply: { type: 'string', description: "60-140 word message to the client in the coach's voice" },
+    },
+    required: ['summary', 'watch', 'reply'],
+  },
 }

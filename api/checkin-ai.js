@@ -3,9 +3,9 @@
 // Saved onto the check-in (ai_summary) so reopening the review costs nothing.
 // Env: ANTHROPIC_API_KEY (required), ANTHROPIC_MODEL (optional).
 import { admin, userFromReq } from './_push.js'
-import { buildPrompt, parseAi } from '../src/lib/aiCheckin.js'
+import { buildPrompt, parseAi, SUMMARY_TOOL } from '../src/lib/aiCheckin.js'
+import { askClaude } from './_claude.js'
 
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   } catch (e) { res.status(500).json({ error: e.message }) }
 }
 
-export async function runCheckinAi(sb, body, res) {
+export async function runCheckinAi(sb, body, res, fetchFn = globalThis.fetch) {
   {
     const { checkinId, facts, refresh } = body
     if (!facts || typeof facts !== 'object') return res.status(400).json({ error: 'Missing week data' })
@@ -42,15 +42,10 @@ export async function runCheckinAi(sb, body, res) {
     }
 
     const { system, user } = buildPrompt(facts, examples, pain)
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 1000, system, messages: [{ role: 'user', content: user }] }),
-    })
-    const out = await r.json().catch(() => ({}))
-    if (!r.ok) return res.status(502).json({ error: `AI request failed: ${out?.error?.message || r.status}` })
-    const text = (out.content || []).filter(c => c.type === 'text').map(c => c.text).join('')
-    const result = { ...parseAi(text), model: MODEL }
+    let ans
+    try { ans = await askClaude({ system, content: user, tool: SUMMARY_TOOL, maxTokens: 1200, fetchFn }) }
+    catch (e) { return res.status(502).json({ error: `AI request failed: ${e.message}` }) }
+    const result = { ...parseAi(ans.data), model: ans.model }
 
     if (ck) await sb.from('checkins').update({ ai_summary: result, ai_summary_at: new Date().toISOString() }).eq('id', ck.id)
     return res.json(result)
