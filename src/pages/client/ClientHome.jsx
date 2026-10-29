@@ -13,6 +13,7 @@ import AnnouncementBanner from './AnnouncementBanner'
 import NextCallCard from './NextCallCard'
 import SetupChecklist from './SetupChecklist'
 import WinsCard from './WinsCard'
+import ShowFuelCard from './ShowFuelCard'
 import { countedLogs } from '../../lib/foodlog'
 
 export default function ClientHome() {
@@ -183,6 +184,7 @@ export default function ClientHome() {
 
       <AnnouncementBanner profile={profile} />
       <NextCallCard profile={profile} />
+      <ShowFuelCard profile={profile} />
       <SetupChecklist profile={profile} onVisible={setSetupShown} />
       <WinsCard profile={profile} />
 

@@ -25,7 +25,7 @@ export function eventAdvice(events, today, addDays) {
   const name = e => e.title || EVENT_KINDS[e.kind]?.label || 'event'
   const t = on(today), tm = on(addDays(today, 1)), y = on(addDays(today, -1))
   const showToday = t.find(isBooking)
-  if (showToday) return { tone: 'show', title: `${EVENT_KINDS[showToday.kind].icon} ${name(showToday)} today`, body: 'No heavy session today. 10 minutes of activation and mobility before the show is plenty. Move today’s lift to another day below if it’s on today.', canMove: true }
+  if (showToday) return { tone: 'show', title: `${EVENT_KINDS[showToday.kind].icon} ${name(showToday)} today`, body: 'No heavy session today. 10 minutes of activation and mobility before the show is plenty. Move today’s lift to another day below if it’s on today. Your fuel plan is on Home.', canMove: true }
   const travelToday = t.find(e => e.kind === 'travel')
   if (travelToday) return { tone: 'travel', title: `✈️ Travel day${travelToday.location ? `: ${travelToday.location}` : ''}`, body: 'Use ✈️ Away mode for a hotel or bodyweight session, or move today’s session to a day you’re home.', canMove: true }
   const showTomorrow = tm.find(isBooking)

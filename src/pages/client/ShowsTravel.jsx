@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase'
 import { localDateStr } from '../../lib/weeks'
 import { EVENT_KINDS } from '../../lib/clientEvents'
 
-const BLANK = () => ({ kind: 'show', title: '', location: '', start_date: localDateStr(), end_date: '' })
+const BLANK = () => ({ kind: 'show', title: '', location: '', start_date: localDateStr(), end_date: '', start_time: '' })
 const md = d => new Date(d + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 
 export default function ShowsTravel({ profile, events, onChange }) {
@@ -22,6 +22,7 @@ export default function ShowsTravel({ profile, events, onChange }) {
     const { error } = await supabase.from('client_events').insert({
       client_id: profile.id, kind: form.kind, title: form.title.trim().slice(0, 120), location: form.location.trim().slice(0, 120),
       start_date: form.start_date, end_date: end,
+      ...(form.start_time && form.kind !== 'travel' ? { start_time: form.start_time } : {}),
     })
     setBusy(false)
     if (error) { alert(error.message.includes('client_events') ? 'Shows & travel isn’t switched on yet. Ask your coach.' : 'Could not save: ' + error.message); return }
@@ -54,7 +55,9 @@ export default function ShowsTravel({ profile, events, onChange }) {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 13 }}>
             <label>{form.kind === 'travel' ? 'Leave' : 'Date'} <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} style={{ width: 'auto' }} /></label>
             <label>{form.kind === 'travel' ? 'Back' : 'Last day (if more than one)'} <input type="date" value={form.end_date} min={form.start_date} onChange={e => setForm({ ...form, end_date: e.target.value })} style={{ width: 'auto' }} /></label>
+            {(form.kind === 'show' || form.kind === 'tv') && <label>Bell / match time <input type="time" value={form.start_time} onChange={e => setForm({ ...form, start_time: e.target.value })} style={{ width: 'auto' }} /></label>}
           </div>
+          {(form.kind === 'show' || form.kind === 'tv') && <span className="muted" style={{ fontSize: 12 }}>Add the time and your show-day fuel plan is timed to it.</span>}
           <button className="btn" style={{ alignSelf: 'flex-start', padding: '8px 16px', fontSize: 13 }} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
         </div>
       )}
@@ -66,7 +69,7 @@ export default function ShowsTravel({ profile, events, onChange }) {
             <span style={{ flex: 1, minWidth: 0 }}>
               <strong>{e.title || (e.kind === 'travel' ? `Travel${e.location ? ` to ${e.location}` : ''}` : EVENT_KINDS[e.kind]?.label)}</strong>
               {e.title && e.location && <span className="muted"> · {e.location}</span>}
-              <span className="muted" style={{ display: 'block', fontSize: 12 }}>{md(e.start_date)}{e.end_date !== e.start_date ? ` → ${md(e.end_date)}` : ''}</span>
+              <span className="muted" style={{ display: 'block', fontSize: 12 }}>{md(e.start_date)}{e.end_date !== e.start_date ? ` → ${md(e.end_date)}` : ''}{e.start_time ? ` · bell ${e.start_time.slice(0, 5)}` : ''}</span>
             </span>
             <button onClick={() => remove(e.id)} aria-label="Delete" style={{ background: 'none', color: 'var(--muted)' }}><Trash2 size={14} /></button>
           </div>
