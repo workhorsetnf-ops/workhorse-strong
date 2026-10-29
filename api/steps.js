@@ -2,8 +2,8 @@
 //   POST /api/steps?t=<client's private token>
 //   body: { "steps": 8532, "date": "2026-10-28" }   (date optional, defaults to today Eastern)
 // Shortcuts sometimes sends numbers as text ("8,532" or "8532.0"), so both are accepted.
-// The token is the only credential: it identifies one client and can only write
-// their step count. Rotating it on the setup page kills the old link.
+// The token is the only credential: it identifies one person (client or coach)
+// and can only write their step count. Rotating it on the setup page kills the old link.
 import { admin } from './_push.js'
 
 const TZ = process.env.COACH_TIMEZONE || 'America/New_York'
@@ -38,8 +38,10 @@ export default async function handler(req, res) {
   if (!date) return res.status(400).json({ error: 'Date must be today or up to 3 days ago.' })
   try {
     const sb = admin()
-    const { data: who } = await sb.from('profiles').select('id, full_name, role').eq('steps_token', token).maybeSingle()
-    if (!who || who.role !== 'client') return res.status(401).json({ error: 'This link is no longer active. Copy your new link from the app.' })
+    const { data: row, error: qErr } = await sb.from('steps_tokens').select('user_id').eq('token', token).maybeSingle()
+    if (qErr) return res.status(500).json({ error: `Server could not check the link: ${qErr.message}` })
+    const who = row ? { id: row.user_id } : null
+    if (!who) return res.status(401).json({ error: 'This link is not active (it was replaced or never saved). Open Sync steps in the app, tap Copy link, and paste it into the Shortcut again.' })
     const { error } = await sb.from('daily_logs').upsert(
       { client_id: who.id, log_date: date, steps, steps_source: 'shortcut', steps_synced_at: new Date().toISOString() },
       { onConflict: 'client_id,log_date' })
