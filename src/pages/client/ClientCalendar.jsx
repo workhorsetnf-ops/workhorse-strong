@@ -4,6 +4,8 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr, daysBetween } from '../../lib/weeks'
 import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, withMoves } from '../../lib/conditioning'
+import { eventsOn, eventIcons, EVENT_KINDS } from '../../lib/clientEvents'
+import ShowsTravel from './ShowsTravel'
 
 export default function ClientCalendar() {
   const { profile } = useAuth()
@@ -17,6 +19,9 @@ export default function ClientCalendar() {
   const [month, setMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
   const [selected, setSelected] = useState(null)
   const [moves, setMoves] = useState([]) // conditioning sessions the client moved
+  const [events, setEvents] = useState([]) // shows & travel
+  const loadEvents = () => profile && supabase.from('client_events').select('*').eq('client_id', profile.id).order('start_date')
+    .then(({ data, error }) => setEvents(error ? [] : data || []))
 
   useEffect(() => {
     if (!profile) return
@@ -33,6 +38,7 @@ export default function ClientCalendar() {
         }
         setDaysByBlock(byBlock)
       })
+    loadEvents()
     supabase.from('session_moves').select('*').eq('client_id', profile.id)
       .then(({ data }) => setMoves(data || []))
     supabase.from('daily_logs').select('log_date').eq('client_id', profile.id)
@@ -101,6 +107,8 @@ export default function ClientCalendar() {
         <h1 style={{ fontSize: 24, marginTop: 4 }}>Calendar</h1>
       </header>
 
+      <ShowsTravel profile={profile} events={events} onChange={loadEvents} />
+
       <div className="card" style={{ padding: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <button className="btn-ghost" style={{ padding: '6px 12px' }} onClick={() => setMonth(({ y, m }) => m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 })}>‹</button>
@@ -125,7 +133,8 @@ export default function ClientCalendar() {
                 style={{ background: selected === dayNum ? 'var(--steel)' : 'var(--coal)', borderRadius: 6, padding: '3px 4px', border: isToday ? '1px solid var(--orange)' : '1px solid var(--line)', overflow: 'hidden', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 10, fontWeight: 800, color: isToday ? 'var(--orange-hot)' : 'var(--muted)' }}>{dayNum}</span>
-                  <span style={{ display: 'flex', gap: 2 }}>
+                  <span style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    {eventIcons(events, localDateStr(new Date(y, m, dayNum))) && <span style={{ fontSize: 9, lineHeight: 1 }}>{eventIcons(events, localDateStr(new Date(y, m, dayNum)))}</span>}
                     {logged && <span title="Logged" style={{ width: 5, height: 5, borderRadius: '50%', background: '#4A6FA5' }} />}
                     {checkinDue && <span title="Check-in due" style={{ width: 5, height: 5, borderRadius: '50%', background: '#9B7FE0' }} />}
                   </span>
@@ -145,6 +154,7 @@ export default function ClientCalendar() {
           <span><span style={{ color: CONDITIONING_COLOR }}>■</span> Conditioning</span>
           <span><span style={{ color: LIFESTYLE_COLOR }}>■</span> Lifestyle</span>
           <span>↪ Moved</span>
+          <span>🎤 Show · 📺 TV · ✈️ Travel</span>
           <span><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4A6FA5', display: 'inline-block', marginRight: 3 }} />Logged</span>
           <span><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#9B7FE0', display: 'inline-block', marginRight: 3 }} />Check-in due</span>
         </div>
@@ -154,6 +164,9 @@ export default function ClientCalendar() {
         <div className="card">
           <strong style={{ fontSize: 14 }}>{selDate?.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</strong>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+            {eventsOn(events, localDateStr(selDate)).map(e => (
+              <div key={e.id} style={{ fontSize: 13, fontWeight: 700 }}>{EVENT_KINDS[e.kind]?.icon} {e.title || EVENT_KINDS[e.kind]?.label}{e.location ? ` · ${e.location}` : ''}</div>
+            ))}
             {sel.map(s => (
               <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--steel)', borderRadius: 6, padding: '8px 10px' }}>
                 <div>

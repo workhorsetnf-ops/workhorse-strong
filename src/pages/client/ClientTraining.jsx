@@ -8,6 +8,8 @@ import RestTimer from '../../lib/RestTimer'
 import IntervalTimer from '../../lib/IntervalTimer'
 import PlateCalc from '../../lib/PlateCalc'
 import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, programWeekDates, scheduledDate, withMoves, effectiveDate, workUnit, UNIT_LABEL, secondsToUnit } from '../../lib/conditioning'
+import { eventAdvice, eventIcons } from '../../lib/clientEvents'
+import { addDays as addDaysStr } from '../../lib/dashboard'
 
 function roundTo5(n) { return Math.round(n / 5) * 5 }
 
@@ -152,7 +154,8 @@ export default function ClientTraining() {
   const [calMode, setCalMode] = useState(false)
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
   const [rotations, setRotations] = useState([])
-  const [moves, setMoves] = useState([]) // session_moves: conditioning sessions the client moved within a week
+  const [moves, setMoves] = useState([]) // session_moves: sessions the client moved within a week
+  const [events, setEvents] = useState([]) // shows & travel (Update 146)
   const [days, setDays] = useState([])
   const [activeDay, setActiveDay] = useState(null)
   const [exercises, setExercises] = useState([])
@@ -241,6 +244,7 @@ export default function ClientTraining() {
         }
       })
     loadMoves()
+    loadEvents()
     supabase.from('client_maxes').select('*').eq('client_id', profile.id)
       .then(({ data }) => {
         setMaxes(Object.fromEntries((data || []).map(m => [m.lift_name.toLowerCase(), m.max_weight])))
@@ -248,6 +252,13 @@ export default function ClientTraining() {
   }, [profile])
 
   const blockWeeks = block?.weeks || program?.weeks || 4
+
+  async function loadEvents() {
+    if (!profile) return
+    const { data, error } = await supabase.from('client_events').select('*').eq('client_id', profile.id)
+      .gte('end_date', addDaysStr(localDateStr(), -14)).order('start_date')
+    setEvents(error ? [] : data || [])
+  }
 
   async function loadMoves() {
     if (!profile) return
@@ -922,20 +933,25 @@ export default function ClientTraining() {
   // regardless; moving is about where it sits on their schedule.
   const thisWeekDates = startDate ? programWeekDates(startDate) : null
   function sessionDateThisWeek(d) {
-    if (!thisWeekDates || d.track !== 'conditioning') return null
+    if (!thisWeekDates || (d.track !== 'conditioning' && !moves.some(m => m.day_id === d.id))) return null
     const from = scheduledDate(startDate, d.day_number)
     return from ? effectiveDate(d.id, from, moves) : null
   }
   const weekdayShort = ymd => new Date(ymd + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' })
 
   function renderMovePanel() {
-    if (!cardioDay || !thisWeekDates || calMode || awayMode) return null
+    if (!thisWeekDates || calMode || awayMode) return null
+    // conditioning can always move; a lifting day can when a show or travel
+    // lands in this week (or it's already been moved)
+    const weekHasEvent = thisWeekDates.some(dt => eventIcons(events, dt))
+    if (!cardioDay && !weekHasEvent && !moves.some(m => m.day_id === activeDay?.id)) return null
+    if (!activeDay || (activeDay.track || 'exercise') === 'lifestyle') return null
     const from = scheduledDate(startDate, activeDay.day_number)
     if (!from) return null
     const on = effectiveDate(activeDay.id, from, moves)
     const today = localDateStr()
     return (
-      <div className="card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, borderLeft: `3px solid ${CONDITIONING_COLOR}` }}>
+      <div className="card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, borderLeft: `3px solid ${cardioDay ? CONDITIONING_COLOR : 'var(--orange)'}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13 }}>
             <span className="muted">This week: </span>
@@ -954,9 +970,10 @@ export default function ClientTraining() {
               <button key={dt} type="button" aria-pressed={sel} onClick={() => !sel && moveSession(activeDay, from, dt)}
                 title={new Date(dt + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
                 style={{ padding: '7px 0', borderRadius: 8, fontSize: 11.5, fontWeight: 800, cursor: sel ? 'default' : 'pointer', lineHeight: 1.2,
-                  background: sel ? CONDITIONING_COLOR : 'var(--steel)', color: sel ? '#06121B' : dt < today ? 'var(--muted)' : 'inherit',
+                  background: sel ? (cardioDay ? CONDITIONING_COLOR : 'var(--orange)') : 'var(--steel)', color: sel ? '#06121B' : dt < today ? 'var(--muted)' : 'inherit',
                   border: dt === today && !sel ? `1px solid ${CONDITIONING_COLOR}` : '1px solid transparent' }}>
                 {weekdayShort(dt).slice(0, 3)}<br /><span style={{ fontWeight: 600, fontSize: 10.5 }}>{Number(dt.slice(8))}</span>
+                {eventIcons(events, dt) && <><br /><span style={{ fontSize: 10 }}>{eventIcons(events, dt)}</span></>}
               </button>
             )
           })}
@@ -1232,7 +1249,7 @@ export default function ClientTraining() {
         {!calMode && days.filter(d => (d.track || 'exercise') === 'exercise' && dayShowsInWeek(d, rotations, week)).map(d => (
           <button key={d.id} className={activeDay?.id === d.id ? 'btn' : 'btn-ghost'}
             style={{ padding: '10px 16px', fontSize: 13 }}
-            onClick={() => setActiveDay(d)}>{d.day_label}</button>
+            onClick={() => setActiveDay(d)}>{d.day_label}{sessionDateThisWeek(d) && <span style={{ opacity: 0.75, fontWeight: 600 }}> · {weekdayShort(sessionDateThisWeek(d))}</span>}</button>
         ))}
         {!calMode && days.filter(d => d.track === 'conditioning' && dayShowsInWeek(d, rotations, week)).map(d => {
           const on = sessionDateThisWeek(d)
@@ -1250,6 +1267,16 @@ export default function ClientTraining() {
             onClick={() => setActiveDay(d)}>{d.day_label}</button>
         ))}
       </div>
+      {(() => {
+        const adv = eventAdvice(events, localDateStr(), addDaysStr)
+        if (!adv) return null
+        return (
+          <div className="card" style={{ padding: '10px 12px', borderLeft: `3px solid ${adv.tone === 'show' ? 'var(--orange)' : adv.tone === 'travel' ? CONDITIONING_COLOR : 'var(--line)'}` }}>
+            <strong style={{ fontSize: 14 }}>{adv.title}</strong>
+            <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>{adv.body}</div>
+          </div>
+        )
+      })()}
       </>}
 
       {!calMode && !awayMode && activeDay && showList && (() => {
