@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import FoodLibrary from './FoodLibrary'
 import RoutineLibrary from './RoutineLibrary'
+import SwapEditor from './SwapEditor'
 import { matchProgramExercises } from '../../lib/exmatch'
 
 const EMPTY_EX = { name: '', category: '', metric: 'reps', video_url: '', notes: '', icon_url: '' }
@@ -14,6 +15,8 @@ export default function CoachLibrary() {
   const [items, setItems] = useState([])
   const [uploadingIcon, setUploadingIcon] = useState(false)
   const [pushingId, setPushingId] = useState(null)
+  const [alts, setAlts] = useState([])
+  const [swapItem, setSwapItem] = useState(null)
   const [pushPanel, setPushPanel] = useState(null)   // { item, groups, picked:Set(name), fields:{icon_url,video_url}, rename }
   const [cond, setCond] = useState([])
   const [life, setLife] = useState([])
@@ -30,6 +33,8 @@ export default function CoachLibrary() {
       supabase.from('lifestyle_library').select('*').order('name'),
     ])
     setItems(e || []); setCond(c || []); setLife(l || [])
+    const { data: al, error: alErr } = await supabase.from('exercise_alternatives').select('*')
+    setAlts(alErr ? [] : al || [])
   }
   useEffect(() => { load() }, [])
 
@@ -167,6 +172,7 @@ export default function CoachLibrary() {
       </div>
 
       {pushPanel && <PushPanel p={pushPanel} setP={setPushPanel} apply={applyPush} />}
+      {swapItem && tab === 'exercises' && <SwapEditor item={swapItem} library={items} alts={alts} onChange={load} onClose={() => setSwapItem(null)} />}
       {tab === 'foods' && <FoodLibrary />}
       {tab === 'routines' && <RoutineLibrary />}
 
@@ -216,6 +222,7 @@ export default function CoachLibrary() {
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {i.icon_url && <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} disabled={pushingId === `${i.id}:icon_url`} onClick={() => pushEverywhere(i, 'icon_url')}>{pushingId === `${i.id}:icon_url` ? 'Applying…' : 'Push icon'}</button>}
                     {i.video_url && <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} disabled={pushingId === `${i.id}:video_url`} onClick={() => pushEverywhere(i, 'video_url')}>{pushingId === `${i.id}:video_url` ? 'Applying…' : 'Push video'}</button>}
+                    <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6, borderColor: alts.some(a => a.library_id === i.id) ? 'var(--orange)' : undefined }} onClick={() => { setSwapItem(i); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>⇄ Swaps{alts.filter(a => a.library_id === i.id).length ? ` (${alts.filter(a => a.library_id === i.id).length})` : ''}</button>
                     <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => editEx(i)}>Edit</button>
                     <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, color: 'var(--red)' }} onClick={() => removeEx(i.id)}>✕</button>
                   </td>
