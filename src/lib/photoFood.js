@@ -65,11 +65,12 @@ export const PHOTO_TOOL = {
     properties: {
       items: { type: 'array', items: { type: 'object', properties: {
         name: { type: 'string' }, grams: { type: 'number' },
-        per100: { type: 'object', properties: { kcal: { type: 'number' }, p: { type: 'number' }, c: { type: 'number' }, f: { type: 'number' }, fiber: { type: 'number' } }, required: ['kcal', 'p', 'c', 'f'] },
-      }, required: ['name', 'grams', 'per100'] } },
+        per100: { type: 'object', properties: { kcal: { type: 'number' }, p: { type: 'number' }, c: { type: 'number' }, f: { type: 'number' }, fiber: { type: 'number' } }, required: ['kcal', 'p', 'c', 'f', 'fiber'], additionalProperties: false },
+      }, required: ['name', 'grams', 'per100'], additionalProperties: false } },
       confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
       warning: { type: 'string' },
     },
-    required: ['items', 'confidence'],
+    required: ['items', 'confidence', 'warning'],
+    additionalProperties: false,
   },
 }

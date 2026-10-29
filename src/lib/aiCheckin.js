@@ -81,5 +81,6 @@ export const SUMMARY_TOOL = {
       reply: { type: 'string', description: "60-140 word message to the client in the coach's voice" },
     },
     required: ['summary', 'watch', 'reply'],
+    additionalProperties: false,
   },
 }
