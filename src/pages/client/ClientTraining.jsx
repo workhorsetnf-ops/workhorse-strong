@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { dash, effortText, effortMeaning } from '../../lib/targets'
 import { progressionCall, CALL_STYLE } from '../../lib/progression'
 import { supabase } from '../../lib/supabase'
@@ -10,6 +11,7 @@ import PlateCalc from '../../lib/PlateCalc'
 import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, programWeekDates, scheduledDate, withMoves, effectiveDate, workUnit, UNIT_LABEL, secondsToUnit } from '../../lib/conditioning'
 import { eventAdvice, eventIcons } from '../../lib/clientEvents'
 import { bestOf, prFor, nameKey } from '../../lib/prs'
+import { alternativesFor, applySwap, REASONS } from '../../lib/swaps'
 import { addDays as addDaysStr } from '../../lib/dashboard'
 
 function roundTo5(n) { return Math.round(n / 5) * 5 }
@@ -159,7 +161,14 @@ export default function ClientTraining() {
   const [events, setEvents] = useState([]) // shows & travel (Update 146)
   const [days, setDays] = useState([])
   const [activeDay, setActiveDay] = useState(null)
-  const [exercises, setExercises] = useState([])
+  const [baseExercises, setExercises] = useState([])
+  // exercise swaps (Update 152): coach-approved alternatives and today's swaps
+  const [swapLib, setSwapLib] = useState({ library: [], alts: [] })
+  const [swaps, setSwaps] = useState({})          // program exercise id -> today's swap row
+  const [swapFor, setSwapFor] = useState(null)    // exercise whose swap sheet is open
+  const [swapReason, setSwapReason] = useState('taken')
+  const libById = useMemo(() => Object.fromEntries(swapLib.library.map(l => [l.id, l])), [swapLib])
+  const exercises = useMemo(() => baseExercises.map(ex => applySwap(ex, swaps[ex.id], libById)), [baseExercises, swaps, libById])
   const [maxes, setMaxes] = useState({})
   const [log, setLog] = useState({})
   const [results, setResults] = useState({})
@@ -500,6 +509,36 @@ export default function ClientTraining() {
   useEffect(() => {
     if (activeDay && !dayShowsInWeek(activeDay, rotations, week)) setActiveDay(null)
   }, [week, rotations])
+
+  useEffect(() => {
+    if (!profile) return
+    Promise.all([
+      supabase.from('exercise_library').select('id, name, video_url, icon_url'),
+      supabase.from('exercise_alternatives').select('*'),
+    ]).then(([l, a]) => setSwapLib({ library: l.data || [], alts: a.error ? [] : a.data || [] }))
+  }, [profile?.id])
+  useEffect(() => {
+    if (!profile) return
+    supabase.from('exercise_swaps').select('*').eq('client_id', profile.id).eq('swap_date', todayStr())
+      .then(({ data, error }) => { if (!error) setSwaps(Object.fromEntries((data || []).map(w => [w.exercise_id, w]))) })
+  }, [profile?.id, activeDay?.id])
+  async function doSwap(ex, alt) {
+    const row = { client_id: profile.id, exercise_id: ex.id, swap_date: todayStr(), from_name: ex.swappedFrom || ex.name, alt_library_id: alt.id, alt_name: alt.name, reason: swapReason }
+    setSwaps(m => ({ ...m, [ex.id]: row })); setSwapFor(null)
+    const { error } = await supabase.from('exercise_swaps').upsert(row, { onConflict: 'client_id,exercise_id,swap_date' })
+    if (error) alert('Swap shows for now but wasn’t saved: ' + error.message)
+  }
+  async function undoSwap(ex) {
+    setSwaps(m => { const n = { ...m }; delete n[ex.id]; return n }); setSwapFor(null)
+    await supabase.from('exercise_swaps').delete().eq('client_id', profile.id).eq('exercise_id', ex.id).eq('swap_date', todayStr())
+  }
+  function swapButton(ex) {
+    if (ex.kind === 'conditioning') return null
+    return <button onClick={() => { setSwapReason('taken'); setSwapFor(ex) }} className="btn-ghost" style={{ padding: '3px 9px', fontSize: 11, borderColor: ex.swappedFrom ? 'var(--orange)' : undefined }} title="Swap this exercise">⇄ Swap</button>
+  }
+  function swappedNote(ex) {
+    return ex.swappedFrom ? <div style={{ fontSize: 12, color: 'var(--orange-hot)', fontWeight: 700, width: '100%' }}>⇄ Swapped from {ex.swappedFrom} for today</div> : null
+  }
 
   useEffect(() => {
     if (!activeDay) return
@@ -919,8 +958,10 @@ export default function ClientTraining() {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4, flexWrap: 'wrap', alignItems: 'center' }}>
             {ex.icon_url && <img className="thumb" src={ex.icon_url} alt="" style={{ width: 42, height: 42, borderRadius: 8, objectFit: 'cover', marginRight: -2 }} />}
             <strong style={{ fontSize: 15 }}>{ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter}) </span>}{ex.name}</strong>
+            {swappedNote(ex)}
+            <span style={{ marginLeft: 'auto' }}>{swapButton(ex)}</span>
             <button onClick={() => setFlagging(flagging === ex.id ? null : ex.id)} className="btn-ghost"
-              style={{ padding: '3px 9px', fontSize: 11, marginLeft: 'auto', color: flaggedIds.has(ex.id) ? 'var(--red)' : undefined, borderColor: flaggedIds.has(ex.id) ? 'var(--red)' : undefined }}
+              style={{ padding: '3px 9px', fontSize: 11, color: flaggedIds.has(ex.id) ? 'var(--red)' : undefined, borderColor: flaggedIds.has(ex.id) ? 'var(--red)' : undefined }}
               title="Flag pain or discomfort">⚠️</button>
             <button onClick={() => openExerciseComments(ex.id)} className="btn-ghost" style={{ padding: '3px 9px', fontSize: 11 }}>
               💬 {commentCounts[ex.id] > 0 ? commentCounts[ex.id] : ''}
@@ -1169,6 +1210,7 @@ export default function ClientTraining() {
                 <h2 style={{ fontSize: 28, lineHeight: 1, textTransform: 'uppercase' }}>
                   {ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter} · </span>}{ex.name}
                 </h2>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>{swappedNote(ex)}{swapButton(ex)}</div>
                 <div style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700, marginTop: 4 }}>{targetText(ex)}</div>
                 {effortBox(ex)}
                 {progressNote(ex)}
@@ -1238,6 +1280,39 @@ export default function ClientTraining() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {swapFor && (() => {
+        const orig = swapFor.swappedFrom || swapFor.name
+        const options = alternativesFor(orig, swapLib.library, swapLib.alts)
+        return (
+          <div onClick={() => setSwapFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+            <div onClick={e => e.stopPropagation()} className="card" style={{ width: '100%', maxWidth: 520, borderRadius: '18px 18px 0 0', padding: 16, paddingBottom: 28, maxHeight: '80dvh', overflowY: 'auto' }}>
+              <div className="eyebrow">Swap for today</div>
+              <h2 style={{ fontSize: 22, margin: '4px 0 10px' }}>{orig}</h2>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                {REASONS.map(([k, label]) => <button key={k} className={swapReason === k ? 'btn' : 'btn-ghost'} style={{ padding: '6px 11px', fontSize: 12.5 }} onClick={() => setSwapReason(k)}>{label}</button>)}
+              </div>
+              {swapReason === 'hurts' && <p style={{ fontSize: 13, color: 'var(--orange-hot)', margin: '0 0 10px' }}>Pick a swap below, then tap ⚠️ on the exercise to tell your coach what hurts.</p>}
+              {options.length === 0 ? (
+                <div className="muted" style={{ fontSize: 14 }}>Your coach hasn’t set swaps for this one yet. <Link to="/app/messages" style={{ color: 'var(--orange)' }}>Message your coach</Link> and they’ll tell you what to do instead.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {options.map(o => (
+                    <button key={o.id} onClick={() => doSwap(swapFor, o)} className="btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', fontSize: 15, fontWeight: 700, borderColor: swaps[swapFor.id]?.alt_library_id === o.id ? 'var(--orange)' : undefined }}>
+                      {o.icon_url ? <img src={o.icon_url} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'cover' }} /> : <span style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(255,106,0,.14)', display: 'grid', placeItems: 'center' }}>⇄</span>}
+                      <span style={{ flex: 1 }}>{o.name}</span>{o.video_url && <span className="muted" style={{ fontSize: 11 }}>▶ demo</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                {swapFor.swappedFrom && <button className="btn-ghost" onClick={() => undoSwap(swapFor)}>Back to {orig}</button>}
+                <button className="btn-ghost" onClick={() => setSwapFor(null)} style={{ marginLeft: 'auto' }}>Cancel</button>
+              </div>
+              <p className="muted" style={{ fontSize: 11.5, marginTop: 10 }}>Sets you log now are saved under the new exercise. Your coach sees the swap.</p>
+            </div>
+          </div>
+        )
+      })()}
       {prToast && (
         <div role="status" onClick={() => setPrToast(null)}
           style={{ position: 'fixed', left: 12, right: 12, bottom: 84, zIndex: 60, maxWidth: 460, margin: '0 auto', background: 'var(--orange)', color: '#000', fontWeight: 800, fontSize: 14, padding: '12px 14px', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,.5)' }}>{prToast}</div>
