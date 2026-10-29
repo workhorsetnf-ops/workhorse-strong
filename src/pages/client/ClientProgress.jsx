@@ -227,6 +227,7 @@ export default function ClientProgress() {
         <Link to="/app/steps-sync" style={{ fontSize: 12.5, color: 'var(--orange)', textDecoration: 'none', marginTop: -4 }}>
           {row.steps_source === 'shortcut' ? '✓ Steps synced from Apple Health' : '⌚ Sync steps from your iPhone automatically →'}
         </Link>
+        <Link to="/app/records" style={{ fontSize: 12.5, color: 'var(--orange)', textDecoration: 'none', marginTop: -6 }}>🏆 My lifting records →</Link>
 
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 5 }}>Hit your nutrition plan?</div>
