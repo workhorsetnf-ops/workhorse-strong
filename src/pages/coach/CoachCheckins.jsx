@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { coachBadgesChanged } from '../../lib/coachBadges'
 import { supabase } from '../../lib/supabase'
 import { WeekTable } from '../client/ClientProgress'
 import CheckinEditor from '../CheckinEditor'
@@ -432,6 +433,7 @@ export default function CoachCheckins() {
   async function sendFeedback(id) {
     if (!feedback[id]?.trim()) return
     await supabase.from('checkins').update({ coach_feedback: feedback[id].trim() }).eq('id', id)
+    coachBadgesChanged()
     setFeedback(f => ({ ...f, [id]: '' }))
     load()
   }

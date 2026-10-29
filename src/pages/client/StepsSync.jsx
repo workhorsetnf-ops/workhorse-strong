@@ -82,19 +82,13 @@ export default function StepsSync() {
             {step(3, 'Run it once.', 'Open Shortcuts, tap the new shortcut, and tap Allow when it asks for Health access.')}
             {step(4, 'Make it automatic.', 'Shortcuts → Automation → + → Time of Day → 11:30 PM, Daily → Run Immediately → Next → pick the shortcut → Done.')}
           </ol>
+          <Link to="/guide/steps" style={{ fontSize: 13, color: 'var(--orange)', fontWeight: 700 }}>📖 Full picture guide →</Link>
         </section>
       ) : (
-        <section className="card" style={{ padding: 16 }}>
+        <section className="card" style={{ padding: 16, borderColor: 'var(--orange)' }}>
           <div className="eyebrow">Set up (5 minutes, on your iPhone)</div>
-          <ol style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
-            {step(1, 'Copy your link above.')}
-            {step(2, 'Open the Shortcuts app and tap + to make a new shortcut.')}
-            {step(3, 'Add “Find Health Samples”.', 'Set it to: Type is Steps, Start Date is Today. Turn on Group By: Day.')}
-            {step(4, 'Add “Calculate Statistics”.', 'Set it to Sum of the Health Samples.')}
-            {step(5, 'Add “Get Contents of URL”.', 'Paste your link as the URL. Tap the arrow: Method POST, Request Body JSON, add a Number field named steps and set it to the Statistics result.')}
-            {step(6, 'Name it “Sync Steps” and run it once.', 'Tap Allow when it asks for Health access. Your steps should appear above.')}
-            {step(7, 'Make it automatic.', 'Automation tab → + → Time of Day → 11:30 PM, Daily → Run Immediately → Next → pick Sync Steps → Done.')}
-          </ol>
+          <p style={{ fontSize: 14, margin: '8px 0 12px', lineHeight: 1.5 }}>Copy your link above, then follow the step-by-step guide. Every step has a picture of exactly what to tap.</p>
+          <Link to="/guide/steps" className="btn" style={{ display: 'inline-block', textDecoration: 'none' }}>📖 Open the picture guide →</Link>
         </section>
       )}
 

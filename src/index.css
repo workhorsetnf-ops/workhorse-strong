@@ -292,3 +292,19 @@ table.data tr:hover td { background: rgba(255,255,255,0.04); }
   .coach-main { padding: 0 !important; max-width: none !important; }
   .client-main { padding: 0 !important; }
 }
+
+/* ===== Setup guides (Update 148) ===== */
+.guide-step { display: grid; grid-template-columns: 1fr 210px; gap: 18px; align-items: center; }
+.guide-step-art { width: 100%; }
+.guide-body b { color: var(--white); }
+@media (max-width: 640px) {
+  .guide-step { grid-template-columns: 1fr; }
+  .guide-step-art { max-width: 230px; margin: 0 auto; }
+}
+
+/* ===== Coach menu: tabs with something waiting (Update 148) ===== */
+.coach-side a.has-new { color: var(--white); background: rgba(255, 106, 0, 0.14); border-left-color: var(--orange); box-shadow: inset 0 0 0 1px rgba(255, 106, 0, 0.35); }
+.coach-side a.has-new svg { color: var(--orange-hot); opacity: 1; }
+.coach-side a.has-new.active { background: rgba(255, 106, 0, 0.22); }
+.coach-side .nav-count { margin-left: auto; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; background: var(--orange); color: #000; font-size: 12px; font-weight: 900; display: inline-grid; place-items: center; line-height: 1; }
+@media (max-width: 760px) { .coach-side a { white-space: nowrap; flex-shrink: 0; } .coach-side a.has-new { order: -1; } }
