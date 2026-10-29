@@ -7,6 +7,7 @@ import { checkinDueDate, daysBetween } from '../../lib/dashboard'
 import { countedLogs } from '../../lib/foodlog'
 import Avatar from '../Avatar'
 import TodayAgenda from './TodayAgenda'
+import ClientEventsCard from './ClientEventsCard'
 
 function startOfWeek(d = new Date()) {
   const day = (d.getDay() + 6) % 7 // Monday = 0
@@ -353,6 +354,7 @@ export default function CoachHome() {
   return (
     <div>
       <TodayAgenda />
+      <ClientEventsCard />
 
       {pipeline && pipeline.total > 0 && (
         <div className="card" style={{ marginBottom: 20, borderLeft: `3px solid ${pipeline.due.length ? 'var(--red)' : 'var(--orange-hot)'}` }}>

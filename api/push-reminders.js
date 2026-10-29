@@ -82,6 +82,10 @@ async function gatherFacts(sb, clients, today, tz, prefs) {
     sessions[a.client_id] = row.sessions.map(s => s.day_label || `Day ${s.day_number}`)
   }
 
+  // Show or TV day: no "today's session" nudge (Update 146). Missing table = no-op.
+  const { data: evs } = await sb.from('client_events').select('client_id, kind').in('client_id', ids).in('kind', ['show', 'tv']).lte('start_date', today).gte('end_date', today)
+  for (const e of evs || []) sessions[e.client_id] = []
+
   const trained = new Set((wl.data || []).filter(l => localDateIn(tz, new Date(l.logged_at)) === today).map(l => l.client_id))
   for (const d of dl.data || []) if (d.trained && d.log_date === today) trained.add(d.client_id)
   const quickDates = {}
