@@ -11,9 +11,11 @@ import Avatar from '../Avatar'
 import QuickCheckin from './QuickCheckin'
 import AnnouncementBanner from './AnnouncementBanner'
 import NextCallCard from './NextCallCard'
+import SetupChecklist from './SetupChecklist'
 import { countedLogs } from '../../lib/foodlog'
 
 export default function ClientHome() {
+  const [setupShown, setSetupShown] = useState(false)
   const { profile } = useAuth()
   const [todayMacros, setTodayMacros] = useState({ p: 0, c: 0, f: 0 })
   const [weekWorkouts, setWeekWorkouts] = useState(0)
@@ -180,6 +182,7 @@ export default function ClientHome() {
 
       <AnnouncementBanner profile={profile} />
       <NextCallCard profile={profile} />
+      <SetupChecklist profile={profile} onVisible={setSetupShown} />
 
       {milestonePrompt && (
         <div className="card glow-behind" style={{ textAlign: 'center' }}>
@@ -239,7 +242,7 @@ export default function ClientHome() {
 
       <QuickCheckin profile={profile} />
 
-      <RemindersPrompt />
+      {!setupShown && <RemindersPrompt />}
 
       {profile && <ClientDashboard profile={profile} />}
 

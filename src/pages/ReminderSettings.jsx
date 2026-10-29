@@ -42,7 +42,8 @@ export default function ReminderSettings() {
 
   async function turnOn() {
     setBusy('on'); setNote(null)
-    try { await enablePush(profile.id); setOn(true); setNote({ ok: true, text: 'Notifications are on for this device. Send yourself a test below.' }) }
+    try { await enablePush(profile.id); setOn(true)
+      if (profile.role === 'client') supabase.from('client_setup').upsert({ client_id: profile.id, push_on_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'client_id' }).then(() => {}); setNote({ ok: true, text: 'Notifications are on for this device. Send yourself a test below.' }) }
     catch (e) { setNote({ ok: false, text: e.message }) }
     setSt(pushStatus()); setBusy('')
   }
