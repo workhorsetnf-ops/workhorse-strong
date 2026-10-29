@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature, FileStack, Pill, Droplet, HeartPulse, CalendarCheck, Bell } from 'lucide-react'
+import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, FileCheck2, ClipboardSignature, FileStack, Pill, Droplet, HeartPulse, CalendarCheck, Bell, Medal } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr, logDate } from '../../lib/weeks'
@@ -12,6 +12,7 @@ import QuickCheckin from './QuickCheckin'
 import AnnouncementBanner from './AnnouncementBanner'
 import NextCallCard from './NextCallCard'
 import SetupChecklist from './SetupChecklist'
+import WinsCard from './WinsCard'
 import { countedLogs } from '../../lib/foodlog'
 
 export default function ClientHome() {
@@ -183,6 +184,7 @@ export default function ClientHome() {
       <AnnouncementBanner profile={profile} />
       <NextCallCard profile={profile} />
       <SetupChecklist profile={profile} onVisible={setSetupShown} />
+      <WinsCard profile={profile} />
 
       {milestonePrompt && (
         <div className="card glow-behind" style={{ textAlign: 'center' }}>
@@ -308,6 +310,12 @@ export default function ClientHome() {
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
             <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><CalendarCheck size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Habits</div>
+          </div>
+        </Link>
+        <Link to="/app/records" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><Medal size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Records</div>
           </div>
         </Link>
         <Link to="/app/reminders" style={{ textDecoration: 'none' }}>

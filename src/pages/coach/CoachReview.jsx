@@ -12,6 +12,7 @@ import { buildReview } from '../../lib/review'
 import { WeekTotals } from './FoodLogViews'
 import { HabitGrid } from './CoachHabits'
 import { WeekTable } from '../client/ClientProgress'
+import WeekPrs from './WeekPrs'
 import AiCheckinCard from './AiCheckinCard'
 import MacroAdjustCard from './MacroAdjustCard'
 
@@ -176,6 +177,8 @@ export default function CoachReview() {
               </div>
             </Section>
           )}
+
+          <WeekPrs clientId={clientId} days={days} />
 
           <Section title="Daily tracking">
             <div className="card" style={{ padding: '6px 10px', overflowX: 'auto' }}>

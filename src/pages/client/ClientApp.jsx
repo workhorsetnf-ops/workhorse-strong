@@ -35,6 +35,7 @@ import ContractPrint from '../ContractPrint'
 import ReminderSettings from '../ReminderSettings'
 import ClientProfile from './ClientProfile'
 import StepsSync from './StepsSync'
+import ClientRecords from './ClientRecords'
 
 function Dot() {
   return <span style={{ position: 'absolute', top: 4, right: '28%', width: 8, height: 8, borderRadius: '50%', background: 'var(--red)', border: '1.5px solid var(--coal)' }} />
@@ -133,6 +134,7 @@ export default function ClientApp() {
           <Route path="reminders" element={<ReminderSettings />} />
           <Route path="profile" element={<ClientProfile />} />
           <Route path="steps-sync" element={<StepsSync />} />
+          <Route path="records" element={<ClientRecords />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
       </main>

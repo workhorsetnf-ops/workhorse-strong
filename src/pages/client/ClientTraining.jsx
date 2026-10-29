@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { dash, effortText, effortMeaning } from '../../lib/targets'
 import { progressionCall, CALL_STYLE } from '../../lib/progression'
 import { supabase } from '../../lib/supabase'
-import { resolveAssignment, rotationForWeek, dayShowsInWeek, daysBetween, resolveBlockWeek, localDateStr } from '../../lib/weeks'
+import { resolveAssignment, rotationForWeek, dayShowsInWeek, daysBetween, resolveBlockWeek, localDateStr, logDate } from '../../lib/weeks'
 import { useAuth } from '../../context/AuthContext'
 import RestTimer from '../../lib/RestTimer'
 import IntervalTimer from '../../lib/IntervalTimer'
 import PlateCalc from '../../lib/PlateCalc'
 import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, programWeekDates, scheduledDate, withMoves, effectiveDate, workUnit, UNIT_LABEL, secondsToUnit } from '../../lib/conditioning'
 import { eventAdvice, eventIcons } from '../../lib/clientEvents'
+import { bestOf, prFor, nameKey } from '../../lib/prs'
 import { addDays as addDaysStr } from '../../lib/dashboard'
 
 function roundTo5(n) { return Math.round(n / 5) * 5 }
@@ -179,6 +180,22 @@ export default function ClientTraining() {
 
   // debounce timers for auto-save, keyed per set (or per conditioning result)
   const saveTimers = useRef({})
+  // personal records (Update 151): earlier bests per exercise, and today's PR sets
+  const bestCache = useRef({})
+  const [prSets, setPrSets] = useState({})      // key -> label
+  const [prToast, setPrToast] = useState(null)
+  async function checkPr(key, exerciseName, s) {
+    if (!s.weight || !s.reps || !exerciseName) return
+    const k = nameKey(exerciseName)
+    if (!bestCache.current[k]) {
+      const { data } = await supabase.from('workout_logs').select('weight, reps, logged_date, logged_at').eq('client_id', profile.id)
+        .ilike('exercise_name', exerciseName).not('weight', 'is', null).limit(3000)
+      bestCache.current[k] = bestOf((data || []).filter(r => logDate(r) && logDate(r) < todayStr()))
+    }
+    const pr = prFor(s, bestCache.current[k])
+    setPrSets(m => { const n = { ...m }; if (pr) n[key] = pr.label; else delete n[key]; return n })
+    if (pr) { setPrToast(`🏆 New PR · ${exerciseName}: ${pr.label}`); setTimeout(() => setPrToast(t => (t && t.includes(exerciseName) ? null : t)), 4500) }
+  }
   // every logging input, keyed `${exId}|${setIndex}|${field}`, so Enter can hop to
   // the next cell the way Tab moves across a spreadsheet row
   const cellRefs = useRef({})
@@ -595,6 +612,7 @@ export default function ClientTraining() {
         logged_date: todayStr(), session_track: track,
       }, { onConflict: 'client_id,exercise_id,set_number,logged_date' })
       setSavingSets(prev => { const n = new Set(prev); n.delete(key); return n })
+      if (track !== 'conditioning') checkPr(key, exerciseName, s).catch(() => {})
     }, 900)
   }
 
@@ -867,6 +885,7 @@ export default function ClientTraining() {
                     <div className="muted" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {prev ? `${prev.weight || '–'} × ${prev.reps || '–'}` : '—'}
                       {isSaving && <div style={{ fontSize: 10 }}>Saving…</div>}
+                      {!isSaving && prSets[key] && <div title={prSets[key]} style={{ fontSize: 10.5, fontWeight: 900, color: 'var(--orange-hot)' }}>🏆 PR</div>}
                     </div>
                     <input inputMode="decimal" aria-label={`${label} weight`} {...cell('weight')} />
                     <input inputMode="numeric" aria-label={`${label} ${repsHead.toLowerCase()}`} {...cell('reps')} />
@@ -1219,6 +1238,10 @@ export default function ClientTraining() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {prToast && (
+        <div role="status" onClick={() => setPrToast(null)}
+          style={{ position: 'fixed', left: 12, right: 12, bottom: 84, zIndex: 60, maxWidth: 460, margin: '0 auto', background: 'var(--orange)', color: '#000', fontWeight: 800, fontSize: 14, padding: '12px 14px', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,.5)' }}>{prToast}</div>
+      )}
       {!immersive && <>
       <header>
         <div className="eyebrow">
