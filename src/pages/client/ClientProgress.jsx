@@ -136,7 +136,7 @@ export default function ClientProgress() {
     if (!row) return
     setSaveState('saving')
     const { error } = await supabase.from('daily_logs')
-      .upsert({ client_id: profile.id, log_date: date, ...toDb(row) }, { onConflict: 'client_id,log_date' })
+      .upsert({ client_id: profile.id, log_date: date, ...toDb(row), ...(row.steps_source !== undefined ? { steps_source: row.steps_source } : {}) }, { onConflict: 'client_id,log_date' })
     setSaveState(error ? 'error' : 'saved')
   }
 
@@ -156,7 +156,7 @@ export default function ClientProgress() {
       const i = prev.findIndex(l => l.log_date === date)
       const next = [...prev]
       if (i === -1) next.push({ client_id: profile.id, log_date: date, [key]: value })
-      else next[i] = { ...next[i], [key]: value }
+      else next[i] = { ...next[i], [key]: value, ...(key === 'steps' && 'steps_source' in next[i] ? { steps_source: null } : {}) }
       next.sort((a, b) => a.log_date.localeCompare(b.log_date))
       logsRef.current = next
       return next
@@ -224,6 +224,9 @@ export default function ClientProgress() {
             </div>
           ))}
         </div>
+        <Link to="/app/steps-sync" style={{ fontSize: 12.5, color: 'var(--orange)', textDecoration: 'none', marginTop: -4 }}>
+          {row.steps_source === 'shortcut' ? '✓ Steps synced from Apple Health' : '⌚ Sync steps from your iPhone automatically →'}
+        </Link>
 
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 5 }}>Hit your nutrition plan?</div>

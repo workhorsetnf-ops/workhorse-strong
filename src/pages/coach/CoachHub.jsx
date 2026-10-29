@@ -7,6 +7,7 @@ export default function CoachHub() {
   const [subtitle, setSubtitle] = useState('')
   const [bannerUrl, setBannerUrl] = useState('')
   const [bookingUrl, setBookingUrl] = useState('')
+  const [stepsShortcut, setStepsShortcut] = useState('')
   const [uploadingBanner, setUploadingBanner] = useState(false)
   const [content, setContent] = useState('')
   const [saved, setSaved] = useState(false)
@@ -16,7 +17,7 @@ export default function CoachHub() {
 
   async function load() {
     const { data } = await supabase.from('client_hub').select('*').eq('id', 1).maybeSingle()
-    if (data) { setTitle(data.title); setSubtitle(data.subtitle || ''); setContent(data.content_md || ''); setBannerUrl(data.banner_url || ''); setBookingUrl(data.booking_url || '') }
+    if (data) { setTitle(data.title); setSubtitle(data.subtitle || ''); setContent(data.content_md || ''); setBannerUrl(data.banner_url || ''); setBookingUrl(data.booking_url || ''); setStepsShortcut(data.steps_shortcut_url || '') }
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -45,7 +46,7 @@ export default function CoachHub() {
   }
 
   async function save() {
-    const { error } = await supabase.from('client_hub').upsert({ id: 1, title: title.trim() || 'Client Hub', subtitle: subtitle.trim(), content_md: content, banner_url: bannerUrl || null, booking_url: bookingUrl.trim() || null, updated_at: new Date().toISOString() })
+    const { error } = await supabase.from('client_hub').upsert({ id: 1, title: title.trim() || 'Client Hub', subtitle: subtitle.trim(), content_md: content, banner_url: bannerUrl || null, booking_url: bookingUrl.trim() || null, steps_shortcut_url: stepsShortcut.trim() || null, updated_at: new Date().toISOString() })
     if (error) { alert('Could not save: ' + error.message); return }
     setSaved(true); setTimeout(() => setSaved(false), 2000)
   }
@@ -79,6 +80,10 @@ export default function CoachHub() {
           <div>
             <label className="muted" style={{ fontSize: 11.5 }}>Booking link (Calendly, Cal.com, etc.) — shown as a "Book a Call" button on every client's Home</label>
             <input placeholder="https://calendly.com/your-name" value={bookingUrl} onChange={e => setBookingUrl(e.target.value)} />
+          </div>
+          <div>
+            <label className="muted" style={{ fontSize: 11.5 }}>Steps Shortcut iCloud link (optional) — clients get a one-tap install on their Sync Steps page instead of building it themselves</label>
+            <input placeholder="https://www.icloud.com/shortcuts/..." value={stepsShortcut} onChange={e => setStepsShortcut(e.target.value)} />
           </div>
           <div>
             <label className="btn-ghost" style={{ display: 'inline-block', cursor: 'pointer' }}>
