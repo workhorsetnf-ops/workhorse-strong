@@ -12,6 +12,7 @@ import { buildReview } from '../../lib/review'
 import { WeekTotals } from './FoodLogViews'
 import { HabitGrid } from './CoachHabits'
 import { WeekTable } from '../client/ClientProgress'
+import AiCheckinCard from './AiCheckinCard'
 
 const DISPLAY_FONT = "'Oswald','Barlow',system-ui,sans-serif"
 const COLORS = { good: 'var(--orange)', ok: '#c9a227', bad: '#e5484d' }
@@ -142,6 +143,9 @@ export default function CoachReview() {
             <span><strong style={{ color: '#e5484d' }}>Needs a word:</strong> {R.flags.length ? R.flags.join(', ') : 'nothing — solid week'}</span>
             {isCurrent && <span className="muted">Week in progress: today counts only once it's logged.</span>}
           </div>
+
+          <AiCheckinCard profile={profile} review={R} checkin={data.weekCheckin} weekStart={days[0]}
+            onFeedbackSaved={fb => setData(x => ({ ...x, weekCheckin: { ...x.weekCheckin, coach_feedback: fb } }))} />
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: 10 }}>
             <Tile label="Training" grade={R.training.grade} value={R.training.planned ? `${R.training.done} / ${R.training.planned}` : R.training.done}
