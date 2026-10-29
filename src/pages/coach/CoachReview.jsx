@@ -13,6 +13,7 @@ import { WeekTotals } from './FoodLogViews'
 import { HabitGrid } from './CoachHabits'
 import { WeekTable } from '../client/ClientProgress'
 import AiCheckinCard from './AiCheckinCard'
+import MacroAdjustCard from './MacroAdjustCard'
 
 const DISPLAY_FONT = "'Oswald','Barlow',system-ui,sans-serif"
 const COLORS = { good: 'var(--orange)', ok: '#c9a227', bad: '#e5484d' }
@@ -63,7 +64,7 @@ export default function CoachReview() {
       const q = (t, sel = '*') => supabase.from(t).select(sel).eq('client_id', clientId)
       const [me, daily, wl, asg, meals, plan, habits, hlogs, supps, slogs, cplan, ms, cks] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', clientId).single(),
-        q('daily_logs').gte('log_date', prevDays[0]).lte('log_date', days[6]),
+        q('daily_logs').gte('log_date', addDays(days[0], -14)).lte('log_date', days[6]),
         q('workout_logs', 'logged_at, logged_date').neq('session_track', 'conditioning').gte('logged_at', new Date(prevDays[0] + 'T00:00:00').toISOString()),
         supabase.from('program_assignments').select('*').eq('client_id', clientId).maybeSingle(),
         q('meal_logs').gte('logged_on', days[0]).lte('logged_on', days[6]),
@@ -146,6 +147,8 @@ export default function CoachReview() {
 
           <AiCheckinCard profile={profile} review={R} checkin={data.weekCheckin} weekStart={days[0]}
             onFeedbackSaved={fb => setData(x => ({ ...x, weekCheckin: { ...x.weekCheckin, coach_feedback: fb } }))} />
+          <MacroAdjustCard profile={profile} daily={d.daily} days={days} review={R}
+            onApplied={row => setData(x => ({ ...x, profile: { ...x.profile, ...row } }))} />
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: 10 }}>
             <Tile label="Training" grade={R.training.grade} value={R.training.planned ? `${R.training.done} / ${R.training.planned}` : R.training.done}
