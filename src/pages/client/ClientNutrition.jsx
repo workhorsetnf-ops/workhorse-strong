@@ -8,6 +8,7 @@ import { MEAL_SLOTS, weekTable, planMealToLogs, countedLogs } from '../../lib/fo
 import DailyTotalsCard from './DailyTotalsCard'
 import { itemMacros, sumMacros, targetsFrom } from '../../lib/mealplan'
 import { WeekTotals, DayLog } from '../coach/FoodLogViews'
+import PhotoFoodLog from './PhotoFoodLog'
 
 const slotForNow = () => { const h = new Date().getHours(); return h < 10 ? 'Breakfast' : h < 14 ? 'Lunch' : h < 17 ? 'Snack' : 'Dinner' }
 
@@ -283,8 +284,9 @@ export default function ClientNutrition() {
             Powered by fatsecret
           </a>
         )}
+        <PhotoFoodLog profile={profile} slot={slot} onLogged={load} />
         {!scanning ? (
-          <button className="btn-ghost" onClick={startScan}>📷 Scan a barcode</button>
+          <button className="btn-ghost" onClick={startScan}>▥ Scan a barcode</button>
         ) : (
           <div>
             <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', borderRadius: 8, maxHeight: 240, objectFit: 'cover' }} />
