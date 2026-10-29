@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { notifyEvent, clearShownNotifications } from '../../lib/push'
+import { coachBadgesChanged } from '../../lib/coachBadges'
 import Avatar from '../Avatar'
 import { useAuth } from '../../context/AuthContext'
 import VoiceRecorder from '../../lib/VoiceRecorder'
@@ -41,6 +42,7 @@ async function markRead(me, other) {
     const { error: e2 } = await supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('recipient_id', me).eq('sender_id', other).is('read_at', null)
     if (e2) console.warn('Could not mark messages read', error.message, e2.message)
   }
+  coachBadgesChanged()
 }
 
 export default function CoachMessages() {

@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase'
 import { callApi, notifyEvent } from '../../lib/push'
 import { useAuth } from '../../context/AuthContext'
 import { checkinFacts } from '../../lib/aiCheckin'
+import { coachBadgesChanged } from '../../lib/coachBadges'
 
 export default function AiCheckinCard({ profile, review, checkin, weekStart, onFeedbackSaved }) {
   const { profile: me } = useAuth()
@@ -33,6 +34,7 @@ export default function AiCheckinCard({ profile, review, checkin, weekStart, onF
     setBusy('')
     if (error) return setNote({ ok: false, text: 'Could not save: ' + error.message })
     setNote({ ok: true, text: 'Saved as their check-in feedback.' })
+    coachBadgesChanged()
     onFeedbackSaved?.(draft.trim())
   }
 

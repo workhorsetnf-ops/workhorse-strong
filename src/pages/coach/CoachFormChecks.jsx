@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { coachBadgesChanged } from '../../lib/coachBadges'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
@@ -34,6 +35,12 @@ export default function CoachFormChecks() {
     const { data: c } = await supabase.from('form_check_comments').select('*').eq('form_check_id', item.id).order('created_at')
     setComments(cm => ({ ...cm, [item.id]: c || [] }))
     setTimeout(() => bottomRef.current?.scrollIntoView(), 100)
+    // client replies on this one now count as seen (lights the Form Checks tab until then)
+    if ((c || []).some(x => x.sender_id !== profile.id && !x.read_at)) {
+      await supabase.from('form_check_comments').update({ read_at: new Date().toISOString() })
+        .eq('form_check_id', item.id).neq('sender_id', profile.id).is('read_at', null)
+      coachBadgesChanged()
+    }
   }
 
   async function send(itemId) {
@@ -42,6 +49,7 @@ export default function CoachFormChecks() {
     setReply('')
     await supabase.from('form_check_comments').insert({ form_check_id: itemId, sender_id: profile.id, body })
     await supabase.from('form_checks').update({ reviewed: true }).eq('id', itemId)
+    coachBadgesChanged()
     const { data: c } = await supabase.from('form_check_comments').select('*').eq('form_check_id', itemId).order('created_at')
     setComments(cm => ({ ...cm, [itemId]: c || [] }))
     load()
@@ -50,6 +58,7 @@ export default function CoachFormChecks() {
 
   async function markReviewed(itemId, val) {
     await supabase.from('form_checks').update({ reviewed: val }).eq('id', itemId)
+    coachBadgesChanged()
     load()
   }
 

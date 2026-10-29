@@ -114,6 +114,7 @@ export default function ReminderSettings() {
           </div>
         )}
         {note && <p style={{ fontSize: 13, marginTop: 10, color: note.ok ? 'var(--green)' : 'var(--red)' }}>{note.text}</p>}
+        <Link to="/guide/notifications" style={{ display: 'inline-block', marginTop: 12, fontSize: 13.5, color: 'var(--orange)', fontWeight: 700 }}>📖 Step-by-step guide with pictures (iPhone &amp; Android) →</Link>
       </section>
 
       <section className="card" style={{ padding: 18 }}>
