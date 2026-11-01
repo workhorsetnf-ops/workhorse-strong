@@ -50,6 +50,14 @@ export function Step({ n, title, children, art }) {
   )
 }
 
+// A real phone screenshot (from public/guides), sized like the drawn diagrams.
+export function Shot({ src, alt }) {
+  return (
+    <img src={src} alt={alt} loading="lazy"
+      style={{ width: '100%', maxWidth: 220, height: 'auto', display: 'block', margin: '0 auto', borderRadius: 22, border: '3px solid #48484a', background: '#fff' }} />
+  )
+}
+
 export function Tip({ children, warn }) {
   return (
     <div style={{ fontSize: 14, lineHeight: 1.5, padding: '10px 12px', borderRadius: 10, marginTop: 10,
