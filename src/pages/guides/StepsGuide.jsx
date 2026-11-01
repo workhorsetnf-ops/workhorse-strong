@@ -5,7 +5,7 @@
 import { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { GuidePage, Step, Tip, Help } from './GuideLayout'
+import { GuidePage, Step, Tip, Help, Shot } from './GuideLayout'
 import { Phone, T, Box, Tap, Hl, List, Btn, AppTop, C, X0, W } from './kit'
 
 const LINK = 'workhorse-strong.vercel.app/api/st…'
@@ -344,18 +344,24 @@ export default function StepsGuide() {
         </header>
         <Tip>Do this only if you log food in another app. If you log meals in Workhorse Strong, skip it: synced food counts as your whole day and replaces what you logged here.</Tip>
 
-        <Step n="F1" title="Let MyFitnessPal write to Apple Health">
-          In <b>MyFitnessPal</b>, find <b>Apple Health</b> under <b>Apps &amp; Devices</b> (or <b>Sharing &amp; Privacy</b>) and connect it, making sure <b>Nutrition</b> is allowed.
-          <Tip>Double-check in the <b>Health</b> app: tap your picture → <b>Apps</b> → <b>MyFitnessPal</b>. <b>Protein</b>, <b>Carbohydrates</b>, <b>Total Fat</b> and <b>Fiber</b> should be turned on under “Allow to write”.</Tip>
+        <Step n="F1" title="Open Apps & Devices in MyFitnessPal" art={<Shot src="/guides/mfp-1-menu.jpg" alt="MyFitnessPal More menu with Apps & Devices highlighted" />}>
+          Open <b>MyFitnessPal</b> and tap <b>More</b> (or your profile picture). Scroll down and tap <b>Apps &amp; Devices</b>.
         </Step>
-        <Step n="F2" title="Copy the Find action" art={<FoodDuplicate />}>
+        <Step n="F2" title="Tap Health App" art={<Shot src="/guides/mfp-2-apps.jpg" alt="Apps & Devices screen with Health App highlighted under Featured" />}>
+          Under <b>Featured</b>, tap <b>Health App</b> (the white icon with the red heart).
+        </Step>
+        <Step n="F3" title="Connect and allow Nutrition" art={<Shot src="/guides/mfp-3-settings.jpg" alt="Health App screen in MyFitnessPal with the Settings button highlighted" />}>
+          Tap <b>Connect</b>. If it already says <b>Settings</b>, you’re connected; tap it anyway to check. On the Apple Health screen, tap <b>Turn On All</b> (or at least <b>Protein</b>, <b>Carbohydrates</b>, <b>Total Fat</b> and <b>Fiber</b>), then <b>Allow</b>.
+          <Tip>Double-check in the <b>Health</b> app: tap your picture → <b>Apps</b> → <b>MyFitnessPal</b>. Those four should be on under “Allow to write”.</Tip>
+        </Step>
+        <Step n="F4" title="Copy the Find action" art={<FoodDuplicate />}>
           Open your <b>Sync Steps</b> shortcut (tap ⋯ on it). Press and hold the <b>Find Health Samples</b> action and tap <b>Duplicate</b>. Do it <b>4 times</b>, so you have 5 Find actions in a row.
         </Step>
-        <Step n="F3" title="Switch each copy to a nutrient" art={<FoodStack />}>
+        <Step n="F5" title="Switch each copy to a nutrient" art={<FoodStack />}>
           Leave the first one on <b>Steps</b>. In the copies, tap the blue word <b>Steps</b> and change it to <b>Protein</b>, then <b>Carbohydrates</b>, then <b>Total Fat</b>, then <b>Fiber</b> (one each). Keep <b>Start Date is today</b> and <b>Group by Day</b> the same.
           <Tip>If a <b>Unit</b> row appears, set it to <b>g</b> (grams). All five Find actions must stay <b>above</b> Get Contents of URL. Drag one up if it ended up below.</Tip>
         </Step>
-        <Step n="F4" title="Add the food fields" art={<FoodBody />}>
+        <Step n="F6" title="Add the food fields" art={<FoodBody />}>
           Open <b>Get Contents of URL</b> (tap ⌄). Tap <b>Add new field</b> → <b>Number</b> four times and name them exactly: <b>protein</b>, <b>carbs</b>, <b>fat</b>, <b>fiber</b> (all lowercase).
           <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>
             <li>For each one, press and hold the right box → <b>Select Variable</b> → tap the Find action with the <b>matching nutrient</b> (protein → the Protein one, and so on).</li>
@@ -363,7 +369,7 @@ export default function StepsGuide() {
           </ul>
           <Tip warn>Matching matters. If protein points at the Carbohydrates action, your numbers will be swapped. Shortcuts names them Health Samples 2, 3, 4, 5 in order from the top.</Tip>
         </Step>
-        <Step n="F5" title="Run it once">
+        <Step n="F7" title="Run it once">
           Tap <b>▶</b>. Tap <b>Allow</b> when it asks to read your nutrition. You should see <b>“Saved … steps and food … kcal (…P / …C / …F)”</b>. Your nightly automation now sends both. Run it by hand any time to update today early.
         </Step>
       </div>
@@ -374,8 +380,8 @@ export default function StepsGuide() {
         ['It saved 0 steps', 'Check step 4: Type is Steps, Start Date is today, and Group by is Day. Also open the Health app and check that it has steps for today.'],
         ['It asks me to confirm every night', 'Open the automation in the Automation tab and choose Run Immediately (not Run After Confirmation).'],
         ['I typed steps in the app myself', 'That’s fine. The next sync for that day replaces your typed number with the Health app’s count.'],
-        ['“No food in Apple Health yet today”', 'Nothing has reached Health for today. In the Health app, open Browse → Nutrition → Protein and check MyFitnessPal is listed. If not, redo step F1.'],
-        ['My food numbers are swapped or way off', 'Redo step F4: each field must point at the Find action for the same nutrient, set to Number. Also check each Find action says Group by Day.'],
+        ['“No food in Apple Health yet today”', 'Nothing has reached Health for today. In the Health app, open Browse → Nutrition → Protein and check MyFitnessPal is listed. If not, redo steps F1 to F3.'],
+        ['My food numbers are swapped or way off', 'Redo step F6: each field must point at the Find action for the same nutrient, set to Number. Also check each Find action says Group by Day.'],
         ['Food synced but my meals logged in the app disappeared from the totals', 'Synced food counts as your whole day. Log in one place: either MyFitnessPal with this sync, or in Workhorse Strong without it.'],
       ]} />
       {profile?.role === 'client' && <Link to="/app/steps-sync" className="btn" style={{ textAlign: 'center', textDecoration: 'none' }}>Get my link →</Link>}
