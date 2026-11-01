@@ -1,6 +1,9 @@
 // Illustrated guide: build the "Sync Steps" iPhone Shortcut that sends Apple
 // Health steps to Workhorse Strong every night. Public at /guide/steps.
-import { Link } from 'react-router-dom'
+// The #food section adds the day's protein / carbs / fat / fiber (from
+// MyFitnessPal or any app that writes nutrition to Health) to the same Shortcut.
+import { useEffect } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { GuidePage, Step, Tip, Help } from './GuideLayout'
 import { Phone, T, Box, Tap, Hl, List, Btn, AppTop, C, X0, W } from './kit'
@@ -215,8 +218,74 @@ function AutoPick() {
   )
 }
 
+// Food section art: the steps action duplicated three times, each switched to a macro.
+const MACROS = [['Steps', 'count'], ['Protein', 'g'], ['Carbohydrates', 'g'], ['Total Fat', 'g'], ['Fiber', 'g']]
+function FoodDuplicate() {
+  return (
+    <Phone label="Pressing and holding Find Health Samples shows a menu with Duplicate highlighted">
+      <Editor title="Sync Steps">
+        <Box x={22} y={86} w={196} h={40} r={14} />
+        <T x={32} y={110} s={9.5} w={700}>❤️ Find Health Samples where…</T>
+        <Hl x={22} y={86} w={196} h={40} r={14} />
+        <Box x={60} y={136} w={120} h={84} r={12} fill="rgba(250,250,250,.98)" />
+        {['Duplicate', 'Copy', 'Delete'].map((t, i) => (
+          <g key={t}>{i > 0 && <line x1={60} x2={180} y1={136 + i * 28} y2={136 + i * 28} stroke={C.line} />}<T x={72} y={155 + i * 28} s={9.5} w={i === 0 ? 700 : 400} c={i === 2 ? C.red : C.ink}>{t}</T></g>
+        ))}
+        <Hl x={63} y={139} w={114} h={22} r={6} />
+        <T x={120} y={250} s={8.5} c={C.sub} a="middle">Press and hold the action → Duplicate</T>
+      </Editor>
+    </Phone>
+  )
+}
+function FoodStack() {
+  return (
+    <Phone label="Five Find Health Samples actions, one each for Steps, Protein, Carbohydrates, Total Fat and Fiber, above Get Contents of URL">
+      <Editor title="Sync Steps">
+        {MACROS.map(([t], i) => (
+          <g key={t}>
+            <Box x={22} y={84 + i * 44} w={196} h={36} r={12} />
+            <T x={32} y={100 + i * 44} s={8.5} w={700}>❤️ Find Health Samples</T>
+            <T x={32} y={113 + i * 44} s={8.5}>Type is <tspan fill={C.blue}>{t}</tspan> · today · by Day</T>
+            {i > 0 && <Hl x={22} y={84 + i * 44} w={196} h={36} r={12} />}
+          </g>
+        ))}
+        <Box x={22} y={308} w={196} h={36} r={12} />
+        <T x={32} y={330} s={9} w={700}>🌐 Get contents of https://…</T>
+        <T x={120} y={370} s={8.5} c={C.sub} a="middle">All the Finds sit above the URL action</T>
+      </Editor>
+    </Phone>
+  )
+}
+function FoodBody() {
+  const fields = [['steps', 'Health Samples'], ['protein', 'Health Samples 2'], ['carbs', 'Health Samples 3'], ['fat', 'Health Samples 4'], ['fiber', 'Health Samples 5']]
+  return (
+    <Phone label="Get Contents of URL request body with steps, protein, carbs, fat and fiber fields, each set to its own Health Samples">
+      <Editor title="Get Contents of URL">
+        <Box x={22} y={86} w={196} h={250} r={14} />
+        <T x={32} y={106} s={10} w={700}>🌐 Get contents of <tspan fill={C.blue} fontWeight={400}>https://…</tspan></T>
+        <List x={22} y={116} w={196} rowH={26} rows={[{ t: 'Method', right: 'POST' }, { t: 'Request Body', right: 'JSON' }]} />
+        {fields.map(([k, v], i) => (
+          <g key={k}>
+            <line x1={22} x2={218} y1={174 + i * 30} y2={174 + i * 30} stroke={C.line} />
+            <T x={34} y={193 + i * 30} s={9.5} w={i ? 700 : 400}>{k}</T>
+            <Box x={96} y={181 + i * 30} w={112} h={18} r={6} fill="#EAF2FF" />
+            <T x={102} y={194 + i * 30} s={8} w={700} c={C.blue}>❤️ {v}</T>
+            {i > 0 && <Hl x={28} y={178 + i * 30} w={184} h={24} r={6} />}
+          </g>
+        ))}
+      </Editor>
+    </Phone>
+  )
+}
+
 export default function StepsGuide() {
   const { profile } = useAuth() || {}
+  const { hash } = useLocation()
+  useEffect(() => {
+    if (hash !== '#food') return
+    const t = setTimeout(() => document.getElementById('food')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 60)
+    return () => clearTimeout(t)
+  }, [hash])
   return (
     <GuidePage eyebrow="Setup guide · iPhone" title="Sync your steps automatically"
       intro="Your iPhone (and Apple Watch) already counts your steps in the Health app. This one-time setup sends them to Workhorse Strong every night, so you never type them in again. About 5 minutes.">
@@ -267,12 +336,47 @@ export default function StepsGuide() {
         <Tip>That’s it. Every night at 11:30 your steps land in the app. You’ll see <b>✓ Steps synced from Apple Health</b> on the Log tab.</Tip>
       </Step>
 
+      <div id="food" style={{ scrollMarginTop: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <header style={{ marginTop: 12 }}>
+          <div className="eyebrow">Optional · MyFitnessPal users</div>
+          <h2 style={{ fontSize: 24, margin: '6px 0 6px', lineHeight: 1.15 }}>Add your food to the same Shortcut</h2>
+          <p className="muted" style={{ fontSize: 15, lineHeight: 1.5, margin: 0 }}>Keep logging in MyFitnessPal. Each night your protein, carbs, fat and fiber come over with your steps and show as your daily totals in Workhorse Strong. Works with any app that saves food to Apple Health. About 3 minutes, once your steps Shortcut works.</p>
+        </header>
+        <Tip>Do this only if you log food in another app. If you log meals in Workhorse Strong, skip it: synced food counts as your whole day and replaces what you logged here.</Tip>
+
+        <Step n="F1" title="Let MyFitnessPal write to Apple Health">
+          In <b>MyFitnessPal</b>, find <b>Apple Health</b> under <b>Apps &amp; Devices</b> (or <b>Sharing &amp; Privacy</b>) and connect it, making sure <b>Nutrition</b> is allowed.
+          <Tip>Double-check in the <b>Health</b> app: tap your picture → <b>Apps</b> → <b>MyFitnessPal</b>. <b>Protein</b>, <b>Carbohydrates</b>, <b>Total Fat</b> and <b>Fiber</b> should be turned on under “Allow to write”.</Tip>
+        </Step>
+        <Step n="F2" title="Copy the Find action" art={<FoodDuplicate />}>
+          Open your <b>Sync Steps</b> shortcut (tap ⋯ on it). Press and hold the <b>Find Health Samples</b> action and tap <b>Duplicate</b>. Do it <b>4 times</b>, so you have 5 Find actions in a row.
+        </Step>
+        <Step n="F3" title="Switch each copy to a nutrient" art={<FoodStack />}>
+          Leave the first one on <b>Steps</b>. In the copies, tap the blue word <b>Steps</b> and change it to <b>Protein</b>, then <b>Carbohydrates</b>, then <b>Total Fat</b>, then <b>Fiber</b> (one each). Keep <b>Start Date is today</b> and <b>Group by Day</b> the same.
+          <Tip>If a <b>Unit</b> row appears, set it to <b>g</b> (grams). All five Find actions must stay <b>above</b> Get Contents of URL. Drag one up if it ended up below.</Tip>
+        </Step>
+        <Step n="F4" title="Add the food fields" art={<FoodBody />}>
+          Open <b>Get Contents of URL</b> (tap ⌄). Tap <b>Add new field</b> → <b>Number</b> four times and name them exactly: <b>protein</b>, <b>carbs</b>, <b>fat</b>, <b>fiber</b> (all lowercase).
+          <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+            <li>For each one, press and hold the right box → <b>Select Variable</b> → tap the Find action with the <b>matching nutrient</b> (protein → the Protein one, and so on).</li>
+            <li>Then tap the blue bubble and set <b>Type</b> to <b>Number</b>, same as you did for steps.</li>
+          </ul>
+          <Tip warn>Matching matters. If protein points at the Carbohydrates action, your numbers will be swapped. Shortcuts names them Health Samples 2, 3, 4, 5 in order from the top.</Tip>
+        </Step>
+        <Step n="F5" title="Run it once">
+          Tap <b>▶</b>. Tap <b>Allow</b> when it asks to read your nutrition. You should see <b>“Saved … steps and food … kcal (…P / …C / …F)”</b>. Your nightly automation now sends both. Run it by hand any time to update today early.
+        </Step>
+      </div>
+
       <Help title="Not working?" items={[
         ['“This link is not active” or “no longer active”', 'Your link was replaced, or was copied from a different account. Open Sync steps in the app while logged in as yourself, tap Copy link, and paste it into the URL again (step 5).'],
         ['“No step count found”', 'The steps field is empty or not linked. Redo steps 6 and 7: the right box must show the blue Health Samples bubble set to Number, and the left box must say steps.'],
         ['It saved 0 steps', 'Check step 4: Type is Steps, Start Date is today, and Group by is Day. Also open the Health app and check that it has steps for today.'],
         ['It asks me to confirm every night', 'Open the automation in the Automation tab and choose Run Immediately (not Run After Confirmation).'],
         ['I typed steps in the app myself', 'That’s fine. The next sync for that day replaces your typed number with the Health app’s count.'],
+        ['“No food in Apple Health yet today”', 'Nothing has reached Health for today. In the Health app, open Browse → Nutrition → Protein and check MyFitnessPal is listed. If not, redo step F1.'],
+        ['My food numbers are swapped or way off', 'Redo step F4: each field must point at the Find action for the same nutrient, set to Number. Also check each Find action says Group by Day.'],
+        ['Food synced but my meals logged in the app disappeared from the totals', 'Synced food counts as your whole day. Log in one place: either MyFitnessPal with this sync, or in Workhorse Strong without it.'],
       ]} />
       {profile?.role === 'client' && <Link to="/app/steps-sync" className="btn" style={{ textAlign: 'center', textDecoration: 'none' }}>Get my link →</Link>}
     </GuidePage>
