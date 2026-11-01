@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { localDateStr } from '../../lib/weeks'
 import { addDays } from '../../lib/dashboard'
-import { DAILY_TOTALS, isDailyTotals, totalsOf } from '../../lib/foodlog'
+import { Link } from 'react-router-dom'
+import { DAILY_TOTALS, isDailyTotals, isFromHealth, totalsOf } from '../../lib/foodlog'
 
 const r0 = n => Math.round(Number(n) || 0)
 
@@ -58,10 +59,13 @@ export default function DailyTotalsCard({ clientId, onSaved, openDay, onClose })
 
   if (!open) {
     return (
+      <>
       <button type="button" className="btn-ghost" onClick={() => { setDay(today); setOpen(true) }} style={{ textAlign: 'left', padding: '11px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}>
         <span style={{ fontWeight: 800, fontSize: 13.5 }}>Rather just log your totals? <span style={{ color: 'var(--orange-hot)' }}>Enter the day's macros →</span></span>
         <span className="muted" style={{ fontSize: 12 }}>Type in your protein, carbs and fat for the day (e.g. from another tracking app) instead of every meal. You can also tap any day in the Daily Totals table below.</span>
       </button>
+      <Link to="/app/steps-sync" style={{ fontSize: 12.5, color: 'var(--orange)', fontWeight: 700, textDecoration: 'none', padding: '0 4px' }}>Use MyFitnessPal on iPhone? Sync it automatically →</Link>
+      </>
     )
   }
 
@@ -83,6 +87,9 @@ export default function DailyTotalsCard({ clientId, onSaved, openDay, onClose })
         <div><div style={lab}>Fiber <span style={{ fontWeight: 400 }}>(opt.)</span></div><input inputMode="numeric" placeholder={logged.items && logged.fi ? String(r0(logged.fi)) : 'e.g. 35'} value={f.fi} onChange={e => setF({ ...f, fi: e.target.value })} /></div>
       </div>
       <div style={{ fontSize: 13, fontWeight: 700 }}>{kcal ? `${kcal.toLocaleString()} kcal` : ''}</div>
+      {isFromHealth(existing) && (
+        <div style={{ fontSize: 12, color: 'var(--green)' }}>✓ Synced from Apple Health. If you change these, the next nightly sync for this day puts the Health numbers back.</div>
+      )}
       {itemized.length > 0 && (
         <div className="muted" style={{ fontSize: 12 }}>
           You've also logged {itemized.length} item{itemized.length === 1 ? '' : 's'} {day === today ? 'today' : 'that day'} ({r0(logged.p)}P / {r0(logged.c)}C / {r0(logged.f)}F). Your totals count as the whole day, so enter everything you ate; the items won't be added on top.

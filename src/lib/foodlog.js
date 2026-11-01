@@ -9,6 +9,11 @@ export const MEAL_SLOTS = ['Breakfast', 'Lunch', 'Snack', 'Dinner', 'Pre-Workout
 // stay visible but aren't added on top.
 export const DAILY_TOTALS = 'Daily totals'
 export const isDailyTotals = l => l?.meal === DAILY_TOTALS
+// Daily totals sent by the iPhone Shortcut from Apple Health (MyFitnessPal and
+// other trackers write there). Same row type, just named so everyone can see
+// where it came from. Must match HEALTH_NAME in api/steps.js.
+export const HEALTH_NAME = 'From Apple Health'
+export const isFromHealth = l => isDailyTotals(l) && l?.meal_name === HEALTH_NAME
 // The rows that count toward a day's numbers (works on one day or many).
 export function countedLogs(logs) {
   const totalsDays = new Set((logs || []).filter(isDailyTotals).map(l => l.logged_on))

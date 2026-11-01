@@ -1,11 +1,13 @@
-// Client setup page: send Apple Health steps to the app every night with an
-// iPhone Shortcut. Each client has a private link; the Shortcut posts today's
-// step count to it (see /api/steps).
+// Client setup page: send Apple Health steps (and, optionally, the day's food
+// totals from MyFitnessPal or any app that writes to Health) to the app every
+// night with an iPhone Shortcut. Each client has a private link; the Shortcut
+// posts today's numbers to it (see /api/steps).
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Footprints, Copy, Check, RefreshCw } from 'lucide-react'
+import { Footprints, Copy, Check, RefreshCw, Utensils } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { HEALTH_NAME } from '../../lib/foodlog'
 
 export default function StepsSync() {
   const { profile } = useAuth()
@@ -14,6 +16,7 @@ export default function StepsSync() {
   const [copied, setCopied] = useState(false)
   const [shortcutUrl, setShortcutUrl] = useState('')
   const [last, setLast] = useState(null)
+  const [lastFood, setLastFood] = useState(null)
 
   async function loadToken(rotate = false) {
     setErr('')
@@ -29,6 +32,9 @@ export default function StepsSync() {
     supabase.from('daily_logs').select('log_date, steps, steps_synced_at').eq('client_id', profile.id).eq('steps_source', 'shortcut')
       .order('steps_synced_at', { ascending: false }).limit(1).maybeSingle()
       .then(({ data }) => setLast(data || null))
+    supabase.from('meal_logs').select('logged_on, protein_g, carbs_g, fat_g, logged_at').eq('client_id', profile.id).eq('meal_name', HEALTH_NAME)
+      .order('logged_at', { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => setLastFood(data || null))
   }, [profile?.id])
 
   const link = token ? `${window.location.origin}/api/steps?t=${token}` : ''
@@ -52,8 +58,8 @@ export default function StepsSync() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 640 }}>
       <header>
         <div className="eyebrow">Progress</div>
-        <h1 style={{ fontSize: 28, margin: '6px 0 4px', display: 'flex', alignItems: 'center', gap: 10 }}><Footprints size={26} color="var(--orange)" /> Sync steps from iPhone</h1>
-        <p className="muted" style={{ fontSize: 14 }}>Set this up once and your steps from Apple Health (iPhone or Apple Watch) land in the app every night. No more typing them in.</p>
+        <h1 style={{ fontSize: 28, margin: '6px 0 4px', display: 'flex', alignItems: 'center', gap: 10 }}><Footprints size={26} color="var(--orange)" /> Sync from Apple Health</h1>
+        <p className="muted" style={{ fontSize: 14 }}>Set this up once and your steps from Apple Health (iPhone or Apple Watch) land in the app every night. Track food in MyFitnessPal? Your daily totals can come over too.</p>
       </header>
 
       <section className="card" style={{ padding: 16 }}>
@@ -71,6 +77,11 @@ export default function StepsSync() {
         <p style={{ fontSize: 13, marginTop: 10, color: last ? 'var(--green)' : 'var(--muted)' }}>
           {last ? `Last synced: ${Number(last.steps).toLocaleString()} steps for ${last.log_date}, ${new Date(last.steps_synced_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : 'Not synced yet. Run the Shortcut once after setting it up and it shows here.'}
         </p>
+        {lastFood && (
+          <p style={{ fontSize: 13, marginTop: 4, color: 'var(--green)' }}>
+            Food last synced: {lastFood.protein_g}P / {lastFood.carbs_g}C / {lastFood.fat_g}F for {lastFood.logged_on}, {new Date(lastFood.logged_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
+          </p>
+        )}
       </section>
 
       {shortcutUrl ? (
@@ -92,7 +103,19 @@ export default function StepsSync() {
         </section>
       )}
 
-      <p className="muted" style={{ fontSize: 12 }}>Android or no iPhone? Keep entering steps on the Progress page. If you type steps for a day, the next sync for that day replaces them with your Health number.</p>
+      <section className="card" style={{ padding: 16 }}>
+        <div className="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Utensils size={14} /> Track food in MyFitnessPal? (optional)</div>
+        <p style={{ fontSize: 14, margin: '8px 0 0', lineHeight: 1.5 }}>Keep logging in MyFitnessPal and your protein, carbs and fat show up here every night. Works with any app that saves food to Apple Health (Cronometer, MacroFactor and others too).</p>
+        <ol style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
+          {step(1, 'Let MyFitnessPal write to Apple Health.', 'In MyFitnessPal, find Apple Health under Apps & Devices (or Sharing & Privacy) and turn on Nutrition. Or: Health app → your picture → Apps → MyFitnessPal → turn on Protein, Carbohydrates, Total Fat and Fiber.')}
+          {step(2, 'Add the food fields to your Shortcut.', 'The picture guide shows exactly where (about 3 minutes).')}
+          {step(3, 'Run it once.', 'Tap Allow when it asks to read your nutrition from Health.')}
+        </ol>
+        <Link to="/guide/steps#food" style={{ fontSize: 13, color: 'var(--orange)', fontWeight: 700 }}>📖 Add food to my Shortcut →</Link>
+        <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>Synced food counts as your whole day, like typing in daily totals, so don’t also log the same meals in this app. On a day with no food in Health, nothing is changed.</p>
+      </section>
+
+      <p className="muted" style={{ fontSize: 12 }}>Android or no iPhone? Keep entering steps on the Progress page and food on the Eat page. If you type steps or daily totals for a day, the next sync for that day replaces them with your Health numbers.</p>
       <Link to="/app/progress" className="muted" style={{ fontSize: 13 }}>← Back to Progress</Link>
     </div>
   )
