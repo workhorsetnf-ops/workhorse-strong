@@ -9,6 +9,7 @@ import Avatar from '../Avatar'
 import TodayAgenda from './TodayAgenda'
 import ClientEventsCard from './ClientEventsCard'
 import SetupStatusCard from './SetupStatusCard'
+import CheckinTexts from './CheckinTexts'
 
 function startOfWeek(d = new Date()) {
   const day = (d.getDay() + 6) % 7 // Monday = 0
@@ -355,6 +356,7 @@ export default function CoachHome() {
   return (
     <div>
       <TodayAgenda />
+      <CheckinTexts />
       <ClientEventsCard />
       <SetupStatusCard />
 

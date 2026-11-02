@@ -8,6 +8,8 @@ import { useAuth } from '../../context/AuthContext'
 import { localDateStr } from '../../lib/weeks'
 import { checkinDueDate, addDays } from '../../lib/dashboard'
 import { quickDone, quickDue } from '../../lib/adherence'
+import { weeklyCheckin, badgeCount } from '../../lib/checkinNag'
+import { CheckinBanner, CheckinTakeover } from './CheckinNag'
 import ClientHome from './ClientHome'
 import ClientTraining from './ClientTraining'
 import ClientNutrition from './ClientNutrition'
@@ -45,6 +47,7 @@ export default function ClientApp() {
   const { profile } = useAuth()
   const location = useLocation()
   const [badges, setBadges] = useState({ messages: false, checkin: false, filmChecks: false })
+  const [weekly, setWeekly] = useState(null)   // weekly check-in status, for the banner and full-screen card
 
   async function refreshBadges() {
     if (!profile) return
@@ -58,9 +61,11 @@ export default function ClientApp() {
         : Promise.resolve({ data: [] }),
     ])
     // dot = weekly check-in open (its day has come) or today's quick check-in due
-    const due = checkinDueDate({ checkinDay: profile.checkin_day, frequency: profile.checkin_frequency, startDate: profile.start_date, today,
-      lastCheckin: lastCheckin?.submitted_at ? localDateStr(new Date(lastCheckin.submitted_at)) : null })
+    const weeklyArgs = { checkinDay: profile.checkin_day, frequency: profile.checkin_frequency, startDate: profile.start_date, today,
+      lastCheckin: lastCheckin?.submitted_at ? localDateStr(new Date(lastCheckin.submitted_at)) : null }
+    const due = checkinDueDate(weeklyArgs)
     const weeklyOpen = !due || due <= today
+    setWeekly(weeklyCheckin(weeklyArgs))
     const quickOpen = quickDue(profile.adherence_tier, new Set((recentDays || []).filter(quickDone).map(r => r.log_date)), today)
     const checkinDue = weeklyOpen || quickOpen
 
@@ -77,6 +82,13 @@ export default function ClientApp() {
     const groupUnread = !grpErr && (grp || []).some(g => g.unread > 0)
 
     setBadges({ messages: (msgCount || 0) > 0 || groupUnread, checkin: checkinDue, filmChecks })
+
+    // number on the home-screen icon (installed app; ignored where unsupported)
+    try {
+      const n = badgeCount({ checkinOpen: weeklyOpen, unreadMessages: (msgCount || 0) + (groupUnread ? 1 : 0), filmUnread: filmChecks })
+      if (n > 0) navigator.setAppBadge?.(n)?.catch?.(() => {})
+      else navigator.clearAppBadge?.()?.catch?.(() => {})
+    } catch { /* not supported */ }
   }
 
   useEffect(() => { refreshBadges() }, [profile])
@@ -103,6 +115,8 @@ export default function ClientApp() {
 
   return (
     <div className="client-shell">
+      {location.pathname !== '/app/checkin' && <CheckinBanner status={weekly} />}
+      <CheckinTakeover status={weekly} onCheckinPage={location.pathname === '/app/checkin'} />
       <main className="client-main">
         <Routes>
           <Route index element={<ClientHome />} />

@@ -23,10 +23,30 @@ const first = name => String(name || '').trim().split(/\s+/)[0] || ''
 export function morningFor(f) {
   const p = { ...DEFAULT_PREFS, ...(f.prefs || {}) }
   if (p.checkin && f.checkin?.due) {
-    return { user_id: f.id, title: 'Check-in day ✅', body: `${first(f.name) ? first(f.name) + ', s' : 'S'}ubmit your check-in today${f.sessionsToday?.length && p.workout ? `, and ${f.sessionsToday.join(' + ')} is on` : ''}.`, url: '/app/checkin', tag: 'morning' }
+    return { user_id: f.id, title: 'Check-in day ✅', body: `${first(f.name) ? first(f.name) + ', s' : 'S'}ubmit your check-in today${f.sessionsToday?.length && p.workout ? `, and ${f.sessionsToday.join(' + ')} is on` : ''}.`, url: '/app/checkin', tag: 'morning', badge: 1 }
+  }
+  // Update 158: a late check-in leads the morning too (1-3 days, then the coach takes over)
+  if (p.checkin && f.checkin && !f.checkin.due && f.checkin.overdueDays >= 1 && f.checkin.overdueDays <= 3) {
+    const d = f.checkin.overdueDays
+    return { user_id: f.id, title: `Check-in is ${d} day${d === 1 ? '' : 's'} late`, body: 'Get it in this morning so your coach can review your week.', url: '/app/checkin', tag: 'morning', badge: 1 }
   }
   if (p.workout && f.sessionsToday?.length && !f.trainedToday) {
     return { user_id: f.id, title: `Today: ${f.sessionsToday.join(' + ')} 💪`, body: 'Your session is loaded. Tap to start, and log as you go.', url: '/app/training', tag: 'morning' }
+  }
+  return null
+}
+
+// Update 158: early-afternoon follow-up, check-in only. Nothing else is
+// nagged at midday, so a client who's done gets nothing.
+export function middayFor(f) {
+  const p = { ...DEFAULT_PREFS, ...(f.prefs || {}) }
+  if (!p.checkin || !f.checkin) return null
+  if (f.checkin.due) {
+    return { user_id: f.id, title: 'Still need your check-in 📋', body: `${first(f.name) ? first(f.name) + ', it' : 'It'}'s due today. Knock it out now, it takes about 5 minutes.`, url: '/app/checkin', tag: 'midday', badge: 1 }
+  }
+  if (f.checkin.overdueDays >= 1 && f.checkin.overdueDays <= 3) {
+    const d = f.checkin.overdueDays
+    return { user_id: f.id, title: `Check-in ${d} day${d === 1 ? '' : 's'} late`, body: "Your coach can't adjust your plan until it's in.", url: '/app/checkin', tag: 'midday', badge: 1 }
   }
   return null
 }

@@ -4,7 +4,6 @@ import { Calendar, LineChart, MapPin, FileText, Users2, HelpCircle, PhoneCall, F
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr, logDate } from '../../lib/weeks'
-import { checkinDueDate, daysBetween } from '../../lib/dashboard'
 import ClientDashboard from './ClientDashboard'
 import { RemindersPrompt } from '../ReminderSettings'
 import Avatar from '../Avatar'
@@ -21,7 +20,6 @@ export default function ClientHome() {
   const { profile } = useAuth()
   const [todayMacros, setTodayMacros] = useState({ p: 0, c: 0, f: 0 })
   const [weekWorkouts, setWeekWorkouts] = useState(0)
-  const [checkinDue, setCheckinDue] = useState(null) // { days, overdue }
   const [streak, setStreak] = useState(0)
   const [readiness, setReadiness] = useState(null)
   const [bookingUrl, setBookingUrl] = useState('')
@@ -94,20 +92,6 @@ export default function ClientHome() {
       })
     supabase.from('daily_logs').select('readiness').eq('client_id', profile.id).eq('log_date', localDateStr()).maybeSingle()
       .then(({ data }) => setReadiness(data?.readiness ?? null))
-    supabase.from('checkins').select('submitted_at').eq('client_id', profile.id)
-      .order('submitted_at', { ascending: false }).limit(1).maybeSingle()
-      .then(({ data }) => {
-        // Due date at their frequency (weekly / every 2 weeks / monthly), anchored
-        // to their check-in day if set; the reminder shows from the due date and
-        // clears once they submit. Same rule as the dashboard and push reminders.
-        const last = data?.submitted_at ? localDateStr(new Date(data.submitted_at)) : null
-        const today = localDateStr()
-        const due = checkinDueDate({ checkinDay: profile.checkin_day, frequency: profile.checkin_frequency, lastCheckin: last, today, startDate: profile.start_date })
-        if (!due) { setCheckinDue({ due: true, days: null, overdue: false }); return }   // never checked in, no day set
-        const late = daysBetween(due, today)
-        if (late < 0) { setCheckinDue({ due: false }); return }
-        setCheckinDue({ due: true, days: last ? daysBetween(last, today) : null, overdue: late >= 2 })
-      })
     supabase.from('standalone_form_assignments').select('id', { count: 'exact', head: true })
       .eq('client_id', profile.id).eq('status', 'pending')
       .then(({ count }) => setPendingForms(count || 0))
@@ -230,19 +214,7 @@ export default function ClientHome() {
         </div>
       )}
 
-      {checkinDue?.due && (
-        <Link to="/app/checkin" style={{ display: 'block', textDecoration: 'none' }}>
-          <div className="card" style={{ borderLeft: `3px solid ${checkinDue.overdue ? 'var(--red)' : 'var(--orange)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: checkinDue.overdue ? 'var(--red)' : 'var(--orange-hot)' }}>
-                {checkinDue.days === null ? 'Your first check-in is due' : checkinDue.overdue ? `Check-in overdue — last one ${checkinDue.days} days ago` : `Check-in due — last one ${checkinDue.days} days ago`}
-              </div>
-              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Tap to submit now</div>
-            </div>
-            <span style={{ fontSize: 20 }}>→</span>
-          </div>
-        </Link>
-      )}
+      {/* the check-in reminder is now pinned to the top of every screen (CheckinNag, Update 158) */}
 
       <QuickCheckin profile={profile} />
 

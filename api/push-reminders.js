@@ -1,5 +1,6 @@
 // Daily reminder job (Vercel Cron, see vercel.json):
 //   /api/push-reminders?slot=morning  -> "Today: Upper A 💪" / "Check-in day ✅"
+//   /api/push-reminders?slot=midday   -> check-in still due / late (Update 158)
 //   /api/push-reminders?slot=evening  -> one roll-up of what's still open, plus
 //                                        the coach's "Client radar"
 // Each person gets at most one notification per slot. Only people who turned
@@ -10,14 +11,14 @@
 import { admin, sendToUsers, prefsFor, localDateIn } from './_push.js'
 import { resolveAssignment, dayShowsInWeek } from '../src/lib/weeks.js'
 import { splitForWeek, addDays } from '../src/lib/dashboard.js'
-import { checkinState, morningFor, eveningFor, coachDigest } from '../src/lib/reminders.js'
+import { checkinState, morningFor, middayFor, eveningFor, coachDigest } from '../src/lib/reminders.js'
 import { quickDone, quickDue } from '../src/lib/adherence.js'
 
 export default async function handler(req, res) {
   if (process.env.CRON_SECRET && (req.headers.authorization || '') !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
-  const slot = req.query?.slot === 'evening' ? 'evening' : 'morning'
+  const slot = ['evening', 'midday'].includes(req.query?.slot) ? req.query.slot : 'morning'
   try {
     const sb = admin()
     const tz = process.env.COACH_TIMEZONE || 'America/New_York'
@@ -40,7 +41,7 @@ export async function runSlot(sb, slot, today, tz) {
 
   if (clients.length) {
     const facts = await gatherFacts(sb, clients, today, tz, prefs)
-    for (const f of facts) { const m = slot === 'morning' ? morningFor(f) : eveningFor(f); if (m) msgs.push(m) }
+    for (const f of facts) { const m = slot === 'morning' ? morningFor(f) : slot === 'midday' ? middayFor(f) : eveningFor(f); if (m) msgs.push(m) }
   }
 
   if (slot === 'evening' && coaches.length) {
