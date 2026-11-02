@@ -6,14 +6,14 @@
 //    the front (at most once an hour).
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ClipboardCheck, ChevronRight } from 'lucide-react'
+import { ClipboardCheck, ChevronRight, Lock } from 'lucide-react'
 import { nagText, showTakeover } from '../../lib/checkinNag'
 
 const KEY = 'ws-checkin-takeover-dismissed'
 const getDismissed = () => { try { return Number(sessionStorage.getItem(KEY) || 0) } catch { return 0 } }
 const setDismissed = v => { try { sessionStorage.setItem(KEY, String(v)) } catch { /* ignore */ } }
 
-export function CheckinBanner({ status }) {
+export function CheckinBanner({ status, locked }) {
   const navigate = useNavigate()
   const t = nagText(status)
   if (!t) return null
@@ -25,13 +25,13 @@ export function CheckinBanner({ status }) {
       fontFamily: 'inherit', fontSize: 15, fontWeight: 700, textAlign: 'left', boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
     }}>
       <ClipboardCheck size={20} />
-      <span style={{ flex: 1 }}>{t.title}<span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, opacity: 0.9 }}>Tap to do it now</span></span>
+      <span style={{ flex: 1 }}>{t.title}<span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, opacity: 0.9 }}>{locked ? 'Logging is paused until it’s in. Tap to do it now' : 'Tap to do it now'}</span></span>
       <ChevronRight size={20} />
     </button>
   )
 }
 
-export function CheckinTakeover({ status, onCheckinPage }) {
+export function CheckinTakeover({ status, onCheckinPage, locked }) {
   const navigate = useNavigate()
   const [dismissed, setDismissedState] = useState(getDismissed)
   const [, force] = useState(0)
@@ -63,13 +63,33 @@ export function CheckinTakeover({ status, onCheckinPage }) {
           {t.title}
         </div>
         <p className="muted" style={{ fontSize: 15.5, margin: '12px 0 26px' }}>
-          {red ? "Your coach can't adjust your plan until it's in. Get it done now." : 'Weigh in, snap your photos and answer a few questions. It takes about 5 minutes.'}
+          {locked ? 'Training and food logging are paused until your check-in is in. It takes about 5 minutes.' : red ? "Your coach can't adjust your plan until it's in. Get it done now." : 'Weigh in, snap your photos and answer a few questions. It takes about 5 minutes.'}
         </p>
         <button className="btn" onClick={go} style={{ width: '100%', padding: '15px 0', fontSize: 18 }}>Do my check-in now</button>
         <button onClick={later} style={{ marginTop: 14, background: 'none', border: 'none', color: 'var(--muted)', fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', textDecoration: 'underline' }}>
           Remind me later
         </button>
       </div>
+    </div>
+  )
+}
+
+// Update 159: shown instead of Train / Eat / Log while a locked client's
+// check-in is late. Nothing they logged is touched; it all comes back the
+// moment the check-in is submitted.
+export function CheckinLock({ status }) {
+  const navigate = useNavigate()
+  const d = status?.lateDays || 0
+  return (
+    <div style={{ textAlign: 'center', padding: '48px 8px' }}>
+      <div style={{ width: 78, height: 78, borderRadius: '50%', margin: '0 auto 18px', display: 'grid', placeItems: 'center', background: 'rgba(214,69,69,0.15)', border: '2px solid var(--red)' }}>
+        <Lock size={34} color="var(--red)" />
+      </div>
+      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 34, letterSpacing: 1, lineHeight: 1.05 }}>Finish your check-in first</div>
+      <p className="muted" style={{ fontSize: 15, margin: '12px auto 24px', maxWidth: 330 }}>
+        Your check-in is {d} day{d === 1 ? '' : 's'} late, so logging is paused. Submit it and everything unlocks straight away.
+      </p>
+      <button className="btn" onClick={() => navigate('/app/checkin')} style={{ width: '100%', maxWidth: 330, padding: '14px 0', fontSize: 17 }}>Do my check-in now</button>
     </div>
   )
 }

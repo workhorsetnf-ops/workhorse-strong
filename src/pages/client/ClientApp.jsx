@@ -8,8 +8,8 @@ import { useAuth } from '../../context/AuthContext'
 import { localDateStr } from '../../lib/weeks'
 import { checkinDueDate, addDays } from '../../lib/dashboard'
 import { quickDone, quickDue } from '../../lib/adherence'
-import { weeklyCheckin, badgeCount } from '../../lib/checkinNag'
-import { CheckinBanner, CheckinTakeover } from './CheckinNag'
+import { weeklyCheckin, badgeCount, isLocked, lockedPath } from '../../lib/checkinNag'
+import { CheckinBanner, CheckinTakeover, CheckinLock } from './CheckinNag'
 import ClientHome from './ClientHome'
 import ClientTraining from './ClientTraining'
 import ClientNutrition from './ClientNutrition'
@@ -113,11 +113,15 @@ export default function ClientApp() {
   // re-check whenever the client navigates — covers "just read it, badge should clear"
   useEffect(() => { const t = setTimeout(refreshBadges, 400); return () => clearTimeout(t) }, [location.pathname])
 
+  // Update 159: coach-set lock, a day or more late -> Train / Eat / Log paused
+  const locked = isLocked(profile?.checkin_lock, weekly)
+
   return (
     <div className="client-shell">
-      {location.pathname !== '/app/checkin' && <CheckinBanner status={weekly} />}
-      <CheckinTakeover status={weekly} onCheckinPage={location.pathname === '/app/checkin'} />
+      {location.pathname !== '/app/checkin' && <CheckinBanner status={weekly} locked={locked} />}
+      <CheckinTakeover status={weekly} locked={locked} onCheckinPage={location.pathname === '/app/checkin'} />
       <main className="client-main">
+        {locked && lockedPath(location.pathname) ? <CheckinLock status={weekly} /> : (
         <Routes>
           <Route index element={<ClientHome />} />
           <Route path="training" element={<ClientTraining />} />
@@ -151,6 +155,7 @@ export default function ClientApp() {
           <Route path="records" element={<ClientRecords />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
+        )}
       </main>
       <nav className="bottom-nav">
         <NavLink to="/app" end><span className="ico"><Home size={19} strokeWidth={2} /></span>Home</NavLink>

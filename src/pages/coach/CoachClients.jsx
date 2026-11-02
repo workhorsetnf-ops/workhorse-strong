@@ -105,7 +105,7 @@ export default function CoachClients() {
     const { data: r } = await supabase.from('client_ratings').select('*').eq('client_id', c.id).maybeSingle()
     setRating({ retention: r?.retention || null, mindset: r?.mindset || null, notes: r?.notes || '' })
     setCalcResult(null)
-    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null, checkin_frequency: c.checkin_frequency || 'weekly', status: c.status || 'active', payment_plan: c.payment_plan || '', payment_type: c.payment_type || '', payment_amount: c.payment_amount ?? '', contract_ends: c.contract_ends || '', split_ends: c.split_ends || '', start_date: c.start_date || '', payment_date: c.payment_date || '', goal: c.goal || '', target_weight: c.target_weight ?? '', age: c.age ?? '', height_ft: c.height_in ? Math.floor(c.height_in / 12) : '', height_inch: c.height_in ? c.height_in % 12 : '', steps_target: c.steps_target ?? '', water_oz: c.water_oz ?? '', limitations: c.limitations || '', phone: c.phone || '', event_name: c.event_name || '', event_date: c.event_date || '' })
+    setForm({ full_name: c.full_name, phase: c.phase, protein_g: c.protein_g, carbs_g: c.carbs_g, fat_g: c.fat_g, calories: c.calories, email: c.email || '', checkin_day: c.checkin_day ?? null, checkin_frequency: c.checkin_frequency || 'weekly', status: c.status || 'active', payment_plan: c.payment_plan || '', payment_type: c.payment_type || '', payment_amount: c.payment_amount ?? '', contract_ends: c.contract_ends || '', split_ends: c.split_ends || '', start_date: c.start_date || '', payment_date: c.payment_date || '', goal: c.goal || '', target_weight: c.target_weight ?? '', age: c.age ?? '', height_ft: c.height_in ? Math.floor(c.height_in / 12) : '', height_inch: c.height_in ? c.height_in % 12 : '', steps_target: c.steps_target ?? '', water_oz: c.water_oz ?? '', limitations: c.limitations || '', phone: c.phone || '', event_name: c.event_name || '', event_date: c.event_date || '', checkin_lock: !!c.checkin_lock })
     setOriginalEmail(c.email || '')
     // Pull their pre-sale timeline in if they came through the pipeline.
     const hist = leadHistory[c.id]
@@ -153,6 +153,8 @@ export default function CoachClients() {
       phone: form.phone?.trim() || '',
       event_name: form.event_name?.trim() || '',
       event_date: form.event_date || null,
+      // Update 159: only sent once the column exists, so saving still works before the migration
+      ...(current && 'checkin_lock' in current ? { checkin_lock: !!form.checkin_lock } : {}),
       // Only restamp when the status genuinely moved, so "12d paused" stays honest.
       ...(statusChanged ? { status_changed_at: new Date().toISOString() } : {}),
     }).eq('id', id)
@@ -331,6 +333,10 @@ export default function CoachClients() {
                     </select>
                   </div>
                 </div>
+                <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13.5, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!form.checkin_lock} onChange={e => setForm({ ...form, checkin_lock: e.target.checked })} style={{ width: 18, height: 18, marginTop: 2, flexShrink: 0 }} />
+                  <span><strong>🔒 Lock logging when check-in is late</strong><span className="muted" style={{ display: 'block', fontSize: 12 }}>Once their check-in is a day late, Train, Eat and Log pause until it's submitted. For repeat offenders.</span></span>
+                </label>
                 <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
                   <span className="eyebrow" style={{ fontSize: 10 }}>Client details</span>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 6 }}>

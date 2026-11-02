@@ -112,7 +112,7 @@ export default function CoachHome() {
   async function load() {
     setLoading(true)
     const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }, { data: ratingsData }, { data: flagsData }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, protein_g, calories, created_at, avatar_url, checkin_day, checkin_frequency, start_date').eq('role', 'client').neq('status', 'exited').order('full_name'),
+      supabase.from('profiles').select('*').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('program_assignments').select('*'),
       supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text, logged_date, session_track').order('logged_at', { ascending: false }).limit(600),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(400),
@@ -155,7 +155,10 @@ export default function CoachHome() {
       const exerciseDue = hasAssignment && (!lastWorkout || daysAgo(lastWorkout.logged_at) >= 3)
       const lastDaily = dailyLogs?.find(d => d.client_id === c.id)
       const lifestyleDue = !lastDaily || daysAgo(lastDaily.log_date) >= 2
-      const checkinDue = checkinLate(c, checkins) >= 0
+      const lateBy = checkinLate(c, checkins)
+      const checkinDue = lateBy >= 0
+      // Update 159: a day or more past their check-in date (999 = no schedule, not "late")
+      const checkinLateDays = lateBy >= 1 && lateBy < 999 ? lateBy : 0
       const consultDue = !lastContact[c.id] || daysAgo(lastContact[c.id]) >= 5
 
       const last14Days = new Set(
@@ -163,7 +166,7 @@ export default function CoachHome() {
       ).size
       const compliancePct = hasAssignment ? Math.round((last14Days / 8) * 100) : null // ~4x/wk expected over 2 weeks
 
-      st[c.id] = { exercise: exerciseDue, lifestyle: lifestyleDue, checkin: checkinDue, consult: consultDue, compliancePct }
+      st[c.id] = { exercise: exerciseDue, lifestyle: lifestyleDue, checkin: checkinDue, checkinLateDays, consult: consultDue, compliancePct }
     }
     setStatuses(st)
 
@@ -347,6 +350,8 @@ export default function CoachHome() {
     if (filter === 'all') return s.exercise || s.lifestyle || s.checkin || s.consult
     return s[filter]
   })
+    // Update 159: late check-ins first, most days late at the top
+    .sort((a, b) => (statuses[b.id]?.checkinLateDays || 0) - (statuses[a.id]?.checkinLateDays || 0))
 
   const initials = name => (name || '?').split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase()
 
@@ -493,7 +498,9 @@ export default function CoachHome() {
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {s.exercise && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(255,106,0,0.18)', color: 'var(--orange-hot)' }}>Exercise due</span>}
                   {s.lifestyle && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(62,142,126,0.18)', color: '#3E8E7E' }}>Lifestyle due</span>}
-                  {s.checkin && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(124,92,191,0.18)', color: '#9B7FE0' }}>Check-in due</span>}
+                  {s.checkin && (s.checkinLateDays
+                    ? <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 20, background: 'rgba(214,69,69,0.2)', color: 'var(--red)' }}>Check-in {s.checkinLateDays} day{s.checkinLateDays === 1 ? '' : 's'} late{c.checkin_lock ? ' · 🔒 locked' : ''}</span>
+                    : <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(124,92,191,0.18)', color: '#9B7FE0' }}>Check-in due</span>)}
                   {s.consult && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(124,92,191,0.28)', color: '#B49EE8' }}>Consult due</span>}
                 </div>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>

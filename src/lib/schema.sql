@@ -2321,3 +2321,7 @@ drop policy if exists "coach manages check-in texts" on checkin_texts;
 create policy "coach manages check-in texts" on checkin_texts for all using (is_coach()) with check (is_coach());
 grant select, insert, update, delete on checkin_texts to authenticated;
 create index if not exists checkin_texts_date_idx on checkin_texts (for_date);
+
+-- ===== CHECK-IN LOCK (Update 159) =====
+-- Safe to re-run. Coach-controlled; the profile guard keeps clients from changing it.
+alter table profiles add column if not exists checkin_lock boolean not null default false;
