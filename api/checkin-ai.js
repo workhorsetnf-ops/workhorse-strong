@@ -43,7 +43,7 @@ export async function runCheckinAi(sb, body, res, fetchFn = globalThis.fetch) {
 
     const { system, user } = buildPrompt(facts, examples, pain)
     let ans
-    try { ans = await askClaude({ system, content: user, tool: SUMMARY_TOOL, maxTokens: 1200, fetchFn }) }
+    try { ans = await askClaude({ system, content: user, tool: SUMMARY_TOOL, maxTokens: 4000, fetchFn }) }
     catch (e) { return res.status(502).json({ error: `AI request failed: ${e.message}` }) }
     const result = { ...parseAi(ans.data), model: ans.model }
 
