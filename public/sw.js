@@ -7,6 +7,9 @@ self.addEventListener('push', event => {
   let data = {}
   try { data = event.data ? event.data.json() : {} } catch { data = { body: event.data && event.data.text() } }
   const title = data.title || 'Workhorse Strong'
+  // Update 158: a check-in reminder also puts a number on the app icon,
+  // so it shows on the home screen before the app is even opened.
+  if (data.badge && self.navigator && self.navigator.setAppBadge) self.navigator.setAppBadge(data.badge).catch(() => {})
   event.waitUntil(self.registration.showNotification(title, {
     body: data.body || '',
     icon: '/icon-192.png',

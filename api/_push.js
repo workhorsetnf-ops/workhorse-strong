@@ -32,7 +32,7 @@ export async function sendToUsers(sb, userIds, msg) {
   if (!ids.length) return { sent: 0, removed: 0, failed: 0 }
   const { data: subs } = await sb.from('push_subscriptions').select('*').in('user_id', ids)
   let sent = 0, removed = 0, failed = 0
-  const payload = JSON.stringify({ title: msg.title, body: msg.body, url: msg.url || '/', tag: msg.tag })
+  const payload = JSON.stringify({ title: msg.title, body: msg.body, url: msg.url || '/', tag: msg.tag, badge: msg.badge || undefined })
   await Promise.all((subs || []).map(async s => {
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 60 * 60 * 6 })

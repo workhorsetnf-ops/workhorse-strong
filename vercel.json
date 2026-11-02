@@ -11,6 +11,10 @@
       "schedule": "30 12 * * *"
     },
     {
+      "path": "/api/push-reminders?slot=midday",
+      "schedule": "0 18 * * *"
+    },
+    {
       "path": "/api/push-reminders?slot=evening",
       "schedule": "30 23 * * *"
     },
