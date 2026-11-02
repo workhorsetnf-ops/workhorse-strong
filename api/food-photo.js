@@ -34,7 +34,7 @@ export async function runFoodPhoto(sb, me, body, res, fetchFn) {
   const { system, user } = photoPrompt(String(body.note || ''))
   let ans
   try {
-    ans = await askClaude({ system, tool: PHOTO_TOOL, maxTokens: 1200, fetchFn,
+    ans = await askClaude({ system, tool: PHOTO_TOOL, maxTokens: 4000, fetchFn,
       content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: user }] })
   } catch (e) { return res.status(502).json({ error: `Couldn’t read the photo: ${e.message}` }) }
   const result = parsePhotoAi(ans.data)
