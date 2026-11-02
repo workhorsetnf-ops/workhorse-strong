@@ -23,6 +23,14 @@ export function nagText(s) {
   return { title: 'Your check-in is due today', tone: 'orange' }
 }
 
+// Update 159: the coach's per-client lock. Kicks in once the check-in is a day
+// or more late; never for a client with no schedule.
+export function isLocked(lockOn, s) {
+  return !!lockOn && s?.state === 'late' && s.lateDays >= 1
+}
+export const LOCKED_PATHS = ['/app/training', '/app/nutrition', '/app/progress']
+export const lockedPath = path => LOCKED_PATHS.some(p => path === p || path.startsWith(p + '/'))
+
 // The full-screen card comes back every time the app is opened (or brought
 // back to the front) until the check-in is in, but not more than once an hour
 // so it doesn't get in the way while they're using the app.

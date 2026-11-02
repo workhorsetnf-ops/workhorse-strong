@@ -147,6 +147,8 @@ export default function ClientCheckin() {
     if (photoFails.length) alert(`Your check-in was saved, but these photos didn't upload: ${photoFails.join(', ')}. Try adding them again next time, or send them to your coach in Messages.`)
     if (!error) {
       notifyEvent('checkin')
+      // Update 158/159: clear the banner, icon number and any lock straight away
+      try { window.dispatchEvent(new Event('ws-badges')) } catch { /* ignore */ }
       setDone(true)
       setForm({ waist: '', notes: '' })
       setAnswers({})
