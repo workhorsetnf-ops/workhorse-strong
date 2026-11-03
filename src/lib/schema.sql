@@ -2325,3 +2325,31 @@ create index if not exists checkin_texts_date_idx on checkin_texts (for_date);
 -- ===== CHECK-IN LOCK (Update 159) =====
 -- Safe to re-run. Coach-controlled; the profile guard keeps clients from changing it.
 alter table profiles add column if not exists checkin_lock boolean not null default false;
+
+-- ===== AI VOICE (Update 161) =====
+create table if not exists coach_voice (
+  id int primary key default 1 check (id = 1),
+  guide text not null default '',
+  updated_at timestamptz not null default now()
+);
+insert into coach_voice (id) values (1) on conflict (id) do nothing;
+alter table coach_voice enable row level security;
+drop policy if exists "coach manages voice" on coach_voice;
+create policy "coach manages voice" on coach_voice for all using (is_coach()) with check (is_coach());
+grant select, insert, update on coach_voice to authenticated;
+
+create table if not exists ai_replies (
+  id uuid primary key default gen_random_uuid(),
+  checkin_id uuid references checkins(id) on delete set null,
+  client_id uuid not null references profiles(id) on delete cascade,
+  draft text not null,
+  sent text not null,
+  channel text not null default 'feedback' check (channel in ('feedback', 'message')),
+  created_at timestamptz not null default now()
+);
+create index if not exists ai_replies_created_idx on ai_replies (created_at desc);
+create index if not exists ai_replies_client_idx on ai_replies (client_id, created_at desc);
+alter table ai_replies enable row level security;
+drop policy if exists "coach manages ai replies" on ai_replies;
+create policy "coach manages ai replies" on ai_replies for all using (is_coach()) with check (is_coach());
+grant select, insert on ai_replies to authenticated;
