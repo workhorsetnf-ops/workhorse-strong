@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { dash, effortText, effortMeaning } from '../../lib/targets'
 import { progressionCall, CALL_STYLE } from '../../lib/progression'
 import { supabase } from '../../lib/supabase'
-import { resolveAssignment, rotationForWeek, dayShowsInWeek, daysBetween, resolveBlockWeek, localDateStr, logDate } from '../../lib/weeks'
+import { resolveAssignment, rotationForWeek, dayShowsInWeek, localDateStr, logDate } from '../../lib/weeks'
 import { useAuth } from '../../context/AuthContext'
 import RestTimer from '../../lib/RestTimer'
 import IntervalTimer from '../../lib/IntervalTimer'
 import PlateCalc from '../../lib/PlateCalc'
-import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, programWeekDates, scheduledDate, withMoves, effectiveDate, workUnit, UNIT_LABEL, secondsToUnit } from '../../lib/conditioning'
+import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, programWeekDates, scheduledDate, effectiveDate, loadProgramSchedule, sessionsOnDate, workUnit, UNIT_LABEL, secondsToUnit } from '../../lib/conditioning'
 import { eventAdvice, eventIcons } from '../../lib/clientEvents'
 import { bestOf, prFor, nameKey } from '../../lib/prs'
 import { alternativesFor, applySwap, REASONS } from '../../lib/swaps'
@@ -154,6 +154,7 @@ export default function ClientTraining() {
   const [block, setBlock] = useState(null)
   const [week, setWeek] = useState(1)
   const [startDate, setStartDate] = useState(null)
+  const [schedule, setSchedule] = useState(null) // whole program, for the calendar view
   const [calMode, setCalMode] = useState(false)
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
   const [rotations, setRotations] = useState([])
@@ -161,6 +162,9 @@ export default function ClientTraining() {
   const [events, setEvents] = useState([]) // shows & travel (Update 146)
   const [days, setDays] = useState([])
   const [activeDay, setActiveDay] = useState(null)
+  const location = useLocation()
+  const autoOpened = useRef(false) // open today's (or the tapped) session once, on arrival
+  const [movesReady, setMovesReady] = useState(false)
   const [baseExercises, setExercises] = useState([])
   // exercise swaps (Update 152): coach-approved alternatives and today's swaps
   const [swapLib, setSwapLib] = useState({ library: [], alts: [] })
@@ -271,6 +275,7 @@ export default function ClientTraining() {
       })
     loadMoves()
     loadEvents()
+    loadProgramSchedule(supabase, profile.id).then(setSchedule).catch(() => setSchedule(null))
     supabase.from('client_maxes').select('*').eq('client_id', profile.id)
       .then(({ data }) => {
         setMaxes(Object.fromEntries((data || []).map(m => [m.lift_name.toLowerCase(), m.max_weight])))
@@ -290,9 +295,10 @@ export default function ClientTraining() {
     if (!profile) return
     const { data } = await supabase.from('session_moves').select('*').eq('client_id', profile.id)
     setMoves(data || [])
+    setMovesReady(true)
   }
 
-  // Move a conditioning session to another day of this program week.
+  // Move a session to another day of this program week.
   // Moving it back to where the program put it just removes the move.
   async function moveSession(day, fromDate, toDate) {
     if (!profile || !fromDate || !toDate) return
@@ -509,6 +515,39 @@ export default function ClientTraining() {
   useEffect(() => {
     if (activeDay && !dayShowsInWeek(activeDay, rotations, week)) setActiveDay(null)
   }, [week, rotations])
+
+  // On arrival: open the session tapped on Home or the Calendar, otherwise
+  // today's session, so the client lands on what they're meant to do now
+  // (Update 162). Only once, and never over a session they already picked.
+  useEffect(() => {
+    if (autoOpened.current || !movesReady || !block || !days.length || activeDay) return
+    const t = location.state || {}
+    if (t.targetDayId) {
+      autoOpened.current = true
+      if (t.targetBlockId && t.targetBlockId !== block.id) {
+        const nb = allBlocks.find(b => b.id === t.targetBlockId)
+        if (!nb) return
+        setBlock(nb)
+        Promise.all([
+          supabase.from('program_days').select('*').eq('block_id', nb.id).order('day_number').order('position'),
+          supabase.from('program_rotations').select('*').eq('block_id', nb.id).order('position'),
+        ]).then(([{ data: nd }, { data: nr }]) => {
+          setDays(nd || []); setRotations(nr || [])
+          if (t.targetWeek) setWeek(t.targetWeek)
+          const d = (nd || []).find(x => x.id === t.targetDayId)
+          if (d) setActiveDay(d)
+        })
+        return
+      }
+      const d = days.find(x => x.id === t.targetDayId)
+      if (t.targetWeek) setWeek(t.targetWeek)
+      if (d) { setActiveDay(d); return }
+    }
+    autoOpened.current = true
+    const today = localDateStr()
+    const todays = byThisWeek(days.filter(d => (d.track || 'exercise') !== 'lifestyle' && dayShowsInWeek(d, rotations, week) && sessionDateThisWeek(d) === today))
+    if (todays.length) setActiveDay(todays.find(d => (d.track || 'exercise') === 'exercise') || todays[0])
+  }, [block, days, rotations, week, moves, movesReady])
 
   useEffect(() => {
     if (!profile) return
@@ -987,24 +1026,23 @@ export default function ClientTraining() {
     )
   }
 
-  // ---------------- moving a conditioning session ----------------
-  // Only for this program week (by date), and only when there's a start date to
-  // turn Day N into a real day. The client can open and log any session any day
-  // regardless; moving is about where it sits on their schedule.
-  const thisWeekDates = startDate ? programWeekDates(startDate) : null
+  // ---------------- moving a session ----------------
+  // Day 1 = Monday for every client (Update 162). The coach's days are the
+  // default; the client can move any lifting or conditioning session to another
+  // day of THIS week, and next week starts back on the coach's days. They can
+  // open and log any session any day regardless; moving is about the schedule.
+  const thisWeekDates = programWeekDates(startDate)
   function sessionDateThisWeek(d) {
-    if (!thisWeekDates || (d.track !== 'conditioning' && !moves.some(m => m.day_id === d.id))) return null
-    const from = scheduledDate(startDate, d.day_number)
-    return from ? effectiveDate(d.id, from, moves) : null
+    if ((d.track || 'exercise') === 'lifestyle') return null
+    return effectiveDate(d.id, scheduledDate(startDate, d.day_number), moves)
   }
   const weekdayShort = ymd => new Date(ymd + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' })
+  // tabs in the order they happen this week, after any moves
+  const byThisWeek = list => [...list].sort((a, b) => (sessionDateThisWeek(a) || '').localeCompare(sessionDateThisWeek(b) || '') || (a.position ?? 0) - (b.position ?? 0))
 
   function renderMovePanel() {
     if (!thisWeekDates || calMode || awayMode) return null
-    // conditioning can always move; a lifting day can when a show or travel
-    // lands in this week (or it's already been moved)
-    const weekHasEvent = thisWeekDates.some(dt => eventIcons(events, dt))
-    if (!cardioDay && !weekHasEvent && !moves.some(m => m.day_id === activeDay?.id)) return null
+    // any lifting or conditioning session can move within this week (Update 162)
     if (!activeDay || (activeDay.track || 'exercise') === 'lifestyle') return null
     const from = scheduledDate(startDate, activeDay.day_number)
     if (!from) return null
@@ -1344,12 +1382,12 @@ export default function ClientTraining() {
             {viewMode === 'focus' ? '☰ List' : '▣ Focus'}
           </button>
         )}
-        {!calMode && days.filter(d => (d.track || 'exercise') === 'exercise' && dayShowsInWeek(d, rotations, week)).map(d => (
+        {!calMode && byThisWeek(days.filter(d => (d.track || 'exercise') === 'exercise' && dayShowsInWeek(d, rotations, week))).map(d => (
           <button key={d.id} className={activeDay?.id === d.id ? 'btn' : 'btn-ghost'}
             style={{ padding: '10px 16px', fontSize: 13 }}
             onClick={() => setActiveDay(d)}>{d.day_label}{sessionDateThisWeek(d) && <span style={{ opacity: 0.75, fontWeight: 600 }}> · {weekdayShort(sessionDateThisWeek(d))}</span>}</button>
         ))}
-        {!calMode && days.filter(d => d.track === 'conditioning' && dayShowsInWeek(d, rotations, week)).map(d => {
+        {!calMode && byThisWeek(days.filter(d => d.track === 'conditioning' && dayShowsInWeek(d, rotations, week))).map(d => {
           const on = sessionDateThisWeek(d)
           return (
             <button key={d.id} className={activeDay?.id === d.id ? 'btn' : 'btn-ghost'}
@@ -1417,30 +1455,12 @@ export default function ClientTraining() {
         const numDays = new Date(y, m + 1, 0).getDate()
         const cells = [...Array(offset).fill(null), ...Array.from({ length: numDays }, (_, i) => i + 1)]
         const monthName = first.toLocaleString('default', { month: 'long', year: 'numeric' })
-        const sd = startDate ? new Date(startDate + 'T00:00:00') : null
         const today = new Date(); today.setHours(0, 0, 0, 0)
 
-        // a moved conditioning session leaves its program day and shows on the
-        // day the client picked (same rule as the Calendar page)
+        // Same schedule as the Calendar page: Day 1 = Monday, the Train tab's
+        // block / week / rotation, moves applied (Update 162)
         function workoutsOn(dayNum) {
-          const ymd = localDateStr(new Date(y, m, dayNum))
-          return withMoves(ymd, scheduledOn(ymd), scheduledOn, moves)
-        }
-        function scheduledOn(ymd) {
-          if (!sd || allBlocks.length === 0) return []
-          // whole calendar days, not a millisecond division — an hour of DST
-          // drift used to be enough to round a date onto the wrong day
-          const diff = daysBetween(startDate, new Date(ymd + 'T00:00:00'))
-          if (diff === null || diff < 0) return []
-          const resolved = resolveBlockWeek(allBlocks, Math.floor(diff / 7) + 1)
-          if (!resolved) return []
-          const dn = (diff % 7) + 1
-          if (resolved.block.id === block?.id) {
-            return days
-              .filter(d => d.day_number === dn && dayShowsInWeek(d, rotations, resolved.weekInBlock))
-              .map(d => ({ ...d, wk: resolved.weekInBlock, blockId: resolved.block.id }))
-          }
-          return [{ id: `ghost-${resolved.block.id}-${dn}`, day_label: resolved.block.name, track: 'exercise', wk: resolved.weekInBlock, blockId: resolved.block.id, ghost: true }]
+          return sessionsOnDate(localDateStr(new Date(y, m, dayNum)), schedule, moves).map(d => ({ ...d, blockId: d.block_id }))
         }
 
         return (
@@ -1450,7 +1470,6 @@ export default function ClientTraining() {
               <strong style={{ fontSize: 14, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{monthName}</strong>
               <button className="btn-ghost" style={{ padding: '6px 12px' }} onClick={() => setCalMonth(({ y, m }) => m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 })}>›</button>
             </div>
-            {!sd && <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>No start date set — ask your coach to set one so your schedule shows here.</p>}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', marginBottom: 4 }}>
               {['M','T','W','T','F','S','S'].map((d, i) => <div key={i} style={{ textAlign: 'center' }}>{d}</div>)}
             </div>
@@ -1478,7 +1497,6 @@ export default function ClientTraining() {
                               ])
                               setDays(nd || [])
                               setRotations(nr || [])
-                              if (d.ghost) { setWeek(d.wk); setCalMode(false); return }
                             }
                             setWeek(d.wk); setActiveDay(d); setCalMode(false)
                           }}

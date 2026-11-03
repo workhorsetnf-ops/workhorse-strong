@@ -82,16 +82,16 @@ export function progress(start, current, goal) {
 }
 
 // The program session(s) on a date, same rule as the Calendar page:
-// day_number 1 = the program's start date, blocks run back to back.
+// Day 1 = Monday, weeks run Monday-Sunday from the week the program started,
+// blocks run back to back (Update 162).
 export function sessionsOn(date, startDate, blocks, daysByBlock) {
   if (!startDate || !blocks?.length) return []
-  const diff = daysBetween(startDate, date)
-  if (diff < 0) return []
-  const wk = Math.floor(diff / 7) + 1
+  if (daysBetween(startDate, date) < 0) return []
+  const wk = Math.floor(daysBetween(addDays(startDate, -mondayIndex(startDate)), date) / 7) + 1
   let cursor = 0, blk = null
   for (const b of blocks) { if (wk <= cursor + (b.weeks || 4)) { blk = b; break } cursor += (b.weeks || 4) }
   if (!blk) return []
-  const dn = (diff % 7) + 1
+  const dn = mondayIndex(date) + 1
   return (daysByBlock[blk.id] || []).filter(d => d.day_number === dn)
 }
 
@@ -116,11 +116,11 @@ export const heightText = inches => (inches ? `${Math.floor(inches / 12)}' ${inc
 
 // This week's training split, using the SAME block + week the Train page uses
 // (resolveAssignment), not a date-only guess, so Home and Train always agree.
-// Day N maps to a weekday the way the Calendar does: Day 1 = the weekday the
-// program started on (Monday when there's no start date).
+// Day N maps to a weekday the way the Calendar does: Day 1 = Monday for every
+// client (Update 162). startDate is kept for older callers and ignored.
+// eslint-disable-next-line no-unused-vars
 export function dayNumberOn(date, startDate) {
-  if (!startDate) return mondayIndex(date) + 1
-  return ((daysBetween(startDate, date) % 7) + 7) % 7 + 1
+  return mondayIndex(date) + 1
 }
 export function splitForWeek(weekDays, { startDate, blockDays, rotations = [], weekInBlock = 1, showsInWeek }) {
   return weekDays.map(date => {
