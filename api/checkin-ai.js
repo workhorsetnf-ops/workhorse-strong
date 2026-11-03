@@ -3,7 +3,7 @@
 // Saved onto the check-in (ai_summary) so reopening the review costs nothing.
 // Env: ANTHROPIC_API_KEY (required), ANTHROPIC_MODEL (optional).
 import { admin, userFromReq } from './_push.js'
-import { buildPrompt, parseAi, SUMMARY_TOOL } from '../src/lib/aiCheckin.js'
+import { buildPrompt, parseAi, pickVoiceExamples, SUMMARY_TOOL } from '../src/lib/aiCheckin.js'
 import { askClaude } from './_claude.js'
 
 
@@ -19,7 +19,7 @@ export default async function handler(req, res) {
 
 export async function runCheckinAi(sb, body, res, fetchFn = globalThis.fetch) {
   {
-    const { checkinId, facts, refresh } = body
+    const { checkinId, facts, refresh, clientId } = body
     if (!facts || typeof facts !== 'object') return res.status(400).json({ error: 'Missing week data' })
 
     let ck = null
@@ -31,17 +31,27 @@ export async function runCheckinAi(sb, body, res, fetchFn = globalThis.fetch) {
     }
     if (!process.env.ANTHROPIC_API_KEY) return res.status(400).json({ error: 'AI is not set up yet. Add ANTHROPIC_API_KEY in Vercel → Settings → Environment Variables, then redeploy.' })
 
-    // Anthony's own recent replies, so drafts sound like him.
-    const { data: past } = await sb.from('checkins').select('coach_feedback').not('coach_feedback', 'is', null)
-      .order('submitted_at', { ascending: false }).limit(30)
-    const examples = (past || []).map(p => String(p.coach_feedback || '').trim()).filter(t => t.length >= 60).slice(0, 5).map(t => t.slice(0, 700))
+    // Anthony's voice: his guide, his edits to past drafts, replies he wrote
+    // himself, and his last replies to this client (Update 161).
+    const [{ data: past }, { data: replies, error: repliesErr }, { data: voice }] = await Promise.all([
+      sb.from('checkins').select('client_id, coach_feedback, ai_summary').not('coach_feedback', 'is', null)
+        .order('submitted_at', { ascending: false }).limit(60),
+      sb.from('ai_replies').select('client_id, draft, sent').order('created_at', { ascending: false }).limit(60),
+      sb.from('coach_voice').select('guide').eq('id', 1).maybeSingle(),
+    ])
+    // Before migration_update161 is run, ai_replies/coach_voice don't exist; drafts still work.
+    const examples = pickVoiceExamples({
+      aiReplies: repliesErr ? [] : (replies || []),
+      feedback: (past || []).map(p => ({ text: p.coach_feedback, aiDraft: p.ai_summary?.reply || null, client_id: p.client_id })),
+      clientId: ck?.client_id || clientId || null,
+    })
     let pain = []
     if (ck) {
       const { data: flags } = await sb.from('exercise_flags').select('note, program_exercises(name)').eq('client_id', ck.client_id).eq('resolved', false).limit(5)
       pain = (flags || []).map(f => `${f.program_exercises?.name || 'exercise'}: ${String(f.note || '').slice(0, 200)}`)
     }
 
-    const { system, user } = buildPrompt(facts, examples, pain)
+    const { system, user } = buildPrompt(facts, examples, pain, voice?.guide || '')
     let ans
     try { ans = await askClaude({ system, content: user, tool: SUMMARY_TOOL, maxTokens: 4000, fetchFn }) }
     catch (e) { return res.status(502).json({ error: `AI request failed: ${e.message}` }) }

@@ -39,10 +39,66 @@ export function checkinFacts({ profile, review: R, checkin, weekStart }) {
   return f
 }
 
-export function buildPrompt(facts, examples = [], painNotes = []) {
+// ---- Voice (Update 161) ----
+// How alike two replies are, 0-1, by shared word pairs. Used to tell an AI
+// draft sent as-is (or with a typo fixed) from one Anthony actually rewrote.
+const words = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}'\s]/gu, ' ').split(/\s+/).filter(Boolean)
+export function similarity(a, b) {
+  const pairs = s => { const w = words(s); const m = new Map(); for (let i = 0; i < w.length - 1; i++) { const k = w[i] + ' ' + w[i + 1]; m.set(k, (m.get(k) || 0) + 1) } return m }
+  const A = pairs(a), B = pairs(b)
+  const na = [...A.values()].reduce((t, v) => t + v, 0), nb = [...B.values()].reduce((t, v) => t + v, 0)
+  if (!na && !nb) return words(a).join(' ') === words(b).join(' ') ? 1 : 0
+  if (!na || !nb) return 0
+  let shared = 0
+  for (const [k, v] of A) shared += Math.min(v, B.get(k) || 0)
+  return (2 * shared) / (na + nb)
+}
+export const UNEDITED = 0.9 // at or above this, the draft went out basically as the AI wrote it
+
+const clip = (s, n) => { s = String(s || '').trim(); return s.length > n ? s.slice(0, n) + '…' : s }
+
+// Pick what the AI learns Anthony's voice from:
+//   edits:   AI draft → what he actually sent, where he really changed it (best signal)
+//   written: replies he wrote himself (drafts sent unedited are left out, so
+//            the AI never ends up copying itself)
+//   recent:  his last replies to THIS client, so it can follow up on them
+// Inputs, newest first:
+//   aiReplies: [{ draft, sent, client_id }]
+//   feedback:  [{ text, aiDraft, client_id }]  (check-in feedback + the AI draft stored on that check-in, if any)
+export function pickVoiceExamples({ aiReplies = [], feedback = [], clientId = null }) {
+  const edits = []
+  for (const r of aiReplies) {
+    if (edits.length >= 6) break
+    if (!r?.draft || !r?.sent) continue
+    if (similarity(r.draft, r.sent) >= UNEDITED) continue
+    edits.push({ draft: clip(r.draft, 700), sent: clip(r.sent, 700) })
+  }
+  const aiSent = aiReplies.filter(r => r?.sent && r?.draft && similarity(r.draft, r.sent) >= UNEDITED).map(r => r.sent)
+  const isAi = t => aiSent.some(s => similarity(s, t) >= UNEDITED)
+  const mine = feedback.filter(f => {
+    const t = String(f?.text || '').trim()
+    if (t.length < 60) return false
+    if (f.aiDraft && similarity(f.aiDraft, t) >= UNEDITED) return false
+    return !isAi(t)
+  })
+  const recent = clientId ? mine.filter(f => f.client_id === clientId).slice(0, 2).map(f => clip(f.text, 700)) : []
+  const written = mine.filter(f => !(clientId && f.client_id === clientId && recent.includes(clip(f.text, 700))))
+    .slice(0, 10).map(f => clip(f.text, 600))
+  return { edits, written, recent }
+}
+
+// examples: either the old plain list of replies, or { edits, written, recent }
+// from pickVoiceExamples. voiceGuide: Anthony's own notes on how he talks.
+export function buildPrompt(facts, examples = [], painNotes = [], voiceGuide = '') {
+  const ex = Array.isArray(examples) ? { edits: [], written: examples, recent: [] } : { edits: [], written: [], recent: [], ...examples }
+  const guide = String(voiceGuide || '').trim().slice(0, 4000)
   const system = [
     'You help Anthony Henry, a pro wrestler and online coach for professional wrestlers, review a client\'s weekly check-in.',
     'Write like Anthony: direct, warm, locker-room plain. Short sentences. Specific numbers from the data. No fluff, no hype words, no hashtags, at most one emoji.',
+    ...(guide ? ['Anthony\'s own voice guide is in <voice_guide>. Follow it closely; where it disagrees with the line above, the guide wins.'] : []),
+    ...(ex.edits.length ? ['<edits> shows drafts written for Anthony and what he actually sent instead. Study what he changes, adds and cuts, and write the way he rewrote them.'] : []),
+    ...(ex.recent.length ? ['<recent_to_client> is what Anthony told this client in the last weeks. Follow up on any action he gave them, and do not reuse the same openers or phrases.'] : []),
+    'Past replies are for voice only. Do not copy their content or numbers.',
     'Never invent data. If something is missing, say it is missing. Do not diagnose injuries or give medical advice; if pain or illness is mentioned, flag it for Anthony.',
     'Return ONLY a JSON object with keys:',
     '"summary": 3-5 short bullet strings for Anthony (what happened this week, most important first),',
@@ -51,7 +107,10 @@ export function buildPrompt(facts, examples = [], painNotes = []) {
   ].join('\n')
   let user = `Week data (JSON):\n${JSON.stringify(facts)}`
   if (painNotes.length) user += `\n\nOpen pain/injury flags on exercises: ${JSON.stringify(painNotes)}`
-  if (examples.length) user += `\n\nPast replies Anthony wrote, for voice only (do not copy content):\n${examples.map((e, i) => `${i + 1}. ${e}`).join('\n')}`
+  if (guide) user += `\n\n<voice_guide>\n${guide}\n</voice_guide>`
+  if (ex.edits.length) user += `\n\n<edits>\n${ex.edits.map((e, i) => `<edit n="${i + 1}">\n<draft>${e.draft}</draft>\n<anthony_sent>${e.sent}</anthony_sent>\n</edit>`).join('\n')}\n</edits>`
+  if (ex.written.length) user += `\n\nPast replies Anthony wrote, for voice only (do not copy content):\n${ex.written.map((e, i) => `${i + 1}. ${e}`).join('\n')}`
+  if (ex.recent.length) user += `\n\n<recent_to_client>\n${ex.recent.map((e, i) => `${i === 0 ? 'Last reply' : 'Before that'}: ${e}`).join('\n')}\n</recent_to_client>`
   return { system, user }
 }
 

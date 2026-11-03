@@ -1,7 +1,7 @@
 // Review page: AI read of the week plus a reply drafted in Anthony's voice.
 // Edit the draft, then send it as the check-in feedback or as a message.
 import { useEffect, useState } from 'react'
-import { Sparkles, RefreshCw, Send, MessageCircle } from 'lucide-react'
+import { Sparkles, RefreshCw, Send, MessageCircle, Mic } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { callApi, notifyEvent } from '../../lib/push'
 import { useAuth } from '../../context/AuthContext'
@@ -21,10 +21,17 @@ export default function AiCheckinCard({ profile, review, checkin, weekStart, onF
     setBusy('ai'); setNote(null)
     try {
       const facts = checkinFacts({ profile, review, checkin, weekStart })
-      const out = await callApi('/api/checkin-ai', { checkinId: checkin?.id || null, facts, refresh })
+      const out = await callApi('/api/checkin-ai', { checkinId: checkin?.id || null, clientId: profile?.id || null, facts, refresh })
       setAi(out); setDraft(out.reply || '')
     } catch (e) { setNote({ ok: false, text: e.message }) }
     setBusy('')
+  }
+
+  // Keep the AI's draft next to what actually went out, so future drafts learn
+  // from Anthony's edits (Update 161). Never blocks the send.
+  async function logReply(channel, sent) {
+    if (!ai?.reply || !profile?.id) return
+    try { await supabase.from('ai_replies').insert({ checkin_id: checkin?.id || null, client_id: profile.id, draft: ai.reply, sent, channel }) } catch { /* ignore */ }
   }
 
   async function sendFeedback() {
@@ -33,6 +40,7 @@ export default function AiCheckinCard({ profile, review, checkin, weekStart, onF
     const { error } = await supabase.from('checkins').update({ coach_feedback: draft.trim() }).eq('id', checkin.id)
     setBusy('')
     if (error) return setNote({ ok: false, text: 'Could not save: ' + error.message })
+    logReply('feedback', draft.trim())
     setNote({ ok: true, text: 'Saved as their check-in feedback.' })
     coachBadgesChanged()
     onFeedbackSaved?.(draft.trim())
@@ -45,6 +53,7 @@ export default function AiCheckinCard({ profile, review, checkin, weekStart, onF
     setBusy('')
     if (error) return setNote({ ok: false, text: 'Could not send: ' + error.message })
     notifyEvent('message', { to: profile.id })
+    logReply('message', draft.trim())
     setNote({ ok: true, text: 'Sent to their Messages.' })
   }
 
@@ -89,6 +98,57 @@ export default function AiCheckinCard({ profile, review, checkin, weekStart, onF
         </>
       )}
       {note && <p style={{ fontSize: 13, color: note.ok ? 'var(--green)' : 'var(--red)', margin: 0 }}>{note.text}</p>}
+      <VoiceGuide />
+    </div>
+  )
+}
+
+const GUIDE_HINT = `How I open a reply:
+How I sign off (or don't):
+Phrases I actually use:
+Words I never use:
+When someone's crushing it, I:
+When someone's slipping, I:
+Emoji / caps / punctuation habits:`
+
+// Anthony's own notes on how he talks. Sent with every draft (Update 161).
+function VoiceGuide() {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const [saved, setSaved] = useState('')
+  const [state, setState] = useState('')
+
+  async function load() {
+    setOpen(true); setState('loading')
+    const { data, error } = await supabase.from('coach_voice').select('guide').eq('id', 1).maybeSingle()
+    if (error) return setState('Could not load your voice guide. Has migration_update161 been run?')
+    setText(data?.guide || ''); setSaved(data?.guide || ''); setState('')
+  }
+  async function save() {
+    setState('saving')
+    const { error } = await supabase.from('coach_voice').upsert({ id: 1, guide: text.trim(), updated_at: new Date().toISOString() })
+    if (error) return setState('Could not save: ' + error.message)
+    setSaved(text.trim()); setState('saved')
+  }
+
+  if (!open) return (
+    <button className="btn-ghost" onClick={load} style={{ alignSelf: 'flex-start', padding: '5px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+      <Mic size={13} /> My voice guide</button>
+  )
+  return (
+    <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+      <div className="eyebrow" style={{ marginBottom: 4 }}>My voice guide</div>
+      <p className="muted" style={{ fontSize: 12.5, margin: '0 0 6px' }}>
+        How you actually talk to clients. Every draft follows this, and it learns from the edits you make before sending.
+      </p>
+      <textarea value={text} onChange={e => { setText(e.target.value); if (state === 'saved') setState('') }} rows={9} placeholder={GUIDE_HINT}
+        disabled={state === 'loading'} style={{ width: '100%', fontSize: 14, lineHeight: 1.5 }} />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+        <button className="btn" onClick={save} disabled={state === 'saving' || state === 'loading' || text.trim() === saved}>{state === 'saving' ? 'Saving…' : 'Save'}</button>
+        <button className="btn-ghost" onClick={() => setOpen(false)}>Close</button>
+        {state === 'saved' && <span style={{ fontSize: 13, color: 'var(--green)' }}>Saved. Hit Redo to get a new draft with it.</span>}
+        {state && !['saved', 'saving', 'loading'].includes(state) && <span style={{ fontSize: 13, color: 'var(--red)' }}>{state}</span>}
+      </div>
     </div>
   )
 }
