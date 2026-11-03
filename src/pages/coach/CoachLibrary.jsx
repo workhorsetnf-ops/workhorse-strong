@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import FoodLibrary from './FoodLibrary'
 import RoutineLibrary from './RoutineLibrary'
 import SwapEditor from './SwapEditor'
-import { matchProgramExercises } from '../../lib/exmatch'
+import { matchProgramExercises, findUnmatched, confidence } from '../../lib/exmatch'
 
 const EMPTY_EX = { name: '', category: '', metric: 'reps', video_url: '', notes: '', icon_url: '' }
 const EMPTY_COND = { name: '', format: '', instructions: '', video_url: '' }
@@ -17,6 +17,8 @@ export default function CoachLibrary() {
   const [pushingId, setPushingId] = useState(null)
   const [alts, setAlts] = useState([])
   const [swapItem, setSwapItem] = useState(null)
+  const [matchPanel, setMatchPanel] = useState(null) // { rows:[unmatched + pick/ticked], fields, busy }
+  const [scanning, setScanning] = useState(false)
   const [pushPanel, setPushPanel] = useState(null)   // { item, groups, picked:Set(name), fields:{icon_url,video_url}, rename }
   const [cond, setCond] = useState([])
   const [life, setLife] = useState([])
@@ -106,6 +108,62 @@ export default function CoachLibrary() {
     alert(`Done. Updated ${ids.length} exercise${ids.length === 1 ? '' : 's'} across your programs.`)
   }
 
+  // Bulk clean-up: every program exercise name that isn't in the library,
+  // each paired with its most likely library exercise. Applying renames them
+  // to the library name and copies the library icon/video, so typed-in
+  // exercises become "library" exercises without editing them one by one.
+  async function scanUnmatched() {
+    setScanning(true)
+    const rows = []
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase.from('program_exercises').select('id, name, kind').range(from, from + 999)
+      if (error) { setScanning(false); alert('Could not load program exercises: ' + error.message); return }
+      rows.push(...(data || []))
+      if (!data || data.length < 1000) break
+    }
+    setScanning(false)
+    const list = findUnmatched(rows.filter(r => r.kind !== 'conditioning'), items).map(u => ({
+      ...u, pick: u.best ? u.best.id : '', ticked: !!u.best && confidence(u.score) === 'high',
+    }))
+    setMatchPanel({ rows: list, fields: { icon_url: true, video_url: true }, busy: false, done: null })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  async function applyMatches() {
+    const m = matchPanel
+    const chosen = m.rows.filter(r => r.ticked && r.pick)
+    if (!chosen.length) return
+    setMatchPanel({ ...m, busy: true })
+    const byLib = new Map()
+    for (const r of chosen) {
+      if (!byLib.has(r.pick)) byLib.set(r.pick, [])
+      byLib.get(r.pick).push(...r.ids)
+    }
+    let n = 0
+    for (const [libId, ids] of byLib) {
+      const lib = items.find(i => i.id === libId)
+      if (!lib) continue
+      const patch = { name: lib.name }
+      if (m.fields.icon_url && lib.icon_url) patch.icon_url = lib.icon_url
+      if (m.fields.video_url && lib.video_url) patch.video_url = lib.video_url
+      for (let i = 0; i < ids.length; i += 200) {
+        const { error } = await supabase.from('program_exercises').update(patch).in('id', ids.slice(i, i + 200))
+        if (error) { setMatchPanel({ ...m, busy: false }); alert(`Stopped after ${n} updates: ${error.message}`); return }
+        n += Math.min(200, ids.length - i)
+      }
+    }
+    const done = new Set(chosen.map(r => r.name))
+    setMatchPanel({ ...m, rows: m.rows.filter(r => !done.has(r.name)), busy: false, done: { exercises: n, names: chosen.length } })
+  }
+
+  // No library match at all: add the program's spelling to the library as-is.
+  async function addUnmatchedToLibrary(row) {
+    const { error } = await supabase.from('exercise_library').insert({ name: row.name.trim() })
+    if (error) { alert('Could not add: ' + error.message); return }
+    setMatchPanel(m => ({ ...m, rows: m.rows.filter(r => r.name !== row.name) }))
+    load()
+  }
+
   function editEx(i) {
     setEditingId(i.id)
     setForm({ name: i.name, category: i.category, metric: i.metric, video_url: i.video_url, notes: i.notes, icon_url: i.icon_url || '' })
@@ -171,6 +229,7 @@ export default function CoachLibrary() {
         <button className={tab === 'foods' ? 'btn' : 'btn-ghost'} onClick={() => { setTab('foods'); setEditingId(null) }}>Foods</button>
       </div>
 
+      {matchPanel && tab === 'exercises' && <MatchPanel m={matchPanel} setM={setMatchPanel} library={items} apply={applyMatches} addToLib={addUnmatchedToLibrary} />}
       {pushPanel && <PushPanel p={pushPanel} setP={setPushPanel} apply={applyPush} />}
       {swapItem && tab === 'exercises' && <SwapEditor item={swapItem} library={items} alts={alts} onChange={load} onClose={() => setSwapItem(null)} />}
       {tab === 'foods' && <FoodLibrary />}
@@ -206,7 +265,10 @@ export default function CoachLibrary() {
             </div>
           </div>
 
-          <input placeholder="Search exercises…" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 14 }} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14 }}>
+            <input placeholder="Search exercises…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: 1 }} />
+            <button className="btn-ghost" style={{ whiteSpace: 'nowrap' }} disabled={scanning} onClick={scanUnmatched}>{scanning ? 'Scanning programs…' : '⇄ Match program exercises'}</button>
+          </div>
 
           <table className="data">
             <thead><tr><th></th><th>Exercise</th><th>Category</th><th>Metric</th><th>Video</th><th>Note</th><th></th></tr></thead>
@@ -363,6 +425,73 @@ function PushPanel({ p, setP, apply }) {
           </label>
           <button className="btn" style={{ marginTop: 10, padding: '9px 16px', fontSize: 13 }} disabled={p.busy || !count || (!p.fields.icon_url && !p.fields.video_url && !p.rename)} onClick={apply}>
             {p.busy ? 'Applying…' : `Apply to ${count} exercise${count === 1 ? '' : 's'}`}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+const CONF_STYLE = {
+  high: { label: 'Strong match', color: 'var(--green, #3fb950)' },
+  medium: { label: 'Check this', color: 'var(--orange)' },
+  low: { label: 'Weak match', color: 'var(--red)' },
+  none: { label: 'No match found', color: 'var(--muted, #888)' },
+}
+
+function MatchPanel({ m, setM, library, apply, addToLib }) {
+  const sorted = [...library].sort((a, b) => a.name.localeCompare(b.name))
+  const setRow = (name, patch) => setM({ ...m, rows: m.rows.map(r => r.name === name ? { ...r, ...patch } : r) })
+  const chosen = m.rows.filter(r => r.ticked && r.pick)
+  const spots = chosen.reduce((s, r) => s + r.count, 0)
+  const tickAll = on => setM({ ...m, rows: m.rows.map(r => ({ ...r, ticked: on && !!r.pick })) })
+  return (
+    <div className="card" style={{ marginBottom: 14, borderColor: 'var(--orange)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <strong style={{ fontSize: 16 }}>Match program exercises to the library</strong>
+        <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setM(null)}>Close</button>
+      </div>
+      {m.done && <p style={{ fontSize: 14, margin: '4px 0 8px', color: 'var(--green, #3fb950)' }}>Done — {m.done.exercises} exercise{m.done.exercises === 1 ? '' : 's'} across your programs now use the library name{m.done.names === 1 ? '' : 's'}.</p>}
+      {!m.rows.length ? (
+        <p className="muted" style={{ fontSize: 14 }}>Every exercise in your programs matches a library exercise. Nothing to fix.</p>
+      ) : (
+        <>
+          <p className="muted" style={{ fontSize: 13, margin: '0 0 8px' }}>
+            {m.rows.length} name{m.rows.length === 1 ? '' : 's'} in your programs {m.rows.length === 1 ? "isn't" : "aren't"} in the library. Strong matches are ticked; check the rest and pick from the dropdown where needed. Ticked ones get renamed to the library name{m.fields.icon_url || m.fields.video_url ? ' and pick up its' : ''}{m.fields.icon_url ? ' icon' : ''}{m.fields.icon_url && m.fields.video_url ? ' and' : ''}{m.fields.video_url ? ' video' : ''}. Clients' logged history is kept.
+          </p>
+          <div style={{ display: 'flex', gap: 16, fontSize: 13, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" style={{ width: 'auto' }} checked={m.fields.icon_url} onChange={e => setM({ ...m, fields: { ...m.fields, icon_url: e.target.checked } })} /> Copy icon</label>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" style={{ width: 'auto' }} checked={m.fields.video_url} onChange={e => setM({ ...m, fields: { ...m.fields, video_url: e.target.checked } })} /> Copy video</label>
+            <span style={{ flex: 1 }} />
+            <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => tickAll(true)}>Tick all with a pick</button>
+            <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => tickAll(false)}>Untick all</button>
+          </div>
+          <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+            {m.rows.map(r => {
+              const opt = r.options.find(o => o.item.id === r.pick)
+              const cs = !r.pick ? CONF_STYLE.none : opt ? CONF_STYLE[confidence(opt.score)] : { label: 'Your pick', color: 'var(--orange)' }
+              const suggested = new Set(r.options.map(o => o.item.id))
+              return (
+                <div key={r.name} style={{ display: 'grid', gridTemplateColumns: '24px minmax(0,1fr) minmax(0,1.2fr)', gap: 10, alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--line)' }}>
+                  <input type="checkbox" disabled={!r.pick} checked={r.ticked && !!r.pick} onChange={e => setRow(r.name, { ticked: e.target.checked })} style={{ width: 18, height: 18, accentColor: 'var(--orange)' }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, overflowWrap: 'anywhere' }}>{r.name}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>in {r.count} program spot{r.count === 1 ? '' : 's'} · <span style={{ color: cs.color }}>{r.pick ? cs.label : r.options.length ? 'Several possible — pick one' : cs.label}</span></div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
+                    <select value={r.pick} onChange={e => setRow(r.name, { pick: e.target.value, ticked: !!e.target.value })} style={{ flex: 1, minWidth: 0 }}>
+                      <option value="">— leave as is —</option>
+                      {r.options.length > 0 && <optgroup label="Suggested">{r.options.map(o => <option key={o.item.id} value={o.item.id}>{o.item.name}</option>)}</optgroup>}
+                      <optgroup label="All library exercises">{sorted.filter(x => !suggested.has(x.id)).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</optgroup>
+                    </select>
+                    {!r.pick && <button className="btn-ghost" style={{ padding: '4px 8px', fontSize: 12, whiteSpace: 'nowrap' }} title="Add this name to the library as a new exercise" onClick={() => addToLib(r)}>+ Library</button>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <button className="btn" style={{ marginTop: 12, padding: '10px 18px', fontSize: 13 }} disabled={m.busy || !chosen.length} onClick={apply}>
+            {m.busy ? 'Applying…' : `Apply ${chosen.length} match${chosen.length === 1 ? '' : 'es'} (${spots} exercise${spots === 1 ? '' : 's'})`}
           </button>
         </>
       )}
