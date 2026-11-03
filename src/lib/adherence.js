@@ -59,7 +59,7 @@ export function expectedSessions(prog, weekStart) {
   if (!a || !prog.blocks?.length) return null
   let block, weekInBlock
   if (a.week_mode === 'auto' && a.start_date) {
-    const wk = Math.floor(daysBetween(a.start_date, weekStart) / 7) + 1
+    const wk = Math.floor(daysBetween(addDays(a.start_date, -mondayIndex(a.start_date)), weekStart) / 7) + 1 // Monday weeks (Update 162)
     if (wk < 1) return null                       // program hadn't started that week
     const r = resolveBlockWeek(prog.blocks, wk)
     if (!r) return null                           // program had run out

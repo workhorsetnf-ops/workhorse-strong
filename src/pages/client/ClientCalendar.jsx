@@ -2,17 +2,15 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { localDateStr, daysBetween } from '../../lib/weeks'
-import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, withMoves } from '../../lib/conditioning'
+import { localDateStr } from '../../lib/weeks'
+import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, loadProgramSchedule, sessionsOnDate } from '../../lib/conditioning'
 import { eventsOn, eventIcons, EVENT_KINDS } from '../../lib/clientEvents'
 import ShowsTravel from './ShowsTravel'
 
 export default function ClientCalendar() {
   const { profile } = useAuth()
   const navigate = useNavigate()
-  const [startDate, setStartDate] = useState(null)
-  const [allBlocks, setAllBlocks] = useState([])
-  const [daysByBlock, setDaysByBlock] = useState({})   // blockId -> [days]
+  const [schedule, setSchedule] = useState(undefined) // undefined = loading, null = no program
   const [dailyLogDates, setDailyLogDates] = useState(new Set())
   const [lastCheckin, setLastCheckin] = useState(null)
   const [checkinFormId, setCheckinFormId] = useState(null)
@@ -25,19 +23,8 @@ export default function ClientCalendar() {
 
   useEffect(() => {
     if (!profile) return
-    supabase.from('program_assignments').select('program_id, start_date').eq('client_id', profile.id).maybeSingle()
-      .then(async ({ data }) => {
-        if (!data) return
-        setStartDate(data.start_date || null)
-        const { data: blocks } = await supabase.from('program_blocks').select('*').eq('program_id', data.program_id).order('position')
-        setAllBlocks(blocks || [])
-        const byBlock = {}
-        for (const b of blocks || []) {
-          const { data: d } = await supabase.from('program_days').select('*').eq('block_id', b.id).order('day_number').order('position')
-          byBlock[b.id] = d || []
-        }
-        setDaysByBlock(byBlock)
-      })
+    // Same block, week and A/B rotation as the Train tab; Day 1 = Monday (Update 162)
+    loadProgramSchedule(supabase, profile.id).then(setSchedule).catch(() => setSchedule(null))
     loadEvents()
     supabase.from('session_moves').select('*').eq('client_id', profile.id)
       .then(({ data }) => setMoves(data || []))
@@ -47,39 +34,19 @@ export default function ClientCalendar() {
       .then(({ data }) => setLastCheckin(data?.submitted_at || null))
   }, [profile])
 
-  function resolveBlock(diff) {
-    const wkOverall = Math.floor(diff / 7) + 1
-    let cursor = 0
-    for (const b of allBlocks) {
-      if (wkOverall <= cursor + (b.weeks || 4)) return { blk: b, wkInBlock: wkOverall - cursor }
-      cursor += (b.weeks || 4)
-    }
-    return null
-  }
-
   const { y, m } = month
   const first = new Date(y, m, 1)
   const offset = (first.getDay() + 6) % 7
   const numDays = new Date(y, m + 1, 0).getDate()
   const cells = [...Array(offset).fill(null), ...Array.from({ length: numDays }, (_, i) => i + 1)]
   const monthName = first.toLocaleString('default', { month: 'long', year: 'numeric' })
+  const startDate = schedule?.assignment?.start_date || null
   const sd = startDate ? new Date(startDate + 'T00:00:00') : null
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const lastCheckinDate = lastCheckin ? new Date(lastCheckin) : (sd || null)
 
   function daySessions(dayNum) {
-    const ymd = localDateStr(new Date(y, m, dayNum))
-    return withMoves(ymd, scheduledOn(ymd), scheduledOn, moves)
-  }
-  function scheduledOn(ymd) {
-    if (!sd || allBlocks.length === 0) return []
-    // whole calendar days, so a DST changeover can't shift a session a day
-    const diff = daysBetween(startDate, new Date(ymd + 'T00:00:00'))
-    if (diff === null || diff < 0) return []
-    const resolved = resolveBlock(diff)
-    if (!resolved) return []
-    const dn = (diff % 7) + 1
-    return (daysByBlock[resolved.blk.id] || []).filter(d => d.day_number === dn).map(d => ({ ...d, wk: resolved.wkInBlock, blockName: resolved.blk.name }))
+    return sessionsOnDate(localDateStr(new Date(y, m, dayNum)), schedule, moves)
   }
 
   function isCheckinDue(dayNum) {
@@ -97,7 +64,7 @@ export default function ClientCalendar() {
   const selDate = selected ? new Date(y, m, selected) : null
 
   function openWorkout(s) {
-    navigate('/app/training', { state: { targetBlockId: s.block_id, targetWeek: s.wk, targetDayNumber: s.day_number } })
+    navigate('/app/training', { state: { targetBlockId: s.block_id, targetWeek: s.wk, targetDayNumber: s.day_number, targetDayId: s.id } })
   }
 
   return (
@@ -115,7 +82,7 @@ export default function ClientCalendar() {
           <strong style={{ fontSize: 14, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{monthName}</strong>
           <button className="btn-ghost" style={{ padding: '6px 12px' }} onClick={() => setMonth(({ y, m }) => m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 })}>›</button>
         </div>
-        {!sd && <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>No program start date set yet — ask your coach.</p>}
+        {schedule === null && <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>No program assigned yet. Ask your coach.</p>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 4 }}>
           {['M','T','W','T','F','S','S'].map((d, i) => <div key={i} style={{ textAlign: 'center' }}>{d}</div>)}
         </div>

@@ -8,6 +8,7 @@ import ClientDashboard from './ClientDashboard'
 import { RemindersPrompt } from '../ReminderSettings'
 import Avatar from '../Avatar'
 import QuickCheckin from './QuickCheckin'
+import TodayCard from './TodayCard'
 import AnnouncementBanner from './AnnouncementBanner'
 import NextCallCard from './NextCallCard'
 import SetupChecklist from './SetupChecklist'
@@ -167,6 +168,7 @@ export default function ClientHome() {
       </header>
 
       <AnnouncementBanner profile={profile} />
+      <TodayCard profile={profile} />
       <NextCallCard profile={profile} />
       <ShowFuelCard profile={profile} />
       <SetupChecklist profile={profile} onVisible={setSetupShown} />

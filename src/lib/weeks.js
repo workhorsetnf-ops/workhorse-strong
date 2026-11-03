@@ -21,12 +21,28 @@ export function daysBetween(startDate, date = new Date()) {
   return dayIndex(date) - dayIndex(sd)
 }
 
+// Program weeks run Monday to Sunday, and Day 1 is always Monday (Update 162).
+// Week 1 is the Monday-to-Sunday week the start date falls in, so a client who
+// starts on a Thursday is on week 2 the following Monday, same as everyone else.
+const ymdOf = d => (typeof d === 'string' ? d : localDateStr(d))
+// 1 = Monday … 7 = Sunday
+export function weekdayNumber(date = new Date()) {
+  const [y, m, d] = ymdOf(date).split('-').map(Number)
+  return ((new Date(y, m - 1, d).getDay() + 6) % 7) + 1
+}
+// Monday-based week number; can be 0 or negative for weeks before the start.
+export function weekNumberOf(startDate, date = new Date()) {
+  if (!startDate) return null
+  const diff = daysBetween(mondayOf(startDate), new Date(mondayOf(ymdOf(date)) + 'T00:00:00'))
+  return diff === null ? null : Math.floor(diff / 7) + 1
+}
+
 // Overall week of the whole program (1-based). Null if no start date or the
 // start date is still in the future.
 export function overallWeek(startDate, date = new Date()) {
-  const diff = daysBetween(startDate, date)
+  const diff = daysBetween(startDate, typeof date === 'string' ? new Date(date + 'T00:00:00') : date)
   if (diff === null || diff < 0) return null
-  return Math.floor(diff / 7) + 1
+  return weekNumberOf(startDate, date)
 }
 
 // Walk the ordered blocks to turn an overall week into { block, weekInBlock }.
@@ -47,14 +63,14 @@ export function resolveBlockWeek(blocks, wkOverall) {
 // 'manual' -> whatever the coach last set on the assignment
 // Auto falls back to manual if there's no usable start date or the program has
 // already run out, so a client is never left with no workout to look at.
-export function resolveAssignment(assignment, blocks) {
+export function resolveAssignment(assignment, blocks, date = new Date()) {
   const manual = {
     block: blocks?.find(b => b.id === assignment?.current_block_id) || blocks?.[0] || null,
     weekInBlock: assignment?.current_week || 1,
     source: 'manual',
   }
   if (assignment?.week_mode !== 'auto') return manual
-  const wk = overallWeek(assignment.start_date)
+  const wk = overallWeek(assignment.start_date, date)
   if (!wk) return { ...manual, source: 'manual-fallback' }
   const r = resolveBlockWeek(blocks, wk)
   if (!r) return { ...manual, source: 'manual-fallback' }
