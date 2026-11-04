@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import FoodLibrary from './FoodLibrary'
 import RoutineLibrary from './RoutineLibrary'
 import SwapEditor from './SwapEditor'
+import VideoFinder from './VideoFinder'
 import { matchProgramExercises, findUnmatched, confidence } from '../../lib/exmatch'
 
 const EMPTY_EX = { name: '', category: '', metric: 'reps', video_url: '', notes: '', icon_url: '' }
@@ -19,6 +20,8 @@ export default function CoachLibrary() {
   const [swapItem, setSwapItem] = useState(null)
   const [matchPanel, setMatchPanel] = useState(null) // { rows:[unmatched + pick/ticked], fields, busy }
   const [scanning, setScanning] = useState(false)
+  const [finder, setFinder] = useState(null) // exercises to find videos for, one at a time (Update 163)
+  const [finderNote, setFinderNote] = useState('')
   const [pushPanel, setPushPanel] = useState(null)   // { item, groups, picked:Set(name), fields:{icon_url,video_url}, rename }
   const [cond, setCond] = useState([])
   const [life, setLife] = useState([])
@@ -231,6 +234,12 @@ export default function CoachLibrary() {
 
       {matchPanel && tab === 'exercises' && <MatchPanel m={matchPanel} setM={setMatchPanel} library={items} apply={applyMatches} addToLib={addUnmatchedToLibrary} />}
       {pushPanel && <PushPanel p={pushPanel} setP={setPushPanel} apply={applyPush} />}
+      {finder && tab === 'exercises' && (
+        <VideoFinder key={finder.key} queue={finder.queue}
+          onSaved={(id, url) => setItems(list => list.map(x => (x.id === id ? { ...x, video_url: url } : x)))}
+          onClose={n => { setFinder(null); setFinderNote(n ? `Saved ${n} video${n === 1 ? '' : 's'}.` : ''); load() }} />
+      )}
+      {finderNote && tab === 'exercises' && !finder && <p style={{ fontSize: 13, color: 'var(--green)', margin: '0 0 12px' }}>{finderNote}</p>}
       {swapItem && tab === 'exercises' && <SwapEditor item={swapItem} library={items} alts={alts} onChange={load} onClose={() => setSwapItem(null)} />}
       {tab === 'foods' && <FoodLibrary />}
       {tab === 'routines' && <RoutineLibrary />}
@@ -267,6 +276,10 @@ export default function CoachLibrary() {
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14 }}>
             <input placeholder="Search exercises…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: 1 }} />
+            {items.some(i => !i.video_url) && (
+              <button className="btn" style={{ whiteSpace: 'nowrap' }} onClick={() => { setFinderNote(''); setFinder({ key: Date.now(), queue: items.filter(i => !i.video_url) }); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
+                🎬 Find videos ({items.filter(i => !i.video_url).length} missing)</button>
+            )}
             <button className="btn-ghost" style={{ whiteSpace: 'nowrap' }} disabled={scanning} onClick={scanUnmatched}>{scanning ? 'Scanning programs…' : '⇄ Match program exercises'}</button>
           </div>
 
@@ -279,7 +292,11 @@ export default function CoachLibrary() {
                   <td style={{ fontWeight: 700 }}>{i.name}</td>
                   <td className="muted">{i.category || '—'}</td>
                   <td className="muted">{metricLabel[i.metric]}</td>
-                  <td>{i.video_url ? <a href={i.video_url} target="_blank" rel="noreferrer">▶ Link</a> : <span className="muted">—</span>}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {i.video_url ? <a href={i.video_url} target="_blank" rel="noreferrer">▶ Link</a> : <span className="muted">—</span>}
+                    <button className="btn-ghost" title={i.video_url ? 'Find a different video' : 'Find a video'} style={{ padding: '2px 7px', fontSize: 11, marginLeft: 6 }}
+                      onClick={() => { setFinderNote(''); setFinder({ key: Date.now(), queue: [i] }); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>🔍</button>
+                  </td>
                   <td className="muted" style={{ maxWidth: 240 }}>{i.notes || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {i.icon_url && <button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} disabled={pushingId === `${i.id}:icon_url`} onClick={() => pushEverywhere(i, 'icon_url')}>{pushingId === `${i.id}:icon_url` ? 'Applying…' : 'Push icon'}</button>}
