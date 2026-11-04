@@ -1,7 +1,8 @@
+import TrainingDays from '../../components/TrainingDays'
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { normalizeTarget, normalizeReps, dash, effortText, effortMeaning } from '../../lib/targets'
-import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets, localDateStr } from '../../lib/weeks'
+import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, resolveBlockWeek, setTargets, compactSetRows, repsSummary, targetSummary, hasVariedSets, localDateStr, WEEKDAY_SHORT } from '../../lib/weeks'
 import { CONDITIONING_COLOR, trackColor } from '../../lib/conditioning'
 import { parseProgramText, parseBlockText, blockExerciseRows, buildLibraryIndex, findInLibrary, withLibrary } from '../../lib/parse'
 import NotesBox from './NotesBox'
@@ -626,11 +627,15 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
   )
 }
 
+// Short label for a client's custom days, e.g. "D1 Tue, D4 Sat"
+const daysLabel = map => Object.entries(map || {}).sort((a, b) => a[0] - b[0]).map(([dn, wd]) => `D${dn} ${WEEKDAY_SHORT[wd - 1]}`).join(', ') || 'program'
+
 export default function CoachPrograms() {
   const [programs, setPrograms] = useState([])
   const [clients, setClients] = useState([])
   const [assignments, setAssignments] = useState([])
   const [open, setOpen] = useState(null)          // program id open
+  const [daysFor, setDaysFor] = useState(null)    // assignment id with its training-days editor open (Update 164)
   const [blocks, setBlocks] = useState({})        // programId -> [blocks]
   const [openBlock, setOpenBlock] = useState(null) // block id open
   const [viewWeek, setViewWeek] = useState(1)
@@ -1595,6 +1600,10 @@ export default function CoachPrograms() {
                       </select>
                       <span className="muted">starts</span>
                       <input type="date" style={{ width: 'auto', padding: '4px 8px', fontSize: 13 }} value={a.start_date || ''} onChange={e => setStartDate(a.id, e.target.value)} title="Block 1 / Week 1 / Day 1 date" />
+                      <button className={a.day_map ? 'btn' : 'btn-ghost'} style={{ padding: '4px 10px', fontSize: 12 }}
+                        title="Pick which weekday each program day runs on for this client"
+                        onClick={() => setDaysFor(daysFor === a.id ? null : a.id)}>
+                        🗓 {a.day_map ? `Days: ${daysLabel(a.day_map)}` : 'Days'}</button>
                       <button className={auto ? 'btn' : 'btn-ghost'} style={{ padding: '4px 10px', fontSize: 12 }}
                         title={a.start_date
                           ? 'Advance this client\u2019s week automatically from their start date'
@@ -1614,6 +1623,13 @@ export default function CoachPrograms() {
                         <span className="muted" style={{ fontSize: 12, opacity: 0.75 }}>
                           auto would be {derived.block.name} · wk {derived.weekInBlock}
                         </span>
+                      )}
+                      {daysFor === a.id && (
+                        <div style={{ flexBasis: '100%', marginTop: 6 }}>
+                          <TrainingDays asCoach programId={p.id} assignmentId={a.id} initialMap={a.day_map}
+                            clientName={clients.find(c => c.id === a.client_id)?.full_name || ''}
+                            onClose={() => setDaysFor(null)} onSaved={() => load()} />
+                        </div>
                       )}
                     </div>
                     )

@@ -82,7 +82,7 @@ export default function ClientDashboard({ profile }) {
         supabase.from('program_days').select('*').eq('block_id', pos.block.id),
         supabase.from('program_rotations').select('*').eq('block_id', pos.block.id).order('position'),
       ])
-      setProg({ start: data.start_date, name: pg?.name || 'Your program', blockName: pos.block.name, week: pos.weekInBlock, weeks: pos.block.weeks, blockDays: bd || [], rotations: rots || [] })
+      setProg({ start: data.start_date, name: pg?.name || 'Your program', blockName: pos.block.name, week: pos.weekInBlock, weeks: pos.block.weeks, blockDays: bd || [], rotations: rots || [], dayMap: data.day_map || null })
     })
     supabase.from('profiles').select('full_name').eq('role', 'coach').limit(1).then(({ data }) => setCoachName(data?.[0]?.full_name || ''))
     loadTodos()
@@ -221,7 +221,7 @@ export default function ClientDashboard({ profile }) {
 
       <Section title="Weekly training split" right={prog && !prog.none ? <Link to="/app/training" style={{ fontSize: 11.5, fontWeight: 800 }}>{prog.name}{prog.blockName ? ` · ${prog.blockName}` : ''} · Wk {prog.week}{prog.weeks ? `/${prog.weeks}` : ''} →</Link> : null}>
         <div style={{ borderRadius: 8, overflow: 'hidden' }}>
-          {(prog && !prog.none ? splitForWeek(days, { startDate: prog.start, blockDays: prog.blockDays, rotations: prog.rotations, weekInBlock: prog.week, showsInWeek: dayShowsInWeek }) : days.map(date => ({ date, sessions: [] }))).map(({ date: d, sessions: s }, i) => {
+          {(prog && !prog.none ? splitForWeek(days, { startDate: prog.start, blockDays: prog.blockDays, rotations: prog.rotations, weekInBlock: prog.week, showsInWeek: dayShowsInWeek, dayMap: prog.dayMap }) : days.map(date => ({ date, sessions: [] }))).map(({ date: d, sessions: s }, i) => {
             const isToday = d === today
             const rest = !s.length
             return (

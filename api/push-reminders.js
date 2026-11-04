@@ -79,7 +79,7 @@ async function gatherFacts(sb, clients, today, tz, prefs) {
       sb.from('program_days').select('*').eq('block_id', pos.block.id),
       sb.from('program_rotations').select('*').eq('block_id', pos.block.id).order('position'),
     ])
-    const [row] = splitForWeek([today], { startDate: a.start_date, blockDays: days || [], rotations: rots || [], weekInBlock: pos.weekInBlock, showsInWeek: dayShowsInWeek })
+    const [row] = splitForWeek([today], { startDate: a.start_date, blockDays: days || [], rotations: rots || [], weekInBlock: pos.weekInBlock, showsInWeek: dayShowsInWeek, dayMap: a.day_map })
     sessions[a.client_id] = row.sessions.map(s => s.day_label || `Day ${s.day_number}`)
   }
 

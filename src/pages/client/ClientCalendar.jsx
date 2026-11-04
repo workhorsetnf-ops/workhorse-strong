@@ -6,11 +6,13 @@ import { localDateStr } from '../../lib/weeks'
 import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, loadProgramSchedule, sessionsOnDate } from '../../lib/conditioning'
 import { eventsOn, eventIcons, EVENT_KINDS } from '../../lib/clientEvents'
 import ShowsTravel from './ShowsTravel'
+import TrainingDays from '../../components/TrainingDays'
 
 export default function ClientCalendar() {
   const { profile } = useAuth()
   const navigate = useNavigate()
   const [schedule, setSchedule] = useState(undefined) // undefined = loading, null = no program
+  const [daysOpen, setDaysOpen] = useState(false)
   const [dailyLogDates, setDailyLogDates] = useState(new Set())
   const [lastCheckin, setLastCheckin] = useState(null)
   const [checkinFormId, setCheckinFormId] = useState(null)
@@ -75,6 +77,12 @@ export default function ClientCalendar() {
       </header>
 
       <ShowsTravel profile={profile} events={events} onChange={loadEvents} />
+
+      {schedule && (daysOpen
+        ? <TrainingDays programId={schedule.assignment.program_id} initialMap={schedule.assignment.day_map} onClose={() => setDaysOpen(false)}
+            onSaved={m => setSchedule(sc => ({ ...sc, assignment: { ...sc.assignment, day_map: m } }))} />
+        : <button className="btn-ghost" onClick={() => setDaysOpen(true)} style={{ alignSelf: 'flex-start', padding: '8px 14px', fontSize: 13 }}>
+            🗓 {schedule.assignment.day_map ? 'Change my training days' : 'Train on different days?'}</button>)}
 
       <div className="card" style={{ padding: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
