@@ -2428,4 +2428,3 @@ begin
 end $$;
 revoke all on function public.set_my_training_days(jsonb) from public, anon;
 grant execute on function public.set_my_training_days(jsonb) to authenticated;
-
