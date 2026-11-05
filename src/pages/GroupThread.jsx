@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { notifyEvent } from '../lib/push'
 import VoiceRecorder from '../lib/VoiceRecorder'
+import MessageBox from '../components/MessageBox'
 import Avatar from './Avatar'
 import { clearShownNotifications, badgesChanged } from '../lib/push'
 
@@ -159,15 +160,13 @@ export default function GroupThread({ group, profile, isCoach = false, onManage,
       {group.archived ? (
         <p className="muted" style={{ fontSize: 13, textAlign: 'center', padding: '10px 0' }}>This group is archived — it's read-only.</p>
       ) : (
-        <div style={{ display: 'flex', gap: 8, paddingTop: 8 }}>
-          <input placeholder={`Message ${group.name}…`} value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} />
+        <MessageBox value={text} onChange={setText} onSend={send} placeholder={`Message ${group.name}…`}>
           <label className="btn-ghost" style={{ padding: '10px 14px', cursor: 'pointer' }} title="Attach a file">
             {attaching ? '…' : '📎'}
             <input type="file" style={{ display: 'none' }} disabled={attaching} onChange={e => { sendFile(e.target.files[0]); e.target.value = '' }} />
           </label>
           <VoiceRecorder userId={profile.id} bucket={GROUP_BUCKET} folder={folder} onSent={sendVoice} />
-          <button className="btn" onClick={send}>Send</button>
-        </div>
+        </MessageBox>
       )}
     </div>
   )

@@ -4,6 +4,7 @@ import { notifyEvent, clearShownNotifications } from '../../lib/push'
 import { coachBadgesChanged } from '../../lib/coachBadges'
 import Avatar from '../Avatar'
 import { useAuth } from '../../context/AuthContext'
+import MessageBox from '../../components/MessageBox'
 import VoiceRecorder from '../../lib/VoiceRecorder'
 import GroupThread from '../GroupThread'
 import { NewGroup, ManageGroup, Broadcast } from './GroupPanels'
@@ -335,16 +336,14 @@ export default function CoachMessages() {
                     </div>
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 8, paddingTop: 8 }}>
+                <MessageBox value={text} onChange={setText} onSend={send} placeholder={`Message ${active.full_name}…`}>
                   <button className="btn-ghost" style={{ padding: '10px 12px' }} title="Quick replies" onClick={() => setShowTemplates(s => !s)}>💬</button>
-                  <input placeholder={`Message ${active.full_name}…`} value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} />
                   <label className="btn-ghost" style={{ padding: '10px 14px', cursor: 'pointer' }} title="Attach a file">
                     {attaching ? '…' : '📎'}
                     <input type="file" style={{ display: 'none' }} disabled={attaching} onChange={e => sendFile(e.target.files[0])} />
                   </label>
                   <VoiceRecorder userId={profile.id} onSent={sendVoice} />
-                  <button className="btn" onClick={send}>Send</button>
-                </div>
+                </MessageBox>
               </>}
         </div>
       </div>
