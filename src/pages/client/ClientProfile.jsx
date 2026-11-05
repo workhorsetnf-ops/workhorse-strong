@@ -1,3 +1,4 @@
+import { GroupMembershipCard } from './GroupMembership'
 // "My profile": the client keeps their own details up to date. Coach-set items
 // (phase, macros, check-in day, targets) are shown read-only; the database only
 // accepts the personal fields from a client anyway.
@@ -78,6 +79,7 @@ export default function ClientProfile() {
         <p className="muted" style={{ fontSize: 14 }}>Keep this up to date so your coach is working from the right numbers.</p>
       </header>
 
+      <GroupMembershipCard />
       <form className="card" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={save}>
         <div className="eyebrow">Your details</div>
         <AvatarPicker userId={profile?.id} url={profile?.avatar_url} name={form.full_name || profile?.full_name} onChange={() => refreshProfile?.()} />

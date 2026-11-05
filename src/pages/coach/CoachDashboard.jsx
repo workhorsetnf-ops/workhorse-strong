@@ -8,9 +8,10 @@ import ReminderSettings from '../ReminderSettings'
 import {
   LayoutDashboard, Users, Bell, Video, Trophy, FileText, BookOpen, Map, Users2,
   ClipboardList, Library, ListChecks, CalendarCheck, MessageCircle, Quote, Target, Webcam,
-  FileCheck2, ClipboardSignature, Copy, BellRing, Gauge } from 'lucide-react'
+  FileCheck2, ClipboardSignature, Copy, BellRing, Gauge, UsersRound } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import CoachHome from './CoachHome'
+import CoachGroup from './CoachGroup'
 import CoachClients from './CoachClients'
 import CoachPrograms from './CoachPrograms'
 import CoachLibrary from './CoachLibrary'
@@ -80,6 +81,7 @@ export default function CoachDashboard() {
         <NavLink to="/coach" end><LayoutDashboard size={17} strokeWidth={2} /><span>Home</span></NavLink>
         <NavLink to="/coach/pipeline"><Target size={17} strokeWidth={2} /><span>Pipeline</span></NavLink>
         <NavLink to="/coach/clients"><Users size={17} strokeWidth={2} /><span>Clients</span></NavLink>
+        <NavLink to="/coach/group"><UsersRound size={17} strokeWidth={2} /><span>Group</span></NavLink>
         <NavLink to="/coach/alerts"><Bell size={17} strokeWidth={2} /><span>Alerts</span></NavLink>
         <Item to="/coach/form-checks" icon={Video} label="Form Checks" n={badges.formChecks} />
         <NavLink to="/coach/challenges"><Trophy size={17} strokeWidth={2} /><span>Challenges</span></NavLink>
@@ -107,6 +109,7 @@ export default function CoachDashboard() {
           <Route index element={<CoachHome />} />
           <Route path="pipeline" element={<CoachPipeline />} />
           <Route path="clients" element={<CoachClients />} />
+          <Route path="group" element={<CoachGroup />} />
           <Route path="programs" element={<CoachPrograms />} />
           <Route path="templates" element={<CoachTemplates />} />
           <Route path="library" element={<CoachLibrary />} />

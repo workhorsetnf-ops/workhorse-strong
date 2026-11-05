@@ -10,7 +10,7 @@ export default function SetupStatusCard() {
   const [open, setOpen] = useState(false)
   useEffect(() => {
     (async () => {
-      const { data: clients } = await supabase.from('profiles').select('id, full_name').eq('role', 'client').eq('status', 'active')
+      const { data: clients } = await supabase.from('profiles').select('id, full_name').eq('role', 'client').eq('status', 'active').neq('plan', 'group')
       const ids = (clients || []).map(c => c.id)
       if (!ids.length) return setRows([])
       const ninety = new Date(Date.now() - 90 * 864e5).toISOString()

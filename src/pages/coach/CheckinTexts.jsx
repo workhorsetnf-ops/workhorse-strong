@@ -28,7 +28,7 @@ export default function CheckinTexts() {
 
   async function load() {
     const [{ data: cl }, { data: ck }, tx, st] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, phone, status, checkin_day, checkin_frequency, start_date, avatar_url').eq('role', 'client'),
+      supabase.from('profiles').select('id, full_name, phone, status, checkin_day, checkin_frequency, start_date, avatar_url').eq('role', 'client').neq('plan', 'group'),
       supabase.from('checkins').select('client_id, submitted_at').gte('submitted_at', addDays(today, -60)).order('submitted_at', { ascending: false }),
       supabase.from('checkin_texts').select('client_id, slot, texted_at').eq('for_date', today),
       supabase.from('checkin_text_settings').select('*').eq('id', 1).maybeSingle(),

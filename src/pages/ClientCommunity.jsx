@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import VoiceRecorder from '../lib/VoiceRecorder'
 import Avatar from './Avatar'
+import { Link } from 'react-router-dom'
 import { COMMUNITY_BUCKET, MAX_VIDEO_SECONDS, checkAttachments, mediaKind, mediaPath, prepareImage, videoSeconds } from '../lib/media'
 
 // Shared community feed — used by both client and coach views.
@@ -98,6 +99,8 @@ export default function ClientCommunity({ isCoach = false }) {
   const [pollMode, setPollMode] = useState(false)
   const [pollOpts, setPollOpts] = useState(['', ''])
   const [pollOptions, setPollOptions] = useState({}) // postId -> options
+  const [chats, setChats] = useState([])           // group chats this client is in (Update 166)
+  useEffect(() => { if (!isCoach) supabase.rpc('my_groups').then(({ data, error }) => { if (!error) setChats(data || []) }) }, [isCoach])
   const [pollVotes, setPollVotes] = useState({})     // postId -> votes
   const [mediaReady, setMediaReady] = useState(true) // false until migration 138 is run
 
@@ -274,6 +277,15 @@ export default function ClientCommunity({ isCoach = false }) {
         <header>
           <div className="eyebrow">Roster</div>
           <h1 style={{ fontSize: 24, marginTop: 4 }}>Community</h1>
+          {profile?.plan === 'group' && chats.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginTop: 10 }}>
+              {chats.map(g => (
+                <Link key={g.id} to="/app/messages" state={{ group: g.id }} className="btn-ghost" style={{ padding: '7px 12px', fontSize: 13, whiteSpace: 'nowrap', textDecoration: 'none', position: 'relative' }}>
+                  👥 {g.name}{g.unread > 0 && <span style={{ position: 'absolute', top: 3, right: 3, width: 8, height: 8, borderRadius: 4, background: 'var(--orange)' }} />}
+                </Link>
+              ))}
+            </div>
+          )}
         </header>
       )}
       {isCoach && (

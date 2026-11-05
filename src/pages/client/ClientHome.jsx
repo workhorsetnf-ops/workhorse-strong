@@ -169,7 +169,7 @@ export default function ClientHome() {
 
       <AnnouncementBanner profile={profile} />
       <TodayCard profile={profile} />
-      <NextCallCard profile={profile} />
+      {profile?.plan !== 'group' && <NextCallCard profile={profile} />}
       <ShowFuelCard profile={profile} />
       <SetupChecklist profile={profile} onVisible={setSetupShown} />
       <WinsCard profile={profile} />
@@ -262,7 +262,7 @@ export default function ClientHome() {
             <div style={{ fontSize: 11, fontWeight: 700 }}>Calendar</div>
           </div>
         </Link>
-        {bookingUrl && (
+        {bookingUrl && profile?.plan !== 'group' && (
           <a href={bookingUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
             <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
               <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><PhoneCall size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
@@ -306,18 +306,22 @@ export default function ClientHome() {
             <div style={{ fontSize: 11, fontWeight: 700 }}>Cardio</div>
           </div>
         </Link>
-        <Link to="/app/bloodwork" style={{ textDecoration: 'none' }}>
-          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
-            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><Droplet size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Bloodwork</div>
-          </div>
-        </Link>
-        <Link to="/app/roadmap" style={{ textDecoration: 'none' }}>
-          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
-            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><MapPin size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Roadmap</div>
-          </div>
-        </Link>
+        {profile?.plan !== 'group' && (
+          <Link to="/app/bloodwork" style={{ textDecoration: 'none' }}>
+            <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+              <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><Droplet size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Bloodwork</div>
+            </div>
+          </Link>
+        )}
+        {profile?.plan !== 'group' && (
+          <Link to="/app/roadmap" style={{ textDecoration: 'none' }}>
+            <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+              <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><MapPin size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Roadmap</div>
+            </div>
+          </Link>
+        )}
         <Link to="/app/resources" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
             <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><FileText size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
@@ -336,30 +340,36 @@ export default function ClientHome() {
             <div style={{ fontSize: 11, fontWeight: 700 }}>Hub / FAQ</div>
           </div>
         </Link>
-        <Link to="/app/intake-forms" style={{ textDecoration: 'none' }}>
-          <div className="card" style={{ textAlign: 'center', padding: '14px 6px', position: 'relative' }}>
-            {pendingForms > 0 && (
-              <span style={{ position: 'absolute', top: 6, right: 6, background: 'var(--orange)', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 20, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{pendingForms}</span>
-            )}
-            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><FileCheck2 size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Forms</div>
-          </div>
-        </Link>
-        <Link to="/app/documents" style={{ textDecoration: 'none' }}>
-          <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
-            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><FileStack size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Documents</div>
-          </div>
-        </Link>
-        <Link to="/app/contracts" style={{ textDecoration: 'none' }}>
-          <div className="card" style={{ textAlign: 'center', padding: '14px 6px', position: 'relative' }}>
-            {pendingContracts > 0 && (
-              <span style={{ position: 'absolute', top: 6, right: 6, background: 'var(--orange)', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 20, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{pendingContracts}</span>
-            )}
-            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><ClipboardSignature size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Contracts</div>
-          </div>
-        </Link>
+        {profile?.plan !== 'group' && (
+          <Link to="/app/intake-forms" style={{ textDecoration: 'none' }}>
+            <div className="card" style={{ textAlign: 'center', padding: '14px 6px', position: 'relative' }}>
+              {pendingForms > 0 && (
+                <span style={{ position: 'absolute', top: 6, right: 6, background: 'var(--orange)', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 20, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{pendingForms}</span>
+              )}
+              <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><FileCheck2 size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Forms</div>
+            </div>
+          </Link>
+        )}
+        {profile?.plan !== 'group' && (
+          <Link to="/app/documents" style={{ textDecoration: 'none' }}>
+            <div className="card" style={{ textAlign: 'center', padding: '14px 6px' }}>
+              <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><FileStack size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Documents</div>
+            </div>
+          </Link>
+        )}
+        {profile?.plan !== 'group' && (
+          <Link to="/app/contracts" style={{ textDecoration: 'none' }}>
+            <div className="card" style={{ textAlign: 'center', padding: '14px 6px', position: 'relative' }}>
+              {pendingContracts > 0 && (
+                <span style={{ position: 'absolute', top: 6, right: 6, background: 'var(--orange)', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 20, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{pendingContracts}</span>
+              )}
+              <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'center' }}><ClipboardSignature size={19} strokeWidth={2} color="var(--orange-hot)" /></div>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Contracts</div>
+            </div>
+          </Link>
+        )}
       </div>
 
       <div className="card">

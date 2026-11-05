@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import ClientMeasurements from './ClientMeasurements'
 import ClientPhotos from './ClientPhotos'
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
-import { Home, Dumbbell, Utensils, ClipboardCheck, LineChart, Video, Trophy, MessageCircle } from 'lucide-react'
+import { Home, Dumbbell, Utensils, ClipboardCheck, LineChart, Video, Trophy, MessageCircle, Users } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr } from '../../lib/weeks'
@@ -38,6 +38,7 @@ import ReminderSettings from '../ReminderSettings'
 import ClientProfile from './ClientProfile'
 import StepsSync from './StepsSync'
 import ClientRecords from './ClientRecords'
+import { isGroup, groupHasAccess, hiddenForGroup, GroupPaywall, GroupPaymentBanner } from './GroupMembership'
 
 function Dot() {
   return <span style={{ position: 'absolute', top: 4, right: '28%', width: 8, height: 8, borderRadius: '50%', background: 'var(--red)', border: '1.5px solid var(--coal)' }} />
@@ -64,8 +65,9 @@ export default function ClientApp() {
     const weeklyArgs = { checkinDay: profile.checkin_day, frequency: profile.checkin_frequency, startDate: profile.start_date, today,
       lastCheckin: lastCheckin?.submitted_at ? localDateStr(new Date(lastCheckin.submitted_at)) : null }
     const due = checkinDueDate(weeklyArgs)
-    const weeklyOpen = !due || due <= today
-    setWeekly(weeklyCheckin(weeklyArgs))
+    // group members have no weekly check-in (Update 166)
+    const weeklyOpen = !isGroup(profile) && (!due || due <= today)
+    setWeekly(isGroup(profile) ? null : weeklyCheckin(weeklyArgs))
     const quickOpen = quickDue(profile.adherence_tier, new Set((recentDays || []).filter(quickDone).map(r => r.log_date)), today)
     const checkinDue = weeklyOpen || quickOpen
 
@@ -115,13 +117,18 @@ export default function ClientApp() {
 
   // Update 159: coach-set lock, a day or more late -> Train / Eat / Log paused
   const locked = isLocked(profile?.checkin_lock, weekly)
+  const group = isGroup(profile)
+
+  // group member who hasn't paid (or whose membership ended): paywall only
+  if (group && !groupHasAccess(profile)) return <div className="client-shell"><main className="client-main"><GroupPaywall /></main></div>
 
   return (
     <div className="client-shell">
       {location.pathname !== '/app/checkin' && <CheckinBanner status={weekly} locked={locked} />}
       <CheckinTakeover status={weekly} locked={locked} onCheckinPage={location.pathname === '/app/checkin'} />
       <main className="client-main">
-        {locked && lockedPath(location.pathname) ? <CheckinLock status={weekly} /> : (
+        <GroupPaymentBanner />
+        {group && hiddenForGroup(location.pathname) ? <Navigate to="/app" replace /> : locked && lockedPath(location.pathname) ? <CheckinLock status={weekly} /> : (
         <Routes>
           <Route index element={<ClientHome />} />
           <Route path="training" element={<ClientTraining />} />
@@ -158,14 +165,16 @@ export default function ClientApp() {
         )}
       </main>
       <nav className="bottom-nav">
-        <NavLink to="/app" end><span className="ico"><Home size={19} strokeWidth={2} /></span>Home</NavLink>
+        <NavLink to="/app" end style={{ position: 'relative' }}><span className="ico"><Home size={19} strokeWidth={2} /></span>Home{group && badges.checkin && <Dot />}</NavLink>
         <NavLink to="/app/training"><span className="ico"><Dumbbell size={19} strokeWidth={2} /></span>Train</NavLink>
         <NavLink to="/app/nutrition"><span className="ico"><Utensils size={19} strokeWidth={2} /></span>Eat</NavLink>
-        <NavLink to="/app/checkin" style={{ position: 'relative' }}><span className="ico"><ClipboardCheck size={19} strokeWidth={2} /></span>Check-in{badges.checkin && <Dot />}</NavLink>
+        {!group && <NavLink to="/app/checkin" style={{ position: 'relative' }}><span className="ico"><ClipboardCheck size={19} strokeWidth={2} /></span>Check-in{badges.checkin && <Dot />}</NavLink>}
         <NavLink to="/app/progress"><span className="ico"><LineChart size={19} strokeWidth={2} /></span>Log</NavLink>
-        <NavLink to="/app/form-checks" style={{ position: 'relative' }}><span className="ico"><Video size={19} strokeWidth={2} /></span>Film{badges.filmChecks && <Dot />}</NavLink>
+        {!group && <NavLink to="/app/form-checks" style={{ position: 'relative' }}><span className="ico"><Video size={19} strokeWidth={2} /></span>Film{badges.filmChecks && <Dot />}</NavLink>}
         <NavLink to="/app/challenges"><span className="ico"><Trophy size={19} strokeWidth={2} /></span>Rank</NavLink>
-        <NavLink to="/app/messages" style={{ position: 'relative' }}><span className="ico"><MessageCircle size={19} strokeWidth={2} /></span>Coach{badges.messages && <Dot />}</NavLink>
+        {group
+          ? <NavLink to="/app/community" style={{ position: 'relative' }}><span className="ico"><Users size={19} strokeWidth={2} /></span>Team{badges.messages && <Dot />}</NavLink>
+          : <NavLink to="/app/messages" style={{ position: 'relative' }}><span className="ico"><MessageCircle size={19} strokeWidth={2} /></span>Coach{badges.messages && <Dot />}</NavLink>}
       </nav>
     </div>
   )

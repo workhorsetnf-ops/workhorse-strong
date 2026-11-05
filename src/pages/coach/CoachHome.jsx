@@ -112,7 +112,7 @@ export default function CoachHome() {
   async function load() {
     setLoading(true)
     const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }, { data: ratingsData }, { data: flagsData }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('role', 'client').neq('status', 'exited').order('full_name'),
+      supabase.from('profiles').select('*').eq('role', 'client').neq('status', 'exited').neq('plan', 'group').order('full_name'),
       supabase.from('program_assignments').select('*'),
       supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text, logged_date, session_track').order('logged_at', { ascending: false }).limit(600),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(400),
