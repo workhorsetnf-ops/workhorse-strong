@@ -13,6 +13,7 @@ import { saveSet, flushPending, readPending, withPending } from '../../lib/saveQ
 import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, programWeekDates, scheduledDate, effectiveDate, loadProgramSchedule, sessionsOnDate, workUnit, UNIT_LABEL, secondsToUnit } from '../../lib/conditioning'
 import { eventAdvice, eventIcons } from '../../lib/clientEvents'
 import { bestOf, prFor, nameKey } from '../../lib/prs'
+import SessionFeel from './SessionFeel'
 import { alternativesFor, applySwap, REASONS } from '../../lib/swaps'
 import { addDays as addDaysStr } from '../../lib/dashboard'
 
@@ -325,6 +326,10 @@ export default function ClientTraining() {
     if (!cardioDay || ex.kind === 'conditioning') return null
     return workUnit(weekTarget(ex).reps, ex.metric)
   }
+
+  // something has been logged in this session (shows "How did that feel?", Update 169)
+  const anyLogged = Object.values(log || {}).some(sets => (sets || []).some(x => x && (x.weight || x.reps))) ||
+    Object.values(results || {}).some(v => String(v || '').trim())
 
   function weekTarget(ex) {
     const wt = Array.isArray(ex.week_targets) ? ex.week_targets[week - 1] : null
@@ -1229,6 +1234,7 @@ export default function ClientTraining() {
           )}
           <p className="muted" style={{ fontSize: 13.5 }}>{savingSets.size ? 'Saving…' : pendingSets.size ? `${pendingSets.size} set${pendingSets.size === 1 ? '' : 's'} saved on your phone, sending when you have signal.` : "Everything's saved. Your coach can see it now."}</p>
           <button className="btn-ghost" style={{ width: '100%', padding: '14px 0', fontSize: 14 }} onClick={() => setScreen('overview')}>Back to overview</button>
+          <SessionFeel profile={profile} day={activeDay} logged={anyLogged} />
         </div>
       )
     }
@@ -1627,6 +1633,9 @@ export default function ClientTraining() {
         </div>
       )}
 
+      {!calMode && !awayMode && activeDay && showList && exercises.length > 0 && (activeDay.track || 'exercise') !== 'lifestyle' && (
+        <SessionFeel profile={profile} day={activeDay} logged={anyLogged} />
+      )}
       {!calMode && !awayMode && activeDay && showList && exercises.length > 0 && (
         <button className="btn" onClick={saveWorkout}>{saved ? 'Workout saved ✓' : 'Save workout'}</button>
       )}
