@@ -70,7 +70,7 @@ export function expectedSessions(prog, weekStart) {
   }
   const rows = splitForWeek(weekDays(weekStart), {
     startDate: a.start_date, blockDays: prog.daysByBlock?.[block.id] || [], rotations: prog.rotationsByBlock?.[block.id] || [],
-    weekInBlock, showsInWeek: dayShowsInWeek,
+    weekInBlock, showsInWeek: dayShowsInWeek, dayMap: a.day_map,
   })
   const n = rows.filter(r => r.sessions.length > 0 && (!a.start_date || r.date >= a.start_date)).length
   return n || null

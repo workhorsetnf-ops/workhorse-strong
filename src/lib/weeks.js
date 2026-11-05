@@ -30,6 +30,33 @@ export function weekdayNumber(date = new Date()) {
   const [y, m, d] = ymdOf(date).split('-').map(Number)
   return ((new Date(y, m - 1, d).getDay() + 6) % 7) + 1
 }
+// ---- Training days (Update 164) ----
+// A client can run the program on their own days: day_map on the assignment
+// says which weekday each program Day N lands on, e.g. { "1": 2, "2": 4 }
+// = Day 1 on Tuesday, Day 2 on Thursday. Weekdays are 1 = Monday … 7 = Sunday.
+// Any day not in the map keeps its default (Day N on weekday N), so a null or
+// empty map is exactly the program as written.
+export const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+export function cleanDayMap(map) {
+  const out = {}
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return out
+  for (const [k, v] of Object.entries(map)) {
+    const dn = Number(k), wd = Number(v)
+    if (Number.isInteger(dn) && dn >= 1 && dn <= 7 && Number.isInteger(wd) && wd >= 1 && wd <= 7 && wd !== dn) out[dn] = wd
+  }
+  return out
+}
+// Weekday (1-7) that program Day N runs on for this client.
+export function dayWeekday(dayNumber, map) {
+  const dn = Math.min(7, Math.max(1, Number(dayNumber) || 1))
+  return cleanDayMap(map)[dn] || dn
+}
+// Null when every day is back on its default, so "reset" stores nothing.
+export function dayMapOrNull(map) {
+  const c = cleanDayMap(map)
+  return Object.keys(c).length ? c : null
+}
+
 // Monday-based week number; can be 0 or negative for weeks before the start.
 export function weekNumberOf(startDate, date = new Date()) {
   if (!startDate) return null

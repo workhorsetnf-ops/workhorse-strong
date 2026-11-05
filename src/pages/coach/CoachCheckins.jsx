@@ -144,7 +144,7 @@ export function WeekNumbers({ c, profile }) {
             supabase.from('program_days').select('*').eq('block_id', pos.block.id),
             supabase.from('program_rotations').select('*').eq('block_id', pos.block.id).order('position'),
           ])
-          planned = splitForWeek(days, { startDate: asg.data.start_date, blockDays: bd || [], rotations: rots || [], weekInBlock: pos.weekInBlock, showsInWeek: dayShowsInWeek })
+          planned = splitForWeek(days, { startDate: asg.data.start_date, blockDays: bd || [], rotations: rots || [], weekInBlock: pos.weekInBlock, showsInWeek: dayShowsInWeek, dayMap: asg.data.day_map })
             .filter(x => x.sessions.length).length
         }
       }

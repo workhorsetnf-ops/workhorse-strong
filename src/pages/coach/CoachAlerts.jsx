@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { localDateStr, logDate } from '../../lib/weeks'
+import { localDateStr, logDate, dayWeekday } from '../../lib/weeks'
 
 function daysAgo(dateStr) {
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / 864e5)
@@ -41,7 +41,7 @@ export default function CoachAlerts() {
         }
 
         // --- Missed workouts: expected training days in the last 7 with no log ---
-        // Day 1 = Monday for everyone (Update 162); nothing counts before the start date
+        // Day 1 = Monday unless the client picked their own days (Updates 162/164); nothing before the start date
         if (a.start_date && block) {
           const sd = new Date(a.start_date + 'T00:00:00')
           const today = new Date(); today.setHours(0,0,0,0)
@@ -51,7 +51,7 @@ export default function CoachAlerts() {
             const d = new Date(today); d.setDate(d.getDate() - back)
             if (d < sd) continue
             const dn = ((d.getDay() + 6) % 7) + 1
-            const hasTrainingDay = (daysAll || []).some(day => day.block_id === a.current_block_id && day.day_number === dn && (day.track || 'exercise') === 'exercise')
+            const hasTrainingDay = (daysAll || []).some(day => day.block_id === a.current_block_id && dayWeekday(day.day_number, a.day_map) === dn && (day.track || 'exercise') === 'exercise')
             if (hasTrainingDay && !clientWorkoutDates.has(localDateStr(d))) missed++
           }
           if (missed >= 2) {

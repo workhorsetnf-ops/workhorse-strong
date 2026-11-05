@@ -89,7 +89,7 @@ export default function CoachReview() {
             supabase.from('program_days').select('*').eq('block_id', pos.block.id),
             supabase.from('program_rotations').select('*').eq('block_id', pos.block.id).order('position'),
           ])
-          split = splitForWeek(days, { startDate: asg.data.start_date, blockDays: bd || [], rotations: rots || [], weekInBlock: pos.weekInBlock, showsInWeek: dayShowsInWeek })
+          split = splitForWeek(days, { startDate: asg.data.start_date, blockDays: bd || [], rotations: rots || [], weekInBlock: pos.weekInBlock, showsInWeek: dayShowsInWeek, dayMap: asg.data.day_map })
         }
       }
       const profile = me.data || {}

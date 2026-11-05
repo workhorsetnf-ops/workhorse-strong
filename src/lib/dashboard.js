@@ -1,3 +1,4 @@
+import { dayWeekday } from './weeks.js'
 // Client dashboard maths, matching the coaching sheet's Dashboard tab.
 // All dates are local 'YYYY-MM-DD' strings.
 
@@ -84,15 +85,15 @@ export function progress(start, current, goal) {
 // The program session(s) on a date, same rule as the Calendar page:
 // Day 1 = Monday, weeks run Monday-Sunday from the week the program started,
 // blocks run back to back (Update 162).
-export function sessionsOn(date, startDate, blocks, daysByBlock) {
+export function sessionsOn(date, startDate, blocks, daysByBlock, dayMap = null) {
   if (!startDate || !blocks?.length) return []
   if (daysBetween(startDate, date) < 0) return []
   const wk = Math.floor(daysBetween(addDays(startDate, -mondayIndex(startDate)), date) / 7) + 1
   let cursor = 0, blk = null
   for (const b of blocks) { if (wk <= cursor + (b.weeks || 4)) { blk = b; break } cursor += (b.weeks || 4) }
   if (!blk) return []
-  const dn = mondayIndex(date) + 1
-  return (daysByBlock[blk.id] || []).filter(d => d.day_number === dn)
+  const wd = mondayIndex(date) + 1
+  return (daysByBlock[blk.id] || []).filter(d => dayWeekday(d.day_number, dayMap) === wd)
 }
 
 export const DEFAULT_TODOS = [
@@ -122,11 +123,12 @@ export const heightText = inches => (inches ? `${Math.floor(inches / 12)}' ${inc
 export function dayNumberOn(date, startDate) {
   return mondayIndex(date) + 1
 }
-export function splitForWeek(weekDays, { startDate, blockDays, rotations = [], weekInBlock = 1, showsInWeek }) {
+// dayMap: the client's own training days (Update 164); null = program as written.
+export function splitForWeek(weekDays, { startDate, blockDays, rotations = [], weekInBlock = 1, showsInWeek, dayMap = null }) {
   return weekDays.map(date => {
     const dn = dayNumberOn(date, startDate)
     const sessions = (blockDays || [])
-      .filter(d => (d.track || 'exercise') === 'exercise' && d.day_number === dn && (!showsInWeek || showsInWeek(d, rotations, weekInBlock)))
+      .filter(d => (d.track || 'exercise') === 'exercise' && dayWeekday(d.day_number, dayMap) === dn && (!showsInWeek || showsInWeek(d, rotations, weekInBlock)))
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
     return { date, dayNumber: dn, sessions }
   })

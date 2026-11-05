@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext'
 import RestTimer from '../../lib/RestTimer'
 import IntervalTimer from '../../lib/IntervalTimer'
 import PlateCalc from '../../lib/PlateCalc'
+import TrainingDays from '../../components/TrainingDays'
 import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, programWeekDates, scheduledDate, effectiveDate, loadProgramSchedule, sessionsOnDate, workUnit, UNIT_LABEL, secondsToUnit } from '../../lib/conditioning'
 import { eventAdvice, eventIcons } from '../../lib/clientEvents'
 import { bestOf, prFor, nameKey } from '../../lib/prs'
@@ -155,6 +156,8 @@ export default function ClientTraining() {
   const [week, setWeek] = useState(1)
   const [startDate, setStartDate] = useState(null)
   const [schedule, setSchedule] = useState(null) // whole program, for the calendar view
+  const [dayMap, setDayMap] = useState(null) // client's own training days (Update 164)
+  const [daysOpen, setDaysOpen] = useState(false)
   const [calMode, setCalMode] = useState(false)
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
   const [rotations, setRotations] = useState([])
@@ -249,12 +252,13 @@ export default function ClientTraining() {
   useEffect(() => {
     if (!profile) return
     supabase.from('program_assignments')
-      .select('program_id, current_week, current_block_id, start_date, week_mode, programs(id, name, notes, weeks)')
+      .select('*, programs(id, name, notes, weeks)')
       .eq('client_id', profile.id).maybeSingle()
       .then(async ({ data }) => {
         if (!data) return
         setProgram(data.programs)
         setStartDate(data.start_date || null)
+        setDayMap(data.day_map || null)
         const { data: bs } = await supabase.from('program_blocks').select('*').eq('program_id', data.program_id).order('position')
         setAllBlocks(bs || [])
         // On 'auto' this walks the start date forward on its own; on 'manual' it's
@@ -1034,7 +1038,7 @@ export default function ClientTraining() {
   const thisWeekDates = programWeekDates(startDate)
   function sessionDateThisWeek(d) {
     if ((d.track || 'exercise') === 'lifestyle') return null
-    return effectiveDate(d.id, scheduledDate(startDate, d.day_number), moves)
+    return effectiveDate(d.id, scheduledDate(startDate, d.day_number, undefined, dayMap), moves)
   }
   const weekdayShort = ymd => new Date(ymd + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short' })
   // tabs in the order they happen this week, after any moves
@@ -1044,7 +1048,7 @@ export default function ClientTraining() {
     if (!thisWeekDates || calMode || awayMode) return null
     // any lifting or conditioning session can move within this week (Update 162)
     if (!activeDay || (activeDay.track || 'exercise') === 'lifestyle') return null
-    const from = scheduledDate(startDate, activeDay.day_number)
+    const from = scheduledDate(startDate, activeDay.day_number, undefined, dayMap)
     if (!from) return null
     const on = effectiveDate(activeDay.id, from, moves)
     const today = localDateStr()
@@ -1370,11 +1374,17 @@ export default function ClientTraining() {
         )}
       </header>
 
+      {daysOpen && program && (
+        <TrainingDays programId={program.id} initialMap={dayMap} onClose={() => setDaysOpen(false)}
+          onSaved={m => { setDayMap(m); setSchedule(sc => (sc ? { ...sc, assignment: { ...sc.assignment, day_map: m } } : sc)) }} />
+      )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <button className={calMode ? 'btn' : 'btn-ghost'} style={{ padding: '10px 14px', fontSize: 13 }}
           onClick={() => setCalMode(!calMode)}>📅</button>
         <button className={awayMode ? 'btn' : 'btn-ghost'} style={{ padding: '10px 14px', fontSize: 13 }}
           onClick={() => setAwayMode(!awayMode)} title="Traveling / no equipment">✈️</button>
+        <button className={daysOpen ? 'btn' : 'btn-ghost'} style={{ padding: '10px 14px', fontSize: 12.5 }}
+          onClick={() => setDaysOpen(!daysOpen)} title="Pick which days you train">🗓 My days</button>
         {activeDay && !calMode && !awayMode && (
           <button className="btn-ghost" style={{ padding: '10px 14px', fontSize: 12.5 }}
             onClick={() => setViewMode(viewMode === 'focus' ? 'list' : 'focus')}

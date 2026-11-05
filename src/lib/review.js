@@ -19,7 +19,7 @@ export function buildReview(d) {
   // Training: sessions logged vs sessions the program had on those days
   // d.split: this week from splitForWeek (same block/week as the Train page); d.program: older date-only form
   const planned = d.split ? d.split.filter(x => x.sessions.length).length
-    : d.program ? days.filter(x => sessionsOn(x, d.program.start, d.program.blocks, d.program.daysByBlock).some(s => (s.track || 'exercise') === 'exercise')).length : null
+    : d.program ? days.filter(x => sessionsOn(x, d.program.start, d.program.blocks, d.program.daysByBlock, d.program.dayMap).some(s => (s.track || 'exercise') === 'exercise')).length : null
   const done = days.filter(x => d.workoutDates.has(x) || d.daily.find(r => r.log_date === x)?.trained === true).length
   out.training = { done, planned, ratio: planned ? Math.min(1, done / planned) : null }
   out.training.grade = grade(out.training.ratio)

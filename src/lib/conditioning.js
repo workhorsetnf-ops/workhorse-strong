@@ -5,7 +5,7 @@
 // same program week. Since Update 162 any lifting session can move too. Moves live in session_moves as (day_id, from_date,
 // to_date), and every screen that lays sessions out on dates runs them through
 // withMoves() so the Train calendar and the Calendar page always agree.
-import { localDateStr, mondayOf, weekDaysFrom, weekdayNumber, resolveAssignment, dayShowsInWeek } from './weeks'
+import { localDateStr, mondayOf, weekDaysFrom, weekdayNumber, resolveAssignment, dayShowsInWeek, dayWeekday } from './weeks'
 
 export const CONDITIONING_COLOR = '#4A9BD1'
 export const LIFESTYLE_COLOR = '#3E8E7E'
@@ -21,16 +21,17 @@ export function programWeekDates(startDate, date = localDateStr()) {
   return weekDaysFrom(mondayOf(date))
 }
 
-// Where the program puts a Day N session in the week containing `date`.
-export function scheduledDate(startDate, dayNumber, date = localDateStr()) {
-  return programWeekDates(startDate, date)[Math.min(7, Math.max(1, dayNumber || 1)) - 1]
+// Where the program puts a Day N session in the week containing `date`,
+// on the client's own training days if they've set them (Update 164).
+export function scheduledDate(startDate, dayNumber, date = localDateStr(), dayMap = null) {
+  return programWeekDates(startDate, date)[dayWeekday(dayNumber, dayMap) - 1]
 }
 
 // Everything a schedule needs, loaded once. Used by the Calendar page and the
 // Home "Today" card so they show exactly what the Train tab shows.
 export async function loadProgramSchedule(sb, clientId) {
   const { data: assignment } = await sb.from('program_assignments')
-    .select('program_id, start_date, week_mode, current_week, current_block_id').eq('client_id', clientId).maybeSingle()
+    .select('*').eq('client_id', clientId).maybeSingle()
   if (!assignment) return null
   const { data: blocks } = await sb.from('program_blocks').select('*').eq('program_id', assignment.program_id).order('position')
   const ids = (blocks || []).map(b => b.id)
@@ -58,10 +59,10 @@ export function scheduledSessions(ymd, schedule) {
   if (a.start_date && ymd < a.start_date) return []
   const pos = resolveAssignment(a, schedule.blocks, new Date(ymd + 'T00:00:00'))
   if (!pos.block) return []
-  const dn = weekdayNumber(ymd)
+  const wd = weekdayNumber(ymd)
   const rots = schedule.rotationsByBlock?.[pos.block.id] || []
   return (schedule.daysByBlock?.[pos.block.id] || [])
-    .filter(d => d.day_number === dn && dayShowsInWeek(d, rots, pos.weekInBlock))
+    .filter(d => dayWeekday(d.day_number, a.day_map) === wd && dayShowsInWeek(d, rots, pos.weekInBlock))
     .sort((x, y) => (x.position ?? 0) - (y.position ?? 0))
     .map(d => ({ ...d, wk: pos.weekInBlock, blockName: pos.block.name }))
 }
