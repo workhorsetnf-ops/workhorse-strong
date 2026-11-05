@@ -281,7 +281,7 @@ export default function CoachCheckins() {
     // "No clients yet" even with clients and check-ins in the database.
     const [{ data: c, error: ce }, { data: p, error: pe }] = await Promise.all([
       supabase.from('checkins').select('*').order('submitted_at', { ascending: false }).limit(200),
-      supabase.from('profiles').select('*').eq('role', 'client').order('full_name'),
+      supabase.from('profiles').select('*').eq('role', 'client').neq('plan', 'group').order('full_name'),
     ])
     setLoadError(ce || pe ? (ce || pe).message : '')
     setCheckins(c || [])

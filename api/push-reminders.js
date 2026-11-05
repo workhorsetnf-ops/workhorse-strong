@@ -45,7 +45,7 @@ export async function runSlot(sb, slot, today, tz) {
   }
 
   if (slot === 'evening' && coaches.length) {
-    const { data: all } = await sb.from('profiles').select('id, full_name, status, last_seen_at, created_at').eq('role', 'client')
+    const { data: all } = await sb.from('profiles').select('id, full_name, status, last_seen_at, created_at').eq('role', 'client').neq('plan', 'group')
     const { count } = await sb.from('checkins').select('id', { count: 'exact', head: true }).neq('status', 'done').gte('submitted_at', addDays(today, -14))
     for (const c of coaches) { const m = coachDigest(c.id, prefs[c.id], all || [], today, count || 0); if (m) msgs.push(m) }
   }

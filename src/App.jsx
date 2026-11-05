@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import SetPassword from './pages/SetPassword'
 import Join from './pages/Join'
+import GroupSignup from './pages/GroupSignup'
 import ClientArchived from './pages/client/ClientArchived'
 import ClientApp from './pages/client/ClientApp'
 import CoachDashboard from './pages/coach/CoachDashboard'
@@ -29,6 +30,7 @@ export default function App() {
     // Setup guides work without logging in, so the link can be texted to anyone.
     const g = window.location.pathname.match(/^\/guide\/(notifications|steps)/)
     if (g) return g[1] === 'steps' ? <StepsGuide /> : <NotificationsGuide />
+    if (/^\/start\/?$/.test(window.location.pathname)) return <GroupSignup />   // group offer sign-up (Update 166)
     const m = window.location.pathname.match(/^\/join\/([^/]+)/)
     return m ? <Join code={decodeURIComponent(m[1])} /> : <Login />
   }

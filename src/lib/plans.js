@@ -1,7 +1,7 @@
 // Copy plans between clients, save them as templates, and apply tracks.
 // A "snapshot" is plain JSON with no ids, so it can live in a template or go
 // straight onto other clients.
-import { scaleToTargets, targetsFrom } from './mealplan'
+import { scaleToTargets, targetsFrom } from './mealplan.js'
 
 export const KINDS = {
   meal_plan: 'Meal plan',

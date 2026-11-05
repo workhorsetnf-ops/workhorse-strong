@@ -29,7 +29,9 @@ export default function ClientMessages() {
   // Group chats this client is in. Empty (and the tab strip hidden) for anyone
   // not in a group, or before migration 137 is run.
   const [groups, setGroups] = useState([])
-  const [tab, setTab] = useState('coach')   // 'coach' or a group id
+  const groupOnly = profile?.plan === 'group'   // group members: group chats only, no coach DMs (Update 166)
+  const [tab, setTab] = useState(() => (groupOnly && window.history.state?.usr?.group) || 'coach')   // 'coach' or a group id
+  useEffect(() => { if (groupOnly && tab === 'coach' && groups.length) setTab(groups[0].id) }, [groupOnly, groups.length])
 
   function loadGroups() {
     supabase.rpc('my_groups').then(({ data, error }) => { if (!error) setGroups(data || []) })
@@ -122,7 +124,7 @@ export default function ClientMessages() {
       </header>
       {groups.length > 0 && (
         <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 4, flexShrink: 0 }}>
-          {[{ id: 'coach', name: 'Coach', unread: 0 }, ...groups].map(g => {
+          {[...(groupOnly ? [] : [{ id: 'coach', name: 'Coach', unread: 0 }]), ...groups].map(g => {
             const on = tab === g.id
             return (
               <button key={g.id} className={on ? 'btn' : 'btn-ghost'}
@@ -135,7 +137,9 @@ export default function ClientMessages() {
           })}
         </div>
       )}
-      {activeGroup ? (
+      {groupOnly && !activeGroup ? (
+        <p className="muted" style={{ fontSize: 14 }}>No group chats yet. Say what's up in <a href="/app/community" style={{ color: 'var(--orange-hot)', fontWeight: 700 }}>Community</a>.</p>
+      ) : activeGroup ? (
         <div style={{ flex: 1, minHeight: 0 }}>
           <GroupThread key={activeGroup.id} group={activeGroup} profile={profile} height="100%" />
         </div>

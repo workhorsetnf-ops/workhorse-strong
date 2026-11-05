@@ -40,7 +40,7 @@ export default function CoachScorecard() {
   async function load() {
     const { data: cl } = await supabase.from('profiles')
       .select('id, full_name, avatar_url, status, adherence_tier, tier_since, start_date, checkin_day, checkin_frequency')
-      .eq('role', 'client').eq('status', 'active').order('full_name')
+      .eq('role', 'client').eq('status', 'active').neq('plan', 'group').order('full_name')
     const ids = (cl || []).map(c => c.id)
     if (!ids.length) { setClients([]); setData({}); return }
     const [daily, meals, workouts, habits, ticks, checkins, { data: asg }] = await Promise.all([

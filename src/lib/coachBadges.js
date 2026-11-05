@@ -26,7 +26,7 @@ export async function loadCoachBadges(me) {
     safe(async () => {
       const [{ data: rows }, { data: active }] = await Promise.all([
         supabase.from('checkins').select('client_id, submitted_at, coach_feedback, status').gte('submitted_at', since(45)),
-        supabase.from('profiles').select('id').eq('role', 'client').neq('status', 'exited'),
+        supabase.from('profiles').select('id').eq('role', 'client').neq('status', 'exited').neq('plan', 'group'),
       ])
       return checkinsNeedingReview(rows || [], new Set((active || []).map(a => a.id)))
     }),

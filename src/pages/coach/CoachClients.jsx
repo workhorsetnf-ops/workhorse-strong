@@ -31,6 +31,7 @@ export default function CoachClients() {
   const [calc, setCalc] = useState({ weightLbs: '', age: '', sex: 'male', hft: '', hin: '', bf: '', activity: 'working-talent', goal: 'cut' })
   const [calcResult, setCalcResult] = useState(null)
   const [statusFilter, setStatusFilter] = useState('current')   // current = active + paused; 'exited' = archived
+  const [planFilter, setPlanFilter] = useState('coaching')       // 1:1 clients by default; group members live on the Group page (Update 166)
   const [leadHistory, setLeadHistory] = useState({})   // profileId -> { lead, activity[] }
   const [programs, setPrograms] = useState({})   // clientId -> { label, ... }
 
@@ -246,6 +247,7 @@ export default function CoachClients() {
   }
 
   const filteredClients = clients
+    .filter(c => planFilter === 'all' ? true : (c.plan || 'coaching') === planFilter)
     .filter(c => statusFilter === 'all' ? true : statusFilter === 'current' ? (c.status || 'active') !== 'exited' : (c.status || 'active') === statusFilter)
     .filter(c => ((c.full_name || '') + ' ' + (c.email || '')).toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => (a.full_name ? 1 : 0) - (b.full_name ? 1 : 0))
@@ -285,6 +287,16 @@ export default function CoachClients() {
           )
         })}
       </div>
+
+      {clients.some(c => c.plan === 'group') && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          {[['coaching', '1:1 coaching'], ['group', 'Group members'], ['all', 'Everyone']].map(([k, l]) => (
+            <button key={k} className={planFilter === k ? 'btn' : 'btn-ghost'} style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => setPlanFilter(k)}>
+              {l} ({k === 'all' ? clients.length : clients.filter(c => (c.plan || 'coaching') === k).length})
+            </button>
+          ))}
+        </div>
+      )}
 
       <input placeholder="Search by name or email…" value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: 16 }} />
 
@@ -552,6 +564,7 @@ export default function CoachClients() {
                       background: 'var(--steel)', color: c.status === 'exited' ? 'var(--red)' : 'var(--orange-hot)',
                     }}>{c.status === 'exited' ? 'archived' : c.status}</span>
                   )}
+                  {c.plan === 'group' && <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, marginLeft: 8, padding: '2px 8px', borderRadius: 20, background: 'rgba(74,155,209,.18)', color: '#4A9BD1' }}>group</span>}
                   {c.email && <div className="muted" style={{ fontSize: 12.5, marginTop: 1 }}>{c.email}</div>}
                   <div className="muted" style={{ fontSize: 13, marginTop: 3, textTransform: 'capitalize' }}>
                     {c.phase} · P {c.protein_g} / C {c.carbs_g} / F {c.fat_g} · {c.calories} kcal
