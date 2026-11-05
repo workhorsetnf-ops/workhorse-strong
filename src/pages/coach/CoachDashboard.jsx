@@ -8,11 +8,10 @@ import ReminderSettings from '../ReminderSettings'
 import {
   LayoutDashboard, Users, Bell, Video, Trophy, FileText, BookOpen, Map, Users2,
   ClipboardList, Library, ListChecks, CalendarCheck, MessageCircle, Quote, Target, Webcam,
-  FileCheck2, ClipboardSignature, Copy, BellRing, Gauge, Bug } from 'lucide-react'
+  FileCheck2, ClipboardSignature, Copy, BellRing, Gauge } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import CoachHome from './CoachHome'
 import CoachClients from './CoachClients'
-import CoachProblems from './CoachProblems'
 import CoachPrograms from './CoachPrograms'
 import CoachLibrary from './CoachLibrary'
 import CoachForms from './CoachForms'
@@ -36,6 +35,8 @@ import CoachCalls from './CoachCalls'
 import CoachIntakeForms from './CoachIntakeForms'
 import CoachContracts from './CoachContracts'
 import ContractPrint from '../ContractPrint'
+import CoachProblems from './CoachProblems'
+import { Bug } from 'lucide-react'
 
 export default function CoachDashboard() {
   const { signOut, profile } = useAuth()
