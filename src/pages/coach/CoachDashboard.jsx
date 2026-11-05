@@ -36,6 +36,8 @@ import CoachCalls from './CoachCalls'
 import CoachIntakeForms from './CoachIntakeForms'
 import CoachContracts from './CoachContracts'
 import ContractPrint from '../ContractPrint'
+import CoachProblems from './CoachProblems'
+import { Bug } from 'lucide-react'
 
 export default function CoachDashboard() {
   const { signOut, profile } = useAuth()
@@ -101,6 +103,7 @@ export default function CoachDashboard() {
         <Item to="/coach/messages" icon={MessageCircle} label="Messages" n={badges.messages} />
         <NavLink to="/coach/testimonials"><Quote size={17} strokeWidth={2} /><span>Testimonials</span></NavLink>
         <NavLink to="/coach/notifications"><BellRing size={17} strokeWidth={2} /><span>Notifications</span></NavLink>
+        <NavLink to="/coach/problems"><Bug size={17} strokeWidth={2} /><span>Problems</span></NavLink>
         <div style={{ flex: 1 }} />
         <button className="btn-ghost" onClick={signOut}>Sign out</button>
       </aside>
@@ -136,6 +139,7 @@ export default function CoachDashboard() {
           <Route path="calls" element={<CoachCalls />} />
           <Route path="messages" element={<CoachMessages />} />
           <Route path="notifications" element={<ReminderSettings />} />
+          <Route path="problems" element={<CoachProblems />} />
           <Route path="*" element={<Navigate to="/coach" replace />} />
         </Routes>
       </main>
