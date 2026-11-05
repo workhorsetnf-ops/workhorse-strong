@@ -9,6 +9,7 @@ import RestTimer from '../../lib/RestTimer'
 import IntervalTimer from '../../lib/IntervalTimer'
 import PlateCalc from '../../lib/PlateCalc'
 import TrainingDays from '../../components/TrainingDays'
+import SessionFeel from './SessionFeel'
 import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, programWeekDates, scheduledDate, effectiveDate, loadProgramSchedule, sessionsOnDate, workUnit, UNIT_LABEL, secondsToUnit } from '../../lib/conditioning'
 import { eventAdvice, eventIcons } from '../../lib/clientEvents'
 import { bestOf, prFor, nameKey } from '../../lib/prs'
@@ -740,6 +741,10 @@ export default function ClientTraining() {
     autoSaveResult(exId, value, exerciseName)
   }
 
+  // something has been logged in this session (shows "How did that feel?")
+  const anyLogged = Object.values(log || {}).some(sets => (sets || []).some(x => x && (x.weight || x.reps))) ||
+    Object.values(results || {}).some(v => String(v || '').trim())
+
   // manual "Save workout" stays as a confirmation/backstop pass — uses the
   // same upsert key so it can never create a duplicate alongside auto-saves
   async function saveWorkout() {
@@ -1182,6 +1187,7 @@ export default function ClientTraining() {
             </div>
           )}
           <p className="muted" style={{ fontSize: 13.5 }}>{savingSets.size ? 'Saving…' : "Everything's saved. Your coach can see it now."}</p>
+          <SessionFeel profile={profile} day={activeDay} logged={anyLogged} />
           <button className="btn-ghost" style={{ width: '100%', padding: '14px 0', fontSize: 14 }} onClick={() => setScreen('overview')}>Back to overview</button>
         </div>
       )
@@ -1573,6 +1579,9 @@ export default function ClientTraining() {
         </div>
       )}
 
+      {!calMode && !awayMode && activeDay && showList && exercises.length > 0 && (activeDay.track || 'exercise') !== 'lifestyle' && (
+        <SessionFeel profile={profile} day={activeDay} logged={anyLogged} />
+      )}
       {!calMode && !awayMode && activeDay && showList && exercises.length > 0 && (
         <button className="btn" onClick={saveWorkout}>{saved ? 'Workout saved ✓' : 'Save workout'}</button>
       )}

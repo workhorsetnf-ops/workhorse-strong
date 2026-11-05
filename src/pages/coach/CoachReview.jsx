@@ -101,6 +101,9 @@ export default function CoachReview() {
         cardioPlan: cplan.data || [], measurements: ms.data || [],
       }
       const review = buildReview(d)
+      // "How did that feel?" answers this week (Update 169); empty before its migration
+      const { data: feel, error: feelErr } = await q('session_feedback').gte('session_date', days[0]).lte('session_date', days[6]).order('session_date')
+      review.feel = feelErr ? [] : feel || []
       const photos = photoRows(cks.data || [], profile.start_date || null, localDateStr).filter(r => r.date <= days[6] && r.date >= addDays(days[0], -35))
       const shownPhotos = photos.slice(-2)
       const weekCheckin = (cks.data || []).filter(c => { const ld = localDateStr(new Date(c.submitted_at)); return ld >= days[0] && ld <= addDays(days[6], 2) }).pop() || null
@@ -166,6 +169,22 @@ export default function CoachReview() {
             {R.measurements && <Tile label="Waist" grade={R.measurements.waistChange < 0 ? 'good' : R.measurements.waistChange === 0 ? 'ok' : profile.phase === 'cut' ? 'bad' : 'ok'}
               value={`${R.measurements.waistChange > 0 ? '+' : ''}${R.measurements.waistChange}"`} sub={`${md(R.measurements.from)} → ${md(R.measurements.to)}`} to={`/coach/body/${clientId}`} />}
           </div>
+
+          {R.feel?.length > 0 && (
+            <Section title="How sessions felt">
+              <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13.5 }}>
+                {R.feel.map(f => (
+                  <div key={f.id || f.session_date + f.day_label} style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                    <span className="muted" style={{ minWidth: 70 }}>{md(f.session_date)}</span>
+                    <strong style={{ minWidth: 120 }}>{f.day_label || 'Session'}</strong>
+                    <span style={{ fontWeight: 800, color: f.rpe >= 9 ? '#e5484d' : f.rpe <= 4 ? '#e5a03a' : 'var(--green)' }}>{f.rpe}/10</span>
+                    {f.note && <span className="muted">“{f.note}”</span>}
+                  </div>
+                ))}
+                <span className="muted" style={{ fontSize: 12 }}>Average {(R.feel.reduce((a, f) => a + f.rpe, 0) / R.feel.length).toFixed(1)}/10 over {R.feel.length} session{R.feel.length === 1 ? '' : 's'}</span>
+              </div>
+            </Section>
+          )}
 
           {data.weekCheckin && (
             <Section title="Their check-in" right={<span className="muted" style={{ fontSize: 12 }}>{new Date(data.weekCheckin.submitted_at).toLocaleDateString()}</span>}>

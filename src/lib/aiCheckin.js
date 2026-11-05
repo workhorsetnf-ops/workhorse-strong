@@ -27,6 +27,8 @@ export function checkinFacts({ profile, review: R, checkin, weekStart }) {
       waist_change_in: R.measurements ? R.measurements.waistChange : null,
     } : null,
     wins: R?.wins || [], needs_a_word: R?.flags || [],
+    // client's own "How did that feel?" after each session, 1-10 (Update 169)
+    sessions_felt: (R?.feel || []).slice(0, 14).map(f => ({ date: f.session_date, session: f.day_label || null, effort: f.rpe, note: String(f.note || '').slice(0, 300) || null })),
     checkin: checkin ? {
       weight: checkin.weight ?? null, energy: checkin.energy ?? null, hunger: checkin.hunger ?? null,
       sleep_avg: checkin.sleep_avg ?? null, stress: checkin.stress ?? null,
