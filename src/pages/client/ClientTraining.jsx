@@ -9,6 +9,7 @@ import RestTimer from '../../lib/RestTimer'
 import IntervalTimer from '../../lib/IntervalTimer'
 import PlateCalc from '../../lib/PlateCalc'
 import TrainingDays from '../../components/TrainingDays'
+import { saveSet, flushPending, readPending, withPending } from '../../lib/saveQueue'
 import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, programWeekDates, scheduledDate, effectiveDate, loadProgramSchedule, sessionsOnDate, workUnit, UNIT_LABEL, secondsToUnit } from '../../lib/conditioning'
 import { eventAdvice, eventIcons } from '../../lib/clientEvents'
 import { bestOf, prFor, nameKey } from '../../lib/prs'
@@ -193,6 +194,7 @@ export default function ClientTraining() {
   const [awayMode, setAwayMode] = useState(false)
   const [saved, setSaved] = useState(false)
   const [savingSets, setSavingSets] = useState(new Set()) // exerciseId-setNumber currently being auto-saved
+  const [pendingSets, setPendingSets] = useState(new Set()) // saved on the phone, not on the server yet (Update 165)
 
   // debounce timers for auto-save, keyed per set (or per conditioning result)
   const saveTimers = useRef({})
@@ -618,7 +620,10 @@ export default function ClientTraining() {
         if (ids.length) {
           supabase.from('workout_logs').select('exercise_id, set_number, weight, reps, rir, result_text')
             .eq('client_id', profile.id).eq('logged_date', todayStr()).in('exercise_id', ids)
-            .then(({ data: todayLogs }) => {
+            .then(({ data: serverLogs }) => {
+              // anything still waiting on the phone wins: it's newer (Update 165)
+              const waiting = readPending(profile.id).filter(r => r.logged_date === todayStr() && ids.includes(r.exercise_id))
+              const todayLogs = withPending(serverLogs || [], waiting)
               if (!todayLogs?.length) return
               setLog(prev => {
                 const next = { ...prev }
@@ -688,13 +693,14 @@ export default function ClientTraining() {
     saveTimers.current[key] = setTimeout(async () => {
       if (!s.weight && !s.reps) return // nothing worth saving yet
       setSavingSets(prev => new Set(prev).add(key))
-      await supabase.from('workout_logs').upsert({
+      const res = await saveSet(supabase, {
         client_id: profile.id, exercise_id: exId, exercise_name: exerciseName,
         set_number: setNumber, weight: s.weight || null, reps: s.reps || null, rir: s.rir || null,
         logged_date: todayStr(), session_track: track,
-      }, { onConflict: 'client_id,exercise_id,set_number,logged_date' })
+      })
       setSavingSets(prev => { const n = new Set(prev); n.delete(key); return n })
-      if (track !== 'conditioning') checkPr(key, exerciseName, s).catch(() => {})
+      markPending(key, !res.ok)
+      if (res.ok && track !== 'conditioning') checkPr(key, exerciseName, s).catch(() => {})
     }, 900)
   }
 
@@ -726,12 +732,13 @@ export default function ClientTraining() {
     saveTimers.current[key] = setTimeout(async () => {
       if (!value?.toString().trim()) return
       setSavingSets(prev => new Set(prev).add(key))
-      await supabase.from('workout_logs').upsert({
+      const res = await saveSet(supabase, {
         client_id: profile.id, exercise_id: exId, exercise_name: exerciseName,
         set_number: 1, result_text: value.toString().trim(),
         logged_date: todayStr(), session_track: track,
-      }, { onConflict: 'client_id,exercise_id,set_number,logged_date' })
+      })
       setSavingSets(prev => { const n = new Set(prev); n.delete(key); return n })
+      markPending(`${exId}-1`, !res.ok)
     }, 900)
   }
 
@@ -762,10 +769,48 @@ export default function ClientTraining() {
       }
     }
     if (!rows.length) return
-    const { error } = await supabase.from('workout_logs')
-      .upsert(rows, { onConflict: 'client_id,exercise_id,set_number,logged_date' })
-    if (!error) { setSaved(true); setTimeout(() => setSaved(false), 2500) }
+    let failed = 0
+    for (const r of rows) {
+      const res = await saveSet(supabase, r)
+      markPending(`${r.exercise_id}-${r.set_number}`, !res.ok)
+      if (!res.ok) failed++
+    }
+    if (!failed) { setSaved(true); setTimeout(() => setSaved(false), 2500) }
+    else alert(`No signal right now. ${failed} set${failed === 1 ? ' is' : 's are'} saved on your phone and will send automatically when you're back online.`)
   }
+
+  // ---- sets waiting on signal (Update 165) ----
+  function markPending(key, on) {
+    setPendingSets(prev => {
+      if (on === prev.has(key)) return prev
+      const n = new Set(prev); on ? n.add(key) : n.delete(key); return n
+    })
+  }
+  function syncPendingFromStore() {
+    if (!profile) return
+    setPendingSets(new Set(readPending(profile.id).map(r => `${r.exercise_id}-${r.set_number}`)))
+  }
+  async function retryPending() {
+    if (!profile) return
+    await flushPending(supabase, profile.id)
+    syncPendingFromStore()
+  }
+  // try again when signal comes back, when the app comes to the front, and
+  // every 20 seconds while anything is waiting
+  useEffect(() => {
+    if (!profile) return
+    syncPendingFromStore()
+    retryPending()
+    const onBack = () => { if (document.visibilityState !== 'hidden') retryPending() }
+    window.addEventListener('online', onBack)
+    document.addEventListener('visibilitychange', onBack)
+    return () => { window.removeEventListener('online', onBack); document.removeEventListener('visibilitychange', onBack) }
+  }, [profile?.id])
+  useEffect(() => {
+    if (!pendingSets.size) return
+    const t = setInterval(retryPending, 20000)
+    return () => clearInterval(t)
+  }, [pendingSets.size > 0])
 
   // ---- pieces shared by the list view and focus mode ----
   function renderExtras(ex) {
@@ -883,7 +928,7 @@ export default function ClientTraining() {
               </div>
               <div className="muted" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {prev?.reps ? `${prev.reps} ${short}` : '—'}
-                {savingSets.has(key) && <div style={{ fontSize: 10 }}>Saving…</div>}
+                {savingSets.has(key) ? <div style={{ fontSize: 10 }}>Saving…</div> : pendingSets.has(key) && <div style={{ fontSize: 10, color: 'var(--orange-hot)' }}>Not sent yet</div>}
               </div>
               <input inputMode="numeric" aria-label={`${label} ${UNIT_LABEL[unit].toLowerCase()}`} value={s.reps}
                 placeholder={suggestion(ex, i, 'reps')} enterKeyHint="next"
@@ -967,6 +1012,7 @@ export default function ClientTraining() {
                     <div className="muted" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {prev ? `${prev.weight || '–'} × ${prev.reps || '–'}` : '—'}
                       {isSaving && <div style={{ fontSize: 10 }}>Saving…</div>}
+                      {!isSaving && pendingSets.has(key) && <div title="Saved on your phone. Sends when you have signal." style={{ fontSize: 10, fontWeight: 800, color: 'var(--orange-hot)' }}>Not sent yet</div>}
                       {!isSaving && prSets[key] && <div title={prSets[key]} style={{ fontSize: 10.5, fontWeight: 900, color: 'var(--orange-hot)' }}>🏆 PR</div>}
                     </div>
                     <input inputMode="decimal" aria-label={`${label} weight`} {...cell('weight')} />
@@ -1181,7 +1227,7 @@ export default function ClientTraining() {
               </p>
             </div>
           )}
-          <p className="muted" style={{ fontSize: 13.5 }}>{savingSets.size ? 'Saving…' : "Everything's saved. Your coach can see it now."}</p>
+          <p className="muted" style={{ fontSize: 13.5 }}>{savingSets.size ? 'Saving…' : pendingSets.size ? `${pendingSets.size} set${pendingSets.size === 1 ? '' : 's'} saved on your phone, sending when you have signal.` : "Everything's saved. Your coach can see it now."}</p>
           <button className="btn-ghost" style={{ width: '100%', padding: '14px 0', fontSize: 14 }} onClick={() => setScreen('overview')}>Back to overview</button>
         </div>
       )
@@ -1374,6 +1420,14 @@ export default function ClientTraining() {
         )}
       </header>
 
+      {pendingSets.size > 0 && !savingSets.size && (
+        <div className="card" style={{ borderLeft: '3px solid var(--orange)', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, fontSize: 13.5 }}>
+            <strong>{pendingSets.size} set{pendingSets.size === 1 ? '' : 's'} not sent yet.</strong> <span className="muted">Saved on your phone. They'll send on their own when you have signal.</span>
+          </span>
+          <button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={retryPending}>Retry now</button>
+        </div>
+      )}
       {daysOpen && program && (
         <TrainingDays programId={program.id} initialMap={dayMap} onClose={() => setDaysOpen(false)}
           onSaved={m => { setDayMap(m); setSchedule(sc => (sc ? { ...sc, assignment: { ...sc.assignment, day_map: m } } : sc)) }} />
@@ -1433,7 +1487,7 @@ export default function ClientTraining() {
           <div className="card" style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 7 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 13.5 }}>
               <strong>{done} of {total} sets done</strong>
-              <span className="muted" style={{ fontSize: 11.5 }}>{savingSets.size ? 'Saving…' : 'Auto-saved'}</span>
+              <span className="muted" style={{ fontSize: 11.5, color: pendingSets.size && !savingSets.size ? 'var(--orange-hot)' : undefined }}>{savingSets.size ? 'Saving…' : pendingSets.size ? 'Waiting for signal' : 'Auto-saved'}</span>
             </div>
             <div style={{ height: 6, borderRadius: 3, background: 'var(--steel)', overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${Math.round(done / total * 100)}%`, background: 'var(--orange)', borderRadius: 3, transition: 'width 0.25s' }} />
