@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import FoodLibrary from './FoodLibrary'
 import RoutineLibrary from './RoutineLibrary'
 import SwapEditor from './SwapEditor'
 import VideoFinder from './VideoFinder'
+import LibraryDuplicates from './LibraryDuplicates'
+import { findLibraryDuplicates } from '../../lib/exmatch'
 import { matchProgramExercises, findUnmatched, confidence } from '../../lib/exmatch'
 
 const EMPTY_EX = { name: '', category: '', metric: 'reps', video_url: '', notes: '', icon_url: '' }
@@ -22,6 +24,8 @@ export default function CoachLibrary() {
   const [scanning, setScanning] = useState(false)
   const [finder, setFinder] = useState(null) // exercises to find videos for, one at a time (Update 163)
   const [finderNote, setFinderNote] = useState('')
+  const [dupesOpen, setDupesOpen] = useState(false) // Update 171
+  const dupeCount = useMemo(() => findLibraryDuplicates(items).length, [items])
   const [pushPanel, setPushPanel] = useState(null)   // { item, groups, picked:Set(name), fields:{icon_url,video_url}, rename }
   const [cond, setCond] = useState([])
   const [life, setLife] = useState([])
@@ -239,6 +243,10 @@ export default function CoachLibrary() {
           onSaved={(id, url) => setItems(list => list.map(x => (x.id === id ? { ...x, video_url: url } : x)))}
           onClose={n => { setFinder(null); setFinderNote(n ? `Saved ${n} video${n === 1 ? '' : 's'}.` : ''); load() }} />
       )}
+      {dupesOpen && tab === 'exercises' && (
+        <LibraryDuplicates library={items} onClose={() => setDupesOpen(false)}
+          onDone={n => { setDupesOpen(false); setFinderNote(n ? `Merged ${n} duplicate group${n === 1 ? '' : 's'}.` : ''); load() }} />
+      )}
       {finderNote && tab === 'exercises' && !finder && <p style={{ fontSize: 13, color: 'var(--green)', margin: '0 0 12px' }}>{finderNote}</p>}
       {swapItem && tab === 'exercises' && <SwapEditor item={swapItem} library={items} alts={alts} onChange={load} onClose={() => setSwapItem(null)} />}
       {tab === 'foods' && <FoodLibrary />}
@@ -279,6 +287,10 @@ export default function CoachLibrary() {
             {items.some(i => !i.video_url) && (
               <button className="btn" style={{ whiteSpace: 'nowrap' }} onClick={() => { setFinderNote(''); setFinder({ key: Date.now(), queue: items.filter(i => !i.video_url) }); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
                 🎬 Find videos ({items.filter(i => !i.video_url).length} missing)</button>
+            )}
+            {dupeCount > 0 && (
+              <button className="btn-ghost" style={{ whiteSpace: 'nowrap' }} onClick={() => { setFinderNote(''); setDupesOpen(true); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
+                🧹 Duplicates ({dupeCount})</button>
             )}
             <button className="btn-ghost" style={{ whiteSpace: 'nowrap' }} disabled={scanning} onClick={scanUnmatched}>{scanning ? 'Scanning programs…' : '⇄ Match program exercises'}</button>
           </div>
