@@ -6,6 +6,7 @@ import { rotationForWeek, weeksForRotation, defaultRotationName, overallWeek, re
 import { CONDITIONING_COLOR, trackColor } from '../../lib/conditioning'
 import { parseProgramText, parseBlockText, blockExerciseRows, buildLibraryIndex, findInLibrary, withLibrary } from '../../lib/parse'
 import NotesBox from './NotesBox'
+import ProgressionCheck from './ProgressionCheck'
 import RoutineBox from './RoutineBox'
 import { resolveRoutine } from '../../lib/routines'
 
@@ -652,6 +653,7 @@ export default function CoachPrograms() {
   const [blockPasteBusy, setBlockPasteBusy] = useState(false)
   const [exercises, setExercises] = useState({})  // dayId -> [exercises]
   const [newProgram, setNewProgram] = useState('')
+  const [checkOpen, setCheckOpen] = useState(false) // Update 174: progression check
   const [newWeeks, setNewWeeks] = useState(4)
   const [library, setLibrary] = useState([])
   const [routines, setRoutines] = useState([])   // saved warm-ups / cool-downs
@@ -1540,7 +1542,19 @@ export default function CoachPrograms() {
   return (
     <div>
       <div className="eyebrow">Training</div>
-      <h1 style={{ fontSize: 28, margin: '6px 0 20px' }}>Programs</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '6px 0 20px' }}>
+        <h1 style={{ fontSize: 28, margin: 0 }}>Programs</h1>
+        <button className="btn-ghost" onClick={() => setCheckOpen(v => !v)}>✓ Progression check</button>
+      </div>
+      {checkOpen && (
+        <ProgressionCheck onClose={() => setCheckOpen(false)} onOpen={async (pid, bid) => {
+          setOpen(pid); setSelected({})
+          const bs = await loadBlocks(pid)
+          const b = bs.find(x => x.id === bid) || bs[0]
+          if (b) openBlockView(b)
+          setTimeout(() => document.getElementById('program-' + pid)?.scrollIntoView({ behavior: 'smooth' }), 300)
+        }} />
+      )}
 
       <div className="card" style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center' }}>
         <input placeholder="New program name (e.g. Off-Season 12-Week)" value={newProgram} onChange={e => setNewProgram(e.target.value)} onKeyDown={e => e.key === 'Enter' && createProgram()} />
@@ -1554,7 +1568,7 @@ export default function CoachPrograms() {
           const pBlocks = blocks[p.id] || []
           const activeBlock = pBlocks.find(b => b.id === openBlock)
           return (
-            <div className="card" key={p.id}>
+            <div className="card" key={p.id} id={'program-' + p.id}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                 <div>
                   <strong onClick={() => renameProgram(p)} title="Click to rename" style={{ fontSize: 16, cursor: 'pointer' }}>{p.name} <span style={{ fontSize: 11, opacity: 0.6 }}>✎</span></strong>
