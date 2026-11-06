@@ -8,6 +8,7 @@ import { parseProgramText, parseBlockText, blockExerciseRows, buildLibraryIndex,
 import NotesBox from './NotesBox'
 import ProgressionCheck from './ProgressionCheck'
 import RoutineBox from './RoutineBox'
+import NextBlockBuilder from './NextBlockBuilder'
 import { resolveRoutine } from '../../lib/routines'
 
 // Paste preview: shows whether a line matched a library exercise and what it
@@ -656,6 +657,7 @@ export default function CoachPrograms() {
   const [checkOpen, setCheckOpen] = useState(false) // Update 174: progression check
   const [newWeeks, setNewWeeks] = useState(4)
   const [library, setLibrary] = useState([])
+  const [nextFrom, setNextFrom] = useState(null) // Update 175: block id the next block is being built from
   const [routines, setRoutines] = useState([])   // saved warm-ups / cool-downs
   const loadRoutines = () => supabase.from('routine_library').select('*').order('name').then(({ data }) => setRoutines(data || []))
   const [condLib, setCondLib] = useState([])
@@ -1671,11 +1673,21 @@ export default function CoachPrograms() {
                       <button className={blockPasteOpen ? 'btn' : 'btn-ghost'} style={{ padding: '6px 12px', fontSize: 13 }}
                         onClick={() => setBlockPasteOpen(o => !o)}>⇩ Paste whole block</button>
                     )}
+                    {activeBlock && (
+                      <button className={nextFrom === activeBlock.id ? 'btn' : 'btn-ghost'} style={{ padding: '6px 12px', fontSize: 13 }}
+                        title="Same days and pattern, a notch harder. Swap or change exercises before saving."
+                        onClick={() => setNextFrom(f => (f === activeBlock.id ? null : activeBlock.id))}>⇢ Build next block</button>
+                    )}
                     {pBlocks.length > 1 && activeBlock && (
                       <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12, color: 'var(--red)' }} onClick={() => deleteBlock(p.id, activeBlock.id)}>Delete block</button>
                     )}
                   </div>
 
+                  {activeBlock && nextFrom === activeBlock.id && (
+                    <NextBlockBuilder program={p} block={activeBlock} blocks={pBlocks} assignments={assignments} library={library}
+                      onClose={() => setNextFrom(null)}
+                      onDone={async nb => { setNextFrom(null); load(); await loadBlocks(p.id); openBlockView(nb) }} />
+                  )}
                   {activeBlock && (
                     <>
                       {blockPasteOpen && renderBlockPaste(activeBlock)}
