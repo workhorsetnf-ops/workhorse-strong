@@ -188,3 +188,28 @@ export function findLibraryDuplicates(library, uses = {}) {
     return { key, items: sorted, keepId: sorted[0].id, cleanName: baseName(sorted[0].name) }
   }).sort((a, b) => b.items.length - a.items.length || a.cleanName.localeCompare(b.cleanName))
 }
+
+// ---------------------------------------------------------------------------
+// Library exercises not used by any program (Update 172).
+// A Library exercise counts as used when any program exercise is the same
+// exercise by name — ignoring capitals, set/rep/side notes and gym shorthand,
+// so "DB Bench Press (2 sets)" in a program keeps "Dumbbell Bench Press".
+// Hotel-gym swaps linked to a used exercise are kept too (they're never in a
+// program on purpose).
+// library: [{id, name, ...}], programNames: [string], alts: [{library_id, alt_id}]
+// -> { unused: [libItem], keptAsSwap: [libItem] }
+export function findUnusedLibrary(library, programNames, alts = []) {
+  const usedKeys = new Set(programNames.map(n => baseKey(n)).filter(Boolean))
+  const usedNorm = new Set(programNames.map(n => normName(n)))
+  const isUsed = l => usedNorm.has(normName(l.name)) || usedKeys.has(baseKey(l.name))
+  const used = new Set(library.filter(isUsed).map(l => l.id))
+  const swapIds = new Set(alts.filter(a => used.has(a.library_id)).map(a => a.alt_id))
+  const unused = [], keptAsSwap = []
+  for (const l of library) {
+    if (used.has(l.id)) continue
+    if (swapIds.has(l.id)) keptAsSwap.push(l)
+    else unused.push(l)
+  }
+  const byName = (a, b) => String(a.name).localeCompare(String(b.name))
+  return { unused: unused.sort(byName), keptAsSwap: keptAsSwap.sort(byName) }
+}
