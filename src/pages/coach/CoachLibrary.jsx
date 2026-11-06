@@ -6,6 +6,7 @@ import SwapEditor from './SwapEditor'
 import VideoFinder from './VideoFinder'
 import LibraryDuplicates from './LibraryDuplicates'
 import LibraryUnused from './LibraryUnused'
+import LibraryIcons from './LibraryIcons'
 import { findLibraryDuplicates } from '../../lib/exmatch'
 import { matchProgramExercises, findUnmatched, confidence } from '../../lib/exmatch'
 
@@ -27,6 +28,7 @@ export default function CoachLibrary() {
   const [finderNote, setFinderNote] = useState('')
   const [dupesOpen, setDupesOpen] = useState(false) // Update 171
   const [unusedOpen, setUnusedOpen] = useState(false) // Update 172
+  const [iconsOpen, setIconsOpen] = useState(false) // Update 176: bulk icons
   const dupeCount = useMemo(() => findLibraryDuplicates(items).length, [items])
   const [pushPanel, setPushPanel] = useState(null)   // { item, groups, picked:Set(name), fields:{icon_url,video_url}, rename }
   const [cond, setCond] = useState([])
@@ -245,6 +247,10 @@ export default function CoachLibrary() {
           onSaved={(id, url) => setItems(list => list.map(x => (x.id === id ? { ...x, video_url: url } : x)))}
           onClose={n => { setFinder(null); setFinderNote(n ? `Saved ${n} video${n === 1 ? '' : 's'}.` : ''); load() }} />
       )}
+      {iconsOpen && tab === 'exercises' && (
+        <LibraryIcons library={items} onClose={() => setIconsOpen(false)}
+          onDone={({ done, placed }) => { setIconsOpen(false); setFinderNote(`Uploaded ${done} icon${done === 1 ? '' : 's'}${placed ? ` and added ${done === 1 ? 'it' : 'them'} to ${placed} program exercise${placed === 1 ? '' : 's'}` : ''}.`); load() }} />
+      )}
       {unusedOpen && tab === 'exercises' && (
         <LibraryUnused library={items} onClose={() => setUnusedOpen(false)}
           onDone={n => { setUnusedOpen(false); setFinderNote(n ? `Deleted ${n} unused exercise${n === 1 ? '' : 's'}.` : ''); load() }} />
@@ -294,6 +300,8 @@ export default function CoachLibrary() {
               <button className="btn" style={{ whiteSpace: 'nowrap' }} onClick={() => { setFinderNote(''); setFinder({ key: Date.now(), queue: items.filter(i => !i.video_url) }); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
                 🎬 Find videos ({items.filter(i => !i.video_url).length} missing)</button>
             )}
+            <button className="btn-ghost" style={{ whiteSpace: 'nowrap' }} onClick={() => { setFinderNote(''); setIconsOpen(true); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
+              🖼 Bulk icons</button>
             <button className="btn-ghost" style={{ whiteSpace: 'nowrap' }} onClick={() => { setFinderNote(''); setDupesOpen(false); setUnusedOpen(true); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
               🗑 Not in a program</button>
             {dupeCount > 0 && (
