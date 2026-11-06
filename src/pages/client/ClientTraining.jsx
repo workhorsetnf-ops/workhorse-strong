@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { dash, effortText, effortMeaning } from '../../lib/targets'
-import { progressionCall, CALL_STYLE } from '../../lib/progression'
+import { CALL_STYLE } from '../../lib/progression'
 import { supabase } from '../../lib/supabase'
-import { resolveAssignment, rotationForWeek, dayShowsInWeek, localDateStr, logDate } from '../../lib/weeks'
+import { resolveAssignment, rotationForWeek, dayShowsInWeek, localDateStr, logDate, mondayOf } from '../../lib/weeks'
+import { weekGuide, blockWeeks as weekByWeek } from '../../lib/weekPlan'
 import { useAuth } from '../../context/AuthContext'
 import RestTimer from '../../lib/RestTimer'
 import IntervalTimer from '../../lib/IntervalTimer'
@@ -352,19 +353,20 @@ export default function ClientTraining() {
     return max && target ? String(roundTo5(max * (+target / 100))) : ''
   }
 
-  // What last session says to do today (add weight / add reps / hold / drop)
-  function progressFor(ex) {
+  // Week-to-week guide (Update 173): what changed from last week, and what to do
+  // today judged against what last session was actually aiming for.
+  function guideFor(ex) {
     if (ex.kind === 'conditioning' || unitFor(ex)) return null
-    const last = lastSession[ex.id]
-    if (!last || !last.sets) return null
-    const nums = Object.keys(last.sets).map(Number).sort((a, b) => a - b)
-    return progressionCall(nums.map(n => last.sets[n]), exSetTargets(ex), ex.progression_type || 'rir')
+    return weekGuide(ex, week, lastSession[ex.id], mondayOf(todayStr()))
   }
+  // What last session says to do today (add weight / add reps / hold / drop / new plan)
+  function progressFor(ex) { return guideFor(ex)?.call || null }
 
   // What a blank cell should suggest: last session's value for that set, else the program target
   function suggestion(ex, i, field) {
     if (field === 'weight') {
       const pc = progressFor(ex)
+      if (pc?.call === 'plan' && pc.weights?.[i]) return String(pc.weights[i])
       const lw = Number(lastSession[ex.id]?.sets?.[i + 1]?.weight) || 0
       // move every set by the same jump the top set gets
       if (pc && (pc.call === 'up' || pc.call === 'drop') && lw) {
@@ -478,17 +480,51 @@ export default function ClientTraining() {
   }
 
   function progressNote(ex) {
-    const pc = progressFor(ex)
-    if (!pc) return null
-    const st = CALL_STYLE[pc.call]
+    const g = guideFor(ex)
+    if (!g) return null
+    const pc = g.call
+    const st = pc && CALL_STYLE[pc.call]
+    const total = block?.weeks || (Array.isArray(ex.week_targets) ? ex.week_targets.length : 0)
+    const weeks = total > 1 ? weekByWeek(ex, total) : []
     return (
-      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '0 0 8px', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--coal)' }}>
-        <span style={{ flexShrink: 0, minWidth: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, background: st.bg, color: st.color }}>{st.icon}</span>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '.06em', color: 'var(--muted)' }}>TODAY, BASED ON LAST TIME</div>
-          <strong style={{ fontSize: 14 }}>{pc.title}</strong>
-          <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.4 }}>{pc.detail}</div>
+      <div style={{ margin: '0 0 8px', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--coal)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '.06em', color: 'var(--muted)' }}>
+            WEEK {week}{total > 1 ? ` OF ${total}` : ''}{g.change ? (g.change.changed ? ' · WHAT CHANGED' : '') : ''}
+          </div>
+          {g.change ? (
+            <>
+              <strong style={{ fontSize: 14 }}>{g.change.headline}</strong>
+              {g.change.lines.map(l => <div key={l} className="muted" style={{ fontSize: 12.5, lineHeight: 1.4 }}>{l}</div>)}
+            </>
+          ) : (
+            <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.4 }}>
+              {week === 1 && total > 1 ? 'First week of the block. Pick weights that land you on the reps at the target effort; next week builds from these.' : 'Hit the reps at the target effort.'}
+            </div>
+          )}
         </div>
+        {pc && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+            <span style={{ flexShrink: 0, minWidth: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, background: st.bg, color: st.color }}>{st.icon}</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '.06em', color: 'var(--muted)' }}>TODAY, BASED ON LAST TIME</div>
+              <strong style={{ fontSize: 14 }}>{pc.title}</strong>
+              <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.4 }}>{pc.detail}</div>
+            </div>
+          </div>
+        )}
+        {weeks.length > 1 && (
+          <details>
+            <summary className="muted" style={{ fontSize: 12, cursor: 'pointer' }}>See every week of this block</summary>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
+              {weeks.map(w => (
+                <div key={w.week} style={{ display: 'flex', gap: 8, fontSize: 12.5, fontWeight: w.week === week ? 800 : 500, color: w.week === week ? 'var(--orange-hot)' : w.week < week ? 'var(--muted)' : undefined }}>
+                  <span style={{ minWidth: 52 }}>Week {w.week}</span><span>{w.text}</span>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
       </div>
     )
   }
