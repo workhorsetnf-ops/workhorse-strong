@@ -141,3 +141,50 @@ export function findUnmatched(programRows, library, { minScore = 0.4, maxOptions
 }
 
 export const confidence = s => s >= 0.95 ? 'high' : s >= 0.6 ? 'medium' : s > 0 ? 'low' : 'none'
+
+// ---------------------------------------------------------------------------
+// Library duplicates (Update 171): "Leg Extension (2 sets)", "Bulgarian Split
+// Squat - each side" and "DB Bench Press" are the same library exercise as
+// "Leg Extension", "Bulgarian Split Squat" and "Dumbbell Bench Press".
+
+// The exercise without set/rep/side notes: drops (…) and […], "each side/leg/
+// arm", "per side", "both sides", "2 sets", "3x10", "x2", "10 reps" and any
+// dangling separators.
+const NOTE = /^\s*(\d+\s*(sets?|reps?|rounds?|x\s*\d+([-–]\d+)?)?|\d+\s*[x×]\s*\d+([-–]\d+)?|[x×]\s*\d+|(each|per|both|every)\s+(side|sides|leg|legs|arm|arms|hand|hands|direction|way)|e\/?s|ea\.?\s*side|optional|superset(ted)?|ss)(\s*[,;/·]\s*.*)?\s*$/i
+export function baseName(s) {
+  let t = String(s || '')
+  // brackets only when they hold set/rep/side notes; "(High Feet)", "(Paused)"
+  // are real variations and stay
+  t = t.replace(/\(([^)]*)\)|\[([^\]]*)\]/g, (m, a, b) => (NOTE.test(a ?? b ?? '') ? ' ' : m))
+  t = t.replace(/\b(each|per|both|every)\s+(side|sides|leg|legs|arm|arms|hand|hands|direction|way)\b/gi, ' ')
+  t = t.replace(/\b\d+\s*(sets?|reps?|rounds?)\b/gi, ' ')
+  t = t.replace(/\b\d+\s*[x×]\s*\d+(\s*-\s*\d+)?\b/gi, ' ').replace(/\b[x×]\s*\d+\b/gi, ' ')
+  t = t.replace(/\s+[-–—:|,/]+\s*$/g, ' ').replace(/^\s*[-–—:|,/]+\s+/g, ' ')
+  t = t.replace(/\s{2,}/g, ' ').trim().replace(/[-–—:|,/]+$/, '').trim()
+  return t || String(s || '').trim()
+}
+export const baseKey = s => canonKey(baseName(s))
+
+// library: [{ id, name, video_url, icon_url, notes, created_at }]
+// uses: { [libraryId]: { programs: n, swaps: n } } (optional)
+// -> [{ key, items: [...], keepId, cleanName }] only where 2+ entries share a key
+export function findLibraryDuplicates(library, uses = {}) {
+  const by = new Map()
+  for (const l of library) {
+    const k = baseKey(l.name)
+    if (!k) continue
+    if (!by.has(k)) by.set(k, [])
+    by.get(k).push(l)
+  }
+  const rank = l => [
+    l.video_url ? 0 : 1, l.icon_url ? 0 : 1,
+    normName(baseName(l.name)) === normName(l.name) ? 0 : 1,
+    -((uses[l.id]?.programs || 0) + (uses[l.id]?.swaps || 0)),
+    String(l.name).length, String(l.created_at || ''),
+  ]
+  const cmp = (a, b) => { const A = rank(a), B = rank(b); for (let i = 0; i < A.length; i++) if (A[i] !== B[i]) return A[i] < B[i] ? -1 : 1; return 0 }
+  return [...by.entries()].filter(([, items]) => items.length > 1).map(([key, items]) => {
+    const sorted = items.slice().sort(cmp)
+    return { key, items: sorted, keepId: sorted[0].id, cleanName: baseName(sorted[0].name) }
+  }).sort((a, b) => b.items.length - a.items.length || a.cleanName.localeCompare(b.cleanName))
+}
