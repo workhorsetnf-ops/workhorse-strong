@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { calcMacros } from '../../lib/macros'
-import { CHECKIN_FREQS } from '../../lib/dashboard'
+import { CHECKIN_FREQS, checkinOutlook, shortDate, freqLabel, WEEKDAYS } from '../../lib/dashboard'
 import { loadProgramLabels } from '../../lib/clientProgram'
 import { PAYMENT_TYPES, nextPayment, paymentSummary, daysToPayment } from '../../lib/payments'
 import { localDateStr } from '../../lib/weeks'
@@ -34,11 +34,21 @@ export default function CoachClients() {
   const [planFilter, setPlanFilter] = useState('coaching')       // 1:1 clients by default; group members live on the Group page (Update 166)
   const [leadHistory, setLeadHistory] = useState({})   // profileId -> { lead, activity[] }
   const [programs, setPrograms] = useState({})   // clientId -> { label, ... }
+  const [lastCheckins, setLastCheckins] = useState({})   // clientId -> 'YYYY-MM-DD' of their latest check-in
 
   async function load() {
     const { data } = await supabase.from('profiles').select('*').eq('role', 'client').order('full_name')
     setClients(data || [])
     loadProgramLabels(supabase).then(setPrograms)
+    // Latest check-in per client, for the "Next check-in" line (newest first, first one wins).
+    supabase.from('checkins').select('client_id, submitted_at')
+      .gte('submitted_at', new Date(Date.now() - 365 * 864e5).toISOString())
+      .order('submitted_at', { ascending: false }).limit(5000)
+      .then(({ data: ck }) => {
+        const last = {}
+        for (const r of ck || []) if (!last[r.client_id]) last[r.client_id] = localDateStr(new Date(r.submitted_at))
+        setLastCheckins(last)
+      })
     // Which of these came in through the pipeline, so their pre-sale history shows on the client.
     // Ordered newest-first and first-write-wins, so a win-back lead doesn't hide the original.
     const { data: converted } = await supabase.from('leads').select('*')
@@ -345,6 +355,7 @@ export default function CoachClients() {
                     </select>
                   </div>
                 </div>
+                <CheckinPreview form={form} last={lastCheckins[c.id]} />
                 <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13.5, cursor: 'pointer' }}>
                   <input type="checkbox" checked={!!form.checkin_lock} onChange={e => setForm({ ...form, checkin_lock: e.target.checked })} style={{ width: 18, height: 18, marginTop: 2, flexShrink: 0 }} />
                   <span><strong>🔒 Lock logging when check-in is late</strong><span className="muted" style={{ display: 'block', fontSize: 12 }}>Once their check-in is a day late, Train, Eat and Log pause until it's submitted. For repeat offenders.</span></span>
@@ -573,6 +584,7 @@ export default function CoachClients() {
                     <span className="muted">Program: </span>
                     {programs[c.id] ? <strong style={{ fontWeight: 700 }}>{programs[c.id].label}</strong> : <span className="muted">None assigned</span>}
                   </div>
+                  <NextCheckinLine c={c} last={lastCheckins[c.id]} />
                   {(c.start_date || c.payment_plan || c.payment_date || c.payment_type || c.contract_ends || c.split_ends) && (
                     <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
                       {(() => { const d = daysToPayment(c, localDateStr()); return d !== null && d <= 3 ? <span style={{ color: 'var(--orange-hot)', fontWeight: 800 }}>{d === 0 ? 'Payment due today · ' : d === 1 ? 'Payment due tomorrow · ' : `Payment in ${d} days · `}</span> : null })()}
@@ -695,5 +707,45 @@ function FragmentRow({ row }) {
         </div>
       ))}
     </>
+  )
+}
+
+// Update 177: the coach can see each client's next check-in date.
+function outlookFor(p, last) {
+  return checkinOutlook({ checkinDay: p.checkin_day, frequency: p.checkin_frequency, lastCheckin: last || null, today: localDateStr(), startDate: p.start_date || null })
+}
+
+function NextCheckinLine({ c, last }) {
+  if (c.plan === 'group') return null
+  const o = outlookFor(c, last)
+  const rotation = [freqLabel(c.checkin_frequency).replace(/ \(.*\)/, ''), c.checkin_day != null ? WEEKDAYS[c.checkin_day] + 's' : null].filter(Boolean).join(' · ')
+  if (!o) return <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>Next check-in: — <span style={{ fontSize: 12 }}>(set a check-in day or start date)</span></div>
+  const color = o.status === 'late' ? 'var(--red)' : o.status === 'today' ? 'var(--orange-hot)' : undefined
+  const when = o.status === 'late' ? `was due ${shortDate(o.due)} · ${o.late} day${o.late === 1 ? '' : 's'} late`
+    : o.status === 'today' ? 'today' : o.status === 'tomorrow' ? `tomorrow, ${shortDate(o.due)}` : `${shortDate(o.due)} · in ${o.inDays} days`
+  return (
+    <div style={{ fontSize: 12.5, marginTop: 3 }}>
+      <span className="muted">Next check-in: </span>
+      <strong style={{ fontWeight: 700, color }}>{when}</strong>
+      <span className="muted"> · {rotation}</span>
+    </div>
+  )
+}
+
+function CheckinPreview({ form, last }) {
+  const o = outlookFor(form, last)
+  return (
+    <div style={{ fontSize: 13, background: 'var(--steel)', borderRadius: 8, padding: '8px 12px' }}>
+      {o ? (
+        <>
+          <span className="muted">With this rotation, next check-in: </span>
+          <strong style={{ color: o.status === 'late' ? 'var(--red)' : 'var(--orange-hot)' }}>
+            {o.status === 'late' ? `${shortDate(o.due)} (${o.late} day${o.late === 1 ? '' : 's'} late)` : o.status === 'today' ? `today, ${shortDate(o.due)}` : shortDate(o.due)}
+          </strong>
+          <span className="muted"> · then {o.upcoming.map(shortDate).join(', ')}</span>
+          {last && <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>Last check-in received {shortDate(last)}. Changes apply once you save.</div>}
+        </>
+      ) : <span className="muted">Pick a check-in day (or set a start date) to see their next check-in date.</span>}
+    </div>
   )
 }
