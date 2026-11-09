@@ -11,7 +11,7 @@ const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satur
 import { freqLabel } from '../../lib/dashboard'
 import { paymentSummary } from '../../lib/payments'
 import { localDateStr, logDate, resolveAssignment, dayShowsInWeek } from '../../lib/weeks'
-import { splitForWeek, addDays } from '../../lib/dashboard'
+import { splitForWeek, addDays, checkinOutlook, shortDate } from '../../lib/dashboard'
 import { targetsFrom } from '../../lib/mealplan'
 import { checkinDays, checkinWeekStats, closeness } from '../../lib/checkinWeek'
 import { loadProgramLabels } from '../../lib/clientProgram'
@@ -503,6 +503,12 @@ export default function CoachCheckins() {
                   </strong>
                   {latest && <span className="muted" style={{ fontSize: 12.5, marginLeft: 8 }}>Last check-in {new Date(latest.submitted_at).toLocaleDateString()}</span>}
                   {!latest && <span className="muted" style={{ fontSize: 12.5, marginLeft: 8 }}>No check-ins yet</span>}
+                  {(() => {
+                    const o = checkinOutlook({ checkinDay: g.profile.checkin_day, frequency: g.profile.checkin_frequency, lastCheckin: latest ? localDateStr(new Date(latest.submitted_at)) : null, today: localDateStr(), startDate: g.profile.start_date || null })
+                    if (!o) return null
+                    const color = o.status === 'late' ? 'var(--red)' : o.status === 'today' ? 'var(--orange-hot)' : 'var(--white)'
+                    return <span style={{ fontSize: 12.5, marginLeft: 8 }}><span className="muted">· Next </span><strong style={{ color }}>{o.status === 'late' ? `${shortDate(o.due)} (${o.late}d late)` : o.status === 'today' ? 'today' : shortDate(o.due)}</strong></span>
+                  })()}
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                   {g.profile.start_date && <Chip>Since {fmtDate(g.profile.start_date)}</Chip>}

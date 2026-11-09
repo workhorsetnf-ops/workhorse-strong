@@ -61,6 +61,33 @@ export function nextCheckin({ checkinDay, frequency, lastCheckin, start, today }
   return next
 }
 
+// Coach-side view of a client's check-in rotation (Update 177): when the
+// current one is due, how late it is, and the next few dates after it, all
+// from checkinDueDate so the coach sees exactly what the client and the
+// reminders see. Upcoming dates assume each check-in arrives on time.
+// Returns null when no date can be known (no day, no start, never checked in).
+export function checkinOutlook({ checkinDay, frequency, lastCheckin, today, startDate }, count = 3) {
+  const due = checkinDueDate({ checkinDay, frequency, lastCheckin, today, startDate })
+  if (!due) return null
+  const late = Math.max(0, daysBetween(due, today))
+  const upcoming = []
+  let prev = due
+  for (let i = 0; i < count; i++) {
+    prev = checkinDueDate({ checkinDay, frequency, lastCheckin: prev, today, startDate })
+    upcoming.push(prev)
+  }
+  const inDays = daysBetween(today, due)
+  const status = late > 0 ? 'late' : inDays === 0 ? 'today' : inDays === 1 ? 'tomorrow' : 'upcoming'
+  return { due, late, inDays: Math.max(0, inDays), status, upcoming }
+}
+
+// 'Mon, Nov 16' from a 'YYYY-MM-DD' string, no timezone drift.
+export function shortDate(d) {
+  if (!d) return ''
+  const [y, m, dd] = d.split('-').map(Number)
+  return new Date(y, m - 1, dd).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
 // DAILY MACROS panel: grams, kcal, % of calories, grams per lb bodyweight.
 export function macroRows(profile, weight) {
   const rows = [['Protein', Number(profile?.protein_g) || 0, 4], ['Carbs', Number(profile?.carbs_g) || 0, 4], ['Fat', Number(profile?.fat_g) || 0, 9]]
