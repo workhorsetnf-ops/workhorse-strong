@@ -53,7 +53,7 @@ export default function AnnouncementBanner({ profile }) {
         const link = safeLink(a.link_url)
         return (
           <div key={a.id} className="card glow-behind" role="status"
-            style={{ border: '1px solid var(--orange)', boxShadow: '0 0 0 1px var(--orange) inset', background: 'linear-gradient(135deg, rgba(255,106,0,0.16), rgba(255,106,0,0.04))' }}>
+            style={{ border: '1px solid var(--orange)', boxShadow: '0 0 0 1px var(--orange) inset', background: 'linear-gradient(135deg, rgba(255,85,0,0.16), rgba(255,85,0,0.04))' }}>
             <div className="eyebrow" style={{ fontSize: 10.5, marginBottom: 4 }}>📢 Announcement</div>
             <strong style={{ fontSize: 16, display: 'block', lineHeight: 1.3 }}>{a.title}</strong>
             {a.body && <p style={{ fontSize: 14, marginTop: 6, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{a.body}</p>}

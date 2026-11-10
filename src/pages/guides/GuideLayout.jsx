@@ -38,7 +38,7 @@ export function Step({ n, title, children, art }) {
     <section className="card guide-step" style={{ padding: 16 }}>
       <div className="guide-step-text">
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-          <span style={{ width: 34, height: 34, borderRadius: 17, background: 'var(--orange, #FF6A00)', color: '#000', fontWeight: 900, fontSize: 17, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{n}</span>
+          <span style={{ width: 34, height: 34, borderRadius: 17, background: 'var(--orange, #FF5500)', color: '#000', fontWeight: 900, fontSize: 17, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{n}</span>
           <div style={{ minWidth: 0 }}>
             <h2 style={{ fontSize: 19, margin: '4px 0 6px', lineHeight: 1.2, textTransform: 'none', letterSpacing: 0 }}>{title}</h2>
             <div style={{ fontSize: 15, lineHeight: 1.55 }} className="guide-body">{children}</div>
@@ -61,7 +61,7 @@ export function Shot({ src, alt }) {
 export function Tip({ children, warn }) {
   return (
     <div style={{ fontSize: 14, lineHeight: 1.5, padding: '10px 12px', borderRadius: 10, marginTop: 10,
-      background: warn ? 'rgba(255,59,48,.10)' : 'rgba(255,106,0,.10)', borderLeft: `3px solid ${warn ? '#FF3B30' : 'var(--orange, #FF6A00)'}` }}>{children}</div>
+      background: warn ? 'rgba(255,59,48,.10)' : 'rgba(255,85,0,.10)', borderLeft: `3px solid ${warn ? '#FF3B30' : 'var(--orange, #FF5500)'}` }}>{children}</div>
   )
 }
 

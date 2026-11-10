@@ -63,7 +63,7 @@ export default function FoodPicker({ foods, value, onChange, onPick, onAddUnknow
               onMouseDown={e => e.preventDefault()} onClick={() => pick(f)} onMouseEnter={() => setHi(i)}
               style={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', textAlign: 'left',
                 padding: '10px 12px', border: 'none', borderTop: i ? '1px solid var(--line, #2a2a2a)' : 'none', cursor: 'pointer',
-                background: i === hi ? 'rgba(255,122,26,.16)' : 'transparent', color: 'inherit', fontSize: 14 }}>
+                background: i === hi ? 'rgba(255,122,51,.16)' : 'transparent', color: 'inherit', fontSize: 14 }}>
               <span style={{ fontWeight: 600 }}>{f.name}</span>
               <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{n1(f.protein)}P · {n1(f.carbs)}C · {n1(f.fat)}F</span>
             </button>

@@ -236,7 +236,7 @@ export default function CoachMessages() {
                 return (
                   <button key={g.id} className={isActive ? 'btn' : 'btn-ghost'} onClick={() => openGroup(g)}
                     style={{ textAlign: 'left', fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 8, opacity: g.archived ? 0.6 : 1,
-                      ...(u ? { borderColor: 'var(--orange)', background: 'rgba(255,106,0,0.14)', boxShadow: '0 0 0 1px var(--orange) inset' } : {}) }}>
+                      ...(u ? { borderColor: 'var(--orange)', background: 'rgba(255,85,0,0.14)', boxShadow: '0 0 0 1px var(--orange) inset' } : {}) }}>
                     <span style={{ width: 26, height: 26, borderRadius: 13, background: 'var(--steel)', display: 'grid', placeItems: 'center', fontSize: 13, flexShrink: 0 }}>👥</span>
                     <span style={{ minWidth: 0, flex: 1 }}>
                       <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: u ? 800 : undefined }}>{g.name}</span>
@@ -263,7 +263,7 @@ export default function CoachMessages() {
             return (
               <button key={c.id} className={isActive ? 'btn' : 'btn-ghost'} aria-label={u ? `${c.full_name}, ${u.count} new` : c.full_name}
                 style={{ textAlign: 'left', fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 8, position: 'relative',
-                  ...(u && !isActive ? { borderColor: 'var(--orange)', background: 'rgba(255,106,0,0.14)', boxShadow: '0 0 0 1px var(--orange) inset' } : {}) }}
+                  ...(u && !isActive ? { borderColor: 'var(--orange)', background: 'rgba(255,85,0,0.14)', boxShadow: '0 0 0 1px var(--orange) inset' } : {}) }}
                 onClick={() => openClient(c)}>
                 <Avatar url={c.avatar_url} name={c.full_name} size={26} />
                 <span style={{ minWidth: 0, flex: 1 }}>

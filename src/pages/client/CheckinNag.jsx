@@ -56,7 +56,7 @@ export function CheckinTakeover({ status, onCheckinPage, locked }) {
     }}>
       <div style={{ maxWidth: 380, width: '100%', textAlign: 'center' }}>
         <div style={{ width: 84, height: 84, borderRadius: '50%', margin: '0 auto 18px', display: 'grid', placeItems: 'center',
-          background: red ? 'rgba(214,69,69,0.15)' : 'rgba(255,106,0,0.15)', border: `2px solid ${red ? 'var(--red)' : 'var(--orange)'}` }}>
+          background: red ? 'rgba(214,69,69,0.15)' : 'rgba(255,85,0,0.15)', border: `2px solid ${red ? 'var(--red)' : 'var(--orange)'}` }}>
           <ClipboardCheck size={40} color={red ? 'var(--red)' : 'var(--orange)'} />
         </div>
         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 38, letterSpacing: 1, lineHeight: 1.05, color: red ? 'var(--red)' : 'var(--white)' }}>

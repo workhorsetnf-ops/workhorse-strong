@@ -49,7 +49,7 @@ export default function SetupStatusCard() {
             <Link to={`/coach/review/${r.id}`} style={{ fontWeight: 700, color: 'inherit', textDecoration: 'none', minWidth: 130 }}>{r.full_name || 'Client'}</Link>
             <span className="muted" style={{ fontSize: 12 }}>{r.done}/{r.total}</span>
             <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {r.missing.map(m => <span key={m} style={{ fontSize: 11.5, padding: '2px 8px', borderRadius: 10, background: 'rgba(255,106,0,.14)', color: 'var(--orange-hot)', fontWeight: 700 }}>{m}</span>)}
+              {r.missing.map(m => <span key={m} style={{ fontSize: 11.5, padding: '2px 8px', borderRadius: 10, background: 'rgba(255,85,0,.14)', color: 'var(--orange-hot)', fontWeight: 700 }}>{m}</span>)}
             </span>
           </div>
         ))}

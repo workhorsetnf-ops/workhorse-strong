@@ -66,7 +66,7 @@ function Poll({ post, options, votes, me, isCoach, names, onVote, onToggleClosed
           <button key={o.id} disabled={post.poll_closed} onClick={() => onVote(o.id)}
             style={{ position: 'relative', textAlign: 'left', padding: '10px 12px', borderRadius: 10, overflow: 'hidden',
               border: `1px solid ${picked ? 'var(--orange)' : 'var(--line)'}`, background: 'var(--steel)', color: 'inherit', cursor: post.poll_closed ? 'default' : 'pointer' }}>
-            {showResults && <span aria-hidden style={{ position: 'absolute', inset: 0, width: `${o.pct}%`, background: picked ? 'rgba(255,106,0,0.28)' : 'rgba(255,255,255,0.07)', transition: 'width .3s' }} />}
+            {showResults && <span aria-hidden style={{ position: 'absolute', inset: 0, width: `${o.pct}%`, background: picked ? 'rgba(255,85,0,0.28)' : 'rgba(255,255,255,0.07)', transition: 'width .3s' }} />}
             <span style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13.5, fontWeight: picked ? 800 : 600 }}>
               <span>{picked ? '✓ ' : ''}{o.label}</span>
               {showResults && <span>{o.pct}%</span>}

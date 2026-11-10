@@ -29,7 +29,7 @@ export function WeekTotals({ table, targets, today, selected, onPick, compact })
             const isToday = r.date === today, sel = r.date === selected
             return (
               <tr key={r.date} onClick={onPick ? () => onPick(r.date) : undefined}
-                style={{ background: sel ? 'rgba(255,106,0,0.16)' : i % 2 ? 'var(--steel)' : 'var(--coal)', cursor: onPick ? 'pointer' : undefined }}>
+                style={{ background: sel ? 'rgba(255,85,0,0.16)' : i % 2 ? 'var(--steel)' : 'var(--coal)', cursor: onPick ? 'pointer' : undefined }}>
                 <td style={{ ...td, textAlign: 'left', paddingLeft: 8, fontWeight: 800, color: isToday ? 'var(--orange-hot)' : undefined, whiteSpace: 'nowrap' }}>
                   {compact ? dow(r.date).slice(0, 3) : dow(r.date)} <span className="muted" style={{ fontWeight: 500, fontSize: 11 }}>{md(r.date)}</span>
                 </td>

@@ -4,7 +4,7 @@
 import { useId } from 'react'
 
 export const C = {
-  orange: '#FF6A00', blue: '#0A84FF', green: '#34C759', red: '#FF3B30',
+  orange: '#FF5500', blue: '#0A84FF', green: '#34C759', red: '#FF3B30',
   iosBg: '#F2F2F7', card: '#FFFFFF', line: '#E5E5EA', ink: '#111111', sub: '#8E8E93',
   appBg: '#0B0B0B', appCard: '#1B1B1B', appLine: '#2E2E2E', white: '#F5F5F5', muted: '#9A9A9A',
   droidBg: '#FFFFFF', droidBar: '#F1F3F4',
@@ -45,7 +45,7 @@ export function Tap({ x, y, r = 14, n }) {
   return (
     <g>
       <circle cx={x} cy={y} r={r + 6} fill="none" stroke={C.orange} strokeWidth={2} opacity={0.35} />
-      <circle cx={x} cy={y} r={r} fill="rgba(255,106,0,0.16)" stroke={C.orange} strokeWidth={3} />
+      <circle cx={x} cy={y} r={r} fill="rgba(255,85,0,0.16)" stroke={C.orange} strokeWidth={3} />
       {n !== undefined && <g><circle cx={x + r + 4} cy={y - r - 2} r={8} fill={C.orange} /><T x={x + r + 4} y={y - r + 1.5} s={10} w={800} c="#000" a="middle">{n}</T></g>}
     </g>
   )
@@ -53,7 +53,7 @@ export function Tap({ x, y, r = 14, n }) {
 
 // Orange outline around an area (a row, a field, a button).
 export function Hl({ x, y, w, h, r = 8, color = C.orange }) {
-  return <rect x={x - 3} y={y - 3} width={w + 6} height={h + 6} rx={r + 2} fill={color === C.orange ? 'rgba(255,106,0,0.08)' : 'none'} stroke={color} strokeWidth={3} />
+  return <rect x={x - 3} y={y - 3} width={w + 6} height={h + 6} rx={r + 2} fill={color === C.orange ? 'rgba(255,85,0,0.08)' : 'none'} stroke={color} strokeWidth={3} />
 }
 
 // iOS-style grouped list. rows: [{ t, right, rc (right colour), toggle, hl }]

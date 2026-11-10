@@ -30,7 +30,7 @@ function MissingFromLibrary({ names }) {
   )
 }
 
-const GROUP_COLORS = ['#FF6A00', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
+const GROUP_COLORS = ['#FF5500', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
 const prefixOf = l => (l || '').replace(/[0-9]/g, '')
 const isNumbered = l => /^[A-Z]+\d+$/.test(l || '')
 
@@ -326,7 +326,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
         .pt-target{color:var(--orange-hot);font-weight:800}
         .pt-bad{border-color:#e5484d!important;background:rgba(229,72,77,.12)!important}
         .pt-cell:hover{border-color:#6a6a6a}
-        .pt-cell:focus{outline:none;border-color:var(--orange);background:rgba(255,106,0,0.12)}
+        .pt-cell:focus{outline:none;border-color:var(--orange);background:rgba(255,85,0,0.12)}
         .pt-table{border:1px solid #4a4a4a;border-radius:10px;overflow:hidden;background:var(--coal)}
         .pt-head{background:var(--orange);color:#000}
         .pt-sub{background:#0f0f0f;border-bottom:2px solid var(--orange)}
@@ -335,7 +335,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
         .pt-sep{border-left:1px solid #333}
         .pt-name{text-align:left;font-weight:600}
         .pt-mini{height:24px;box-sizing:border-box;padding:0 5px;border:1px solid var(--line);border-radius:5px;background:transparent;color:inherit;font:inherit;font-size:11.5px;text-align:center}
-        .pt-mini:focus{outline:none;border-color:var(--orange);background:rgba(255,106,0,0.10)}
+        .pt-mini:focus{outline:none;border-color:var(--orange);background:rgba(255,85,0,0.10)}
         .pt-mini::placeholder{color:var(--muted);opacity:.7}
       `}</style>
 
@@ -382,7 +382,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                     <div />
                     <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '.08em', padding: '8px 8px' }}>EXERCISE</div>
                     {runWeeks.map((wk, wi) => (
-                      <div key={wk} className="pt-wk" style={{ borderLeftColor: 'rgba(0,0,0,.35)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', gap: 6, background: wk === previewWeek ? '#ff8a33' : undefined }}>
+                      <div key={wk} className="pt-wk" style={{ borderLeftColor: 'rgba(0,0,0,.35)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', gap: 6, background: wk === previewWeek ? '#FF7A33' : undefined }}>
                         <button type="button" onClick={() => setPreviewWeek(wk)}
                           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#000', fontSize: 13, fontWeight: 900, letterSpacing: '.04em' }}>
                           WEEK {wk}
@@ -421,7 +421,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                     const isOpen = open === ex.id
                     return (
                       <div key={ex.id} className="pt-row">
-                      <div className="pt-grid" style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center', borderBottom: isOpen ? 'none' : '1px solid #3a3a3a', background: on || isOpen ? 'rgba(255,106,0,0.08)' : undefined, boxShadow: on || isOpen ? 'inset 3px 0 0 var(--orange)' : undefined }}>
+                      <div className="pt-grid" style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center', borderBottom: isOpen ? 'none' : '1px solid #3a3a3a', background: on || isOpen ? 'rgba(255,85,0,0.08)' : undefined, boxShadow: on || isOpen ? 'inset 3px 0 0 var(--orange)' : undefined }}>
                         <button type="button" onClick={() => { setOpen(isOpen ? null : ex.id); setSelEx({ dayId: d.id, exId: ex.id }) }}
                           aria-expanded={isOpen} aria-label={`${isOpen ? 'Close' : 'Open'} details for ${ex.name}`} title="Per-set targets, order, video"
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: isOpen ? 'var(--orange-hot)' : 'var(--muted)', fontSize: 11, fontWeight: 800, padding: 0, height: 34 }}>
@@ -451,7 +451,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                           const t = wts[wi]
                           const perSet = Array.isArray(t.setRows)
                           return (
-                            <div key={wk} className="pt-wk" style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.3fr 1fr', gap: 4, padding: '5px 6px', background: wk === previewWeek ? 'rgba(255,106,0,0.05)' : undefined }}>
+                            <div key={wk} className="pt-wk" style={{ display: 'grid', gridTemplateColumns: '0.8fr 1.3fr 1fr', gap: 4, padding: '5px 6px', background: wk === previewWeek ? 'rgba(255,85,0,0.05)' : undefined }}>
                               {isCond ? (
                                 <span className="muted" style={{ gridColumn: '1 / -1', textAlign: 'center', fontSize: 12 }}>—</span>
                               ) : (
@@ -475,7 +475,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                           style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13, height: 34 }}>✕</button>
                       </div>
                       {isOpen && (
-                        <div style={{ borderBottom: '1px solid var(--line)', background: 'rgba(255,106,0,0.035)', padding: '8px 10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div style={{ borderBottom: '1px solid var(--line)', background: 'rgba(255,85,0,0.035)', padding: '8px 10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
                             <button type="button" className="btn-ghost" disabled={list.indexOf(ex) === 0} onClick={() => move(d.id, ex, -1)} style={{ padding: '3px 9px', fontSize: 12 }}>↑ Up</button>
                             <button type="button" className="btn-ghost" disabled={list.indexOf(ex) === list.length - 1} onClick={() => move(d.id, ex, 1)} style={{ padding: '3px 9px', fontSize: 12 }}>↓ Down</button>
@@ -598,7 +598,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
                 const tg = preview.t.setRows ? uniq.join(' / ') : preview.t.target
                 if (!tg) return null
                 return (
-                  <div style={{ marginTop: 6, border: '1px solid var(--orange)', borderRadius: 8, padding: '6px 8px', background: 'rgba(255,106,0,0.08)' }}>
+                  <div style={{ marginTop: 6, border: '1px solid var(--orange)', borderRadius: 8, padding: '6px 8px', background: 'rgba(255,85,0,0.08)' }}>
                     <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '.06em', color: 'var(--orange-hot)' }}>TARGET {effortText(type, tg).toUpperCase()}</div>
                     {uniq.length === 1 && <div style={{ fontSize: 10.5, marginTop: 1 }}>{effortMeaning(type, tg)}</div>}
                   </div>

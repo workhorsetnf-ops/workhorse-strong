@@ -168,7 +168,7 @@ function CallRow({ item, now, tz, showZone, next }) {
   const hot = phase === 'soon' || phase === 'live'
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', margin: '0 -8px', borderRadius: 8,
-      opacity: over ? 0.5 : 1, background: hot ? 'rgba(255,106,0,.12)' : next ? 'var(--steel)' : 'transparent' }}>
+      opacity: over ? 0.5 : 1, background: hot ? 'rgba(255,85,0,.12)' : next ? 'var(--steel)' : 'transparent' }}>
       <span style={timeCol}>{fmtTime(item.at, tz, showZone)}</span>
       <Video size={16} color="var(--orange)" style={{ flexShrink: 0 }} />
       <span style={{ flex: 1, minWidth: 0, fontSize: 14 }}>
@@ -195,7 +195,7 @@ function TaskRow({ item, now, next, onToggle, onEdit, onDelete }) {
   const soon = item.at && !item.done && item.at > now && item.at - now <= 15 * 60000
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: item.at ? '6px 8px' : 0, margin: item.at ? '0 -8px' : 0, borderRadius: 8,
-      opacity: item.done ? 0.5 : 1, background: soon ? 'rgba(255,106,0,.12)' : next ? 'var(--steel)' : 'transparent' }}>
+      opacity: item.done ? 0.5 : 1, background: soon ? 'rgba(255,85,0,.12)' : next ? 'var(--steel)' : 'transparent' }}>
       {item.at && <span style={timeCol}>{fmtTaskTime(t.due_time)}</span>}
       <button onClick={() => onToggle(t)} aria-label={item.done ? 'Mark not done' : 'Mark done'}
         style={{ background: 'none', display: 'flex', color: item.done ? 'var(--green)' : 'var(--muted)', flexShrink: 0 }}>
