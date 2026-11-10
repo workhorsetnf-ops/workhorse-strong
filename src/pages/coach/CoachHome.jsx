@@ -442,7 +442,7 @@ export default function CoachHome() {
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
                   {insights[c.id].map((chip, i) => {
-                    const colors = { good: { bg: 'rgba(76,175,109,0.15)', c: 'var(--green)' }, warn: { bg: 'rgba(255,106,0,0.18)', c: 'var(--orange-hot)' }, neutral: { bg: 'var(--steel)', c: 'var(--muted)' } }[chip.tone]
+                    const colors = { good: { bg: 'rgba(76,175,109,0.15)', c: 'var(--green)' }, warn: { bg: 'rgba(255,85,0,0.18)', c: 'var(--orange-hot)' }, neutral: { bg: 'var(--steel)', c: 'var(--muted)' } }[chip.tone]
                     return <span key={i} style={{ fontSize: 12, fontWeight: 600, padding: '4px 11px', borderRadius: 20, background: colors.bg, color: colors.c }}>{chip.text}</span>
                   })}
                 </div>
@@ -496,7 +496,7 @@ export default function CoachHome() {
                 </div>
                 <strong onClick={() => setExpandedClient(ec => ec === c.id ? null : c.id)} style={{ fontSize: 14, minWidth: 110, cursor: 'pointer' }}>{c.full_name || 'Client'}</strong>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {s.exercise && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(255,106,0,0.18)', color: 'var(--orange-hot)' }}>Exercise due</span>}
+                  {s.exercise && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(255,85,0,0.18)', color: 'var(--orange-hot)' }}>Exercise due</span>}
                   {s.lifestyle && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: 'rgba(62,142,126,0.18)', color: '#3E8E7E' }}>Lifestyle due</span>}
                   {s.checkin && (s.checkinLateDays
                     ? <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 20, background: 'rgba(214,69,69,0.2)', color: 'var(--red)' }}>Check-in {s.checkinLateDays} day{s.checkinLateDays === 1 ? '' : 's'} late{c.checkin_lock ? ' · 🔒 locked' : ''}</span>
@@ -642,7 +642,7 @@ export default function CoachHome() {
                     </p>
                     {s_ && (s_.exercise || s_.lifestyle || s_.checkin) && (
                       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
-                        {s_.exercise && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(255,106,0,0.18)', color: 'var(--orange-hot)' }}>Exercise due</span>}
+                        {s_.exercise && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(255,85,0,0.18)', color: 'var(--orange-hot)' }}>Exercise due</span>}
                         {s_.lifestyle && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(62,142,126,0.18)', color: '#3E8E7E' }}>Lifestyle due</span>}
                         {s_.checkin && <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'rgba(124,92,191,0.18)', color: '#9B7FE0' }}>Check-in due</span>}
                       </div>

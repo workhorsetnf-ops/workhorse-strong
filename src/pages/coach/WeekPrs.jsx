@@ -17,7 +17,7 @@ export default function WeekPrs({ clientId, days }) {
     <div className="card" style={{ borderLeft: '3px solid var(--orange)' }}>
       <strong style={{ fontSize: 15 }}>🏆 PRs this week · {prs.length}</strong>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-        {prs.map((p, i) => <span key={i} style={{ fontSize: 13, padding: '4px 10px', borderRadius: 12, background: 'rgba(255,106,0,.14)' }}><strong>{p.name}</strong> {p.weight} × {p.reps}</span>)}
+        {prs.map((p, i) => <span key={i} style={{ fontSize: 13, padding: '4px 10px', borderRadius: 12, background: 'rgba(255,85,0,.14)' }}><strong>{p.name}</strong> {p.weight} × {p.reps}</span>)}
       </div>
     </div>
   )

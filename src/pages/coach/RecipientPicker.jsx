@@ -28,7 +28,7 @@ export default function RecipientPicker({ clients, selected, onChange, already =
       </div>
       <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 2 }}>
         {shown.map(c => (
-          <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '4px 6px', borderRadius: 6, cursor: 'pointer', background: selected.has(c.id) ? 'rgba(255,106,0,0.12)' : 'transparent' }}>
+          <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '4px 6px', borderRadius: 6, cursor: 'pointer', background: selected.has(c.id) ? 'rgba(255,85,0,0.12)' : 'transparent' }}>
             <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggle(c.id)} style={{ width: 'auto' }} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.full_name || 'Unnamed client'}</span>
             {already.has(c.id) && <span className="muted" style={{ fontSize: 10.5, whiteSpace: 'nowrap' }}>· {alreadyLabel}</span>}

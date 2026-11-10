@@ -53,7 +53,7 @@ export default function WinsCard({ profile }) {
   }
 
   return (
-    <div className="card" style={{ background: 'linear-gradient(135deg, rgba(255,106,0,.18), rgba(255,106,0,.04))', borderColor: 'var(--orange)' }}>
+    <div className="card" style={{ background: 'linear-gradient(135deg, rgba(255,85,0,.18), rgba(255,85,0,.04))', borderColor: 'var(--orange)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <strong style={{ fontSize: 16 }}>💪 {st.label}’s wins</strong>
         <button className="btn-ghost" onClick={share} disabled={busy} style={{ padding: '5px 11px', fontSize: 12, display: 'flex', gap: 5, alignItems: 'center' }}><Share2 size={13} /> {busy ? '…' : 'Share'}</button>
@@ -76,10 +76,10 @@ async function drawCard({ name, label, monday, tiles, topPr }) {
   const c = document.createElement('canvas'); c.width = 1080; c.height = 1350
   const g = c.getContext('2d')
   g.fillStyle = '#0A0A0A'; g.fillRect(0, 0, 1080, 1350)
-  const grad = g.createRadialGradient(540, 0, 50, 540, 0, 900); grad.addColorStop(0, 'rgba(255,106,0,.35)'); grad.addColorStop(1, 'rgba(255,106,0,0)')
+  const grad = g.createRadialGradient(540, 0, 50, 540, 0, 900); grad.addColorStop(0, 'rgba(255,85,0,.35)'); grad.addColorStop(1, 'rgba(255,85,0,0)')
   g.fillStyle = grad; g.fillRect(0, 0, 1080, 1350)
   try { const logo = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = '/icon-512.png' }); g.drawImage(logo, 80, 80, 140, 140) } catch { /* no logo */ }
-  g.fillStyle = '#FF6A00'; g.font = '800 40px Oswald, system-ui, sans-serif'; g.fillText('WORKHORSE STRONG', 250, 140)
+  g.fillStyle = '#FF5500'; g.font = '800 40px Oswald, system-ui, sans-serif'; g.fillText('WORKHORSE STRONG', 250, 140)
   g.fillStyle = '#9A9A9A'; g.font = '600 34px system-ui, sans-serif'
   g.fillText(`Week of ${new Date(monday + 'T00:00:00').toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`, 250, 192)
   g.fillStyle = '#FFFFFF'; g.font = '900 96px Oswald, system-ui, sans-serif'
@@ -87,11 +87,11 @@ async function drawCard({ name, label, monday, tiles, topPr }) {
   tiles.slice(0, 4).forEach(([k, v], i) => {
     const x = 80 + (i % 2) * 470, y = 440 + Math.floor(i / 2) * 290
     g.fillStyle = '#1B1B1B'; roundRect(g, x, y, 450, 260, 28); g.fill()
-    g.fillStyle = '#FF6A00'; g.font = '900 110px Oswald, system-ui, sans-serif'; g.fillText(String(v), x + 40, y + 150)
+    g.fillStyle = '#FF5500'; g.font = '900 110px Oswald, system-ui, sans-serif'; g.fillText(String(v), x + 40, y + 150)
     g.fillStyle = '#BDBDBD'; g.font = '700 38px system-ui, sans-serif'; g.fillText(k.toUpperCase(), x + 40, y + 215)
   })
   if (topPr) { g.fillStyle = '#FFFFFF'; g.font = '700 44px system-ui, sans-serif'; g.fillText(`🏆 ${topPr.name}  ${topPr.weight} × ${topPr.reps}`, 80, 1060) }
-  g.fillStyle = '#FF6A00'; g.font = '800 46px Oswald, system-ui, sans-serif'; g.fillText('CLOCK IN. DO THE WORK.', 80, 1250)
+  g.fillStyle = '#FF5500'; g.font = '800 46px Oswald, system-ui, sans-serif'; g.fillText('CLOCK IN. DO THE WORK.', 80, 1250)
   return await new Promise(ok => c.toBlob(ok, 'image/png'))
 }
 function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath() }

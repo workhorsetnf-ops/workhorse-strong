@@ -59,7 +59,7 @@ export function progressionCall(sets, targets, type = 'rir') {
 
 export const CALL_STYLE = {
   up: { color: '#000', bg: 'var(--orange)', icon: '▲' },
-  reps: { color: 'var(--orange-hot)', bg: 'rgba(255,106,0,0.12)', icon: '+1' },
+  reps: { color: 'var(--orange-hot)', bg: 'rgba(255,85,0,0.12)', icon: '+1' },
   hold: { color: '#c9a227', bg: 'rgba(201,162,39,0.14)', icon: '=' },
   drop: { color: '#fff', bg: '#b3261e', icon: '▼' },
   plan: { color: '#000', bg: 'var(--orange-hot)', icon: '↗' },

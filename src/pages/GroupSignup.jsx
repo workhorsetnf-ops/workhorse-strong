@@ -71,7 +71,7 @@ export default function GroupSignup() {
                   const on = track?.id === t.id
                   return (
                     <button key={t.id} type="button" onClick={() => setTrack(t)} aria-pressed={on}
-                      style={{ textAlign: 'left', padding: '14px 14px', borderRadius: 12, cursor: 'pointer', background: on ? 'rgba(255,106,0,.12)' : 'var(--steel)', border: `2px solid ${on ? 'var(--orange)' : 'transparent'}`, color: 'inherit' }}>
+                      style={{ textAlign: 'left', padding: '14px 14px', borderRadius: 12, cursor: 'pointer', background: on ? 'rgba(255,85,0,.12)' : 'var(--steel)', border: `2px solid ${on ? 'var(--orange)' : 'transparent'}`, color: 'inherit' }}>
                       <div style={{ fontSize: 16, fontWeight: 900 }}>{t.name}</div>
                       {t.description && <div className="muted" style={{ fontSize: 13, marginTop: 4, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{t.description}</div>}
                     </button>

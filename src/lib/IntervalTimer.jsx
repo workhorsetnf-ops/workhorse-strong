@@ -77,7 +77,7 @@ export default function IntervalTimer({ rounds, work, rest, onRoundDone }) {
   const total = working ? W : R
   const pct = total ? (1 - left / total) * 100 : 0
   return (
-    <div style={{ margin: '4px 0 8px', borderRadius: 12, padding: '12px 14px', background: working ? 'rgba(255,106,0,0.16)' : 'var(--steel)', border: `1px solid ${working ? 'var(--orange)' : 'var(--line)'}` }}>
+    <div style={{ margin: '4px 0 8px', borderRadius: 12, padding: '12px 14px', background: working ? 'rgba(255,85,0,0.16)' : 'var(--steel)', border: `1px solid ${working ? 'var(--orange)' : 'var(--line)'}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <span style={{ fontFamily: 'Oswald, sans-serif', fontSize: 22, letterSpacing: '.06em', color: working ? 'var(--orange-hot)' : 'var(--muted)' }}>{working ? 'WORK' : 'REST'}</span>
         <span className="muted" style={{ fontSize: 13, fontWeight: 700 }}>Round {st.round} of {rounds}</span>
