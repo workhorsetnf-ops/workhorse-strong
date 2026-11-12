@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 
 export function GuidePage({ eyebrow, title, intro, tabs, tab, setTab, children }) {
   const { profile } = useAuth() || {}
-  const home = profile?.role === 'coach' ? '/coach' : profile ? '/app' : '/'
+  const home = ['coach', 'assistant'].includes(profile?.role) ? '/coach' : profile ? '/app' : '/'
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--black, #0A0A0A)' }}>
       <div style={{ maxWidth: 820, margin: '0 auto', padding: '20px 16px 60px', display: 'flex', flexDirection: 'column', gap: 16 }}>

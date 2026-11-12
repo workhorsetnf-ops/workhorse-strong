@@ -240,7 +240,7 @@ function DroidAllow() {
 
 export default function NotificationsGuide() {
   const { profile } = useAuth() || {}
-  const coach = profile?.role === 'coach'
+  const coach = ['coach', 'assistant'].includes(profile?.role)
   const [tab, setTab] = useState(isAndroid() ? 'android' : 'iphone')
   const where = coach
     ? <>Tap <b>Notifications</b> in the menu (at the bottom of the left side, or swipe the top bar on a phone).</>

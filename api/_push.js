@@ -53,8 +53,26 @@ export async function userFromReq(sb, req) {
   if (!token) return null
   const { data, error } = await sb.auth.getUser(token)
   if (error || !data?.user) return null
-  const { data: prof } = await sb.from('profiles').select('id, role, full_name').eq('id', data.user.id).single()
-  return prof || null
+  const { data: prof } = await sb.from('profiles').select('id, role, full_name, status').eq('id', data.user.id).single()
+  if (!prof) return null
+  return actingProfile(sb, prof)
+}
+
+// Assistants (Update 179) work as the coach: they send from the coach's account,
+// so every coach-only route treats an ACTIVE assistant as the coach, with
+// `actor` saying who really asked. A deactivated assistant gets nothing.
+export async function actingProfile(sb, prof) {
+  if (prof.role !== 'assistant') return prof
+  if ((prof.status || 'active') !== 'active') return null
+  const { data: coach } = await sb.from('profiles').select('id, role, full_name').eq('role', 'coach').order('created_at').limit(1).maybeSingle()
+  if (!coach) return null
+  return { ...coach, actor: { id: prof.id, role: 'assistant', full_name: prof.full_name } }
+}
+
+// Everyone who should hear about coach-side events: the coach plus active assistants.
+export async function staffIds(sb) {
+  const { data } = await sb.from('profiles').select('id, role, status').in('role', ['coach', 'assistant'])
+  return (data || []).filter(p => p.role === 'coach' || (p.status || 'active') === 'active').map(p => p.id)
 }
 
 export async function prefsFor(sb, ids) {

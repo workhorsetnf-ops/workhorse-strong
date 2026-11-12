@@ -156,6 +156,7 @@ export default function ClientMessages() {
             ) : m.msg_type === 'file' ? (
               <button onClick={() => openFile(m)} style={{ background: 'none', color: 'inherit', fontWeight: 700, fontSize: 13, textAlign: 'left' }}>📎 {m.file_name || 'Attachment'}</button>
             ) : m.body}
+            {m.sent_by_name && <div style={{ fontSize: 10.5, opacity: 0.7, marginTop: 3 }}>{m.sent_by_name.split(' ')[0]}, Team Workhorse</div>}
           </div>
         ))}
         <div ref={bottomRef} />

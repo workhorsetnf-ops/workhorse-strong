@@ -1,4 +1,6 @@
 import TrainingDays from '../../components/TrainingDays'
+import { useAuth } from '../../context/AuthContext'
+import ViewOnlyBanner from '../../components/ViewOnlyBanner'
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { normalizeTarget, normalizeReps, dash, effortText, effortMeaning } from '../../lib/targets'
@@ -633,6 +635,7 @@ export function ProgramTable({ block, dayList, exercisesByDay, runWeeks, preview
 const daysLabel = map => Object.entries(map || {}).sort((a, b) => a[0] - b[0]).map(([dn, wd]) => `D${dn} ${WEEKDAY_SHORT[wd - 1]}`).join(', ') || 'program'
 
 export default function CoachPrograms() {
+  const { programsLocked: locked } = useAuth()   // assistants: view and assign only (Update 179)
   const [programs, setPrograms] = useState([])
   const [clients, setClients] = useState([])
   const [assignments, setAssignments] = useState([])
@@ -1548,6 +1551,7 @@ export default function CoachPrograms() {
         <h1 style={{ fontSize: 28, margin: 0 }}>Programs</h1>
         <button className="btn-ghost" onClick={() => setCheckOpen(v => !v)}>✓ Progression check</button>
       </div>
+      {locked && <ViewOnlyBanner what="Programs" also="You can still assign programs to clients and set their start dates, weeks and training days." />}
       {checkOpen && (
         <ProgressionCheck onClose={() => setCheckOpen(false)} onOpen={async (pid, bid) => {
           setOpen(pid); setSelected({})
@@ -1558,11 +1562,11 @@ export default function CoachPrograms() {
         }} />
       )}
 
-      <div className="card" style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center' }}>
+      {!locked && <div className="card" style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center' }}>
         <input placeholder="New program name (e.g. Off-Season 12-Week)" value={newProgram} onChange={e => setNewProgram(e.target.value)} onKeyDown={e => e.key === 'Enter' && createProgram()} />
         <input inputMode="numeric" style={{ width: 130 }} value={newWeeks} onChange={e => setNewWeeks(e.target.value)} title="Weeks in first block" placeholder="Block 1 weeks" />
         <button className="btn" style={{ whiteSpace: 'nowrap' }} onClick={createProgram}>Create</button>
-      </div>
+      </div>}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {programs.map(p => {
@@ -1573,7 +1577,7 @@ export default function CoachPrograms() {
             <div className="card" key={p.id} id={'program-' + p.id}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                 <div>
-                  <strong onClick={() => renameProgram(p)} title="Click to rename" style={{ fontSize: 16, cursor: 'pointer' }}>{p.name} <span style={{ fontSize: 11, opacity: 0.6 }}>✎</span></strong>
+                  <strong onClick={() => !locked && renameProgram(p)} title={locked ? undefined : 'Click to rename'} style={{ fontSize: 16, cursor: locked ? 'default' : 'pointer' }}>{p.name} {!locked && <span style={{ fontSize: 11, opacity: 0.6 }}>✎</span>}</strong>
                   <span className="muted" style={{ fontSize: 13, marginLeft: 8 }}>{p.weeks} total weeks</span>
                   <div className="muted" style={{ fontSize: 13, marginTop: 3 }}>{assigned.length ? `Assigned to ${assigned.length} client(s)` : 'Not assigned'}</div>
                 </div>
@@ -1582,18 +1586,20 @@ export default function CoachPrograms() {
                     <option value="" disabled>Assign to…</option>
                     {clients.map(c => <option key={c.id} value={c.id}>{c.full_name || c.id.slice(0, 8)}</option>)}
                   </select>
-                  <button className="btn-ghost" onClick={() => openProgram(p.id)}>{open === p.id ? 'Close' : 'Open builder'}</button>
-                  <button className="btn-ghost" onClick={() => duplicateProgram(p)}>Duplicate</button>
-                  <button className="btn-ghost" style={{ color: 'var(--red)' }} onClick={() => deleteProgram(p.id)}>Delete</button>
+                  <button className="btn-ghost" onClick={() => openProgram(p.id)}>{open === p.id ? 'Close' : locked ? 'View' : 'Open builder'}</button>
+                  {!locked && <button className="btn-ghost" onClick={() => duplicateProgram(p)}>Duplicate</button>}
+                  {!locked && <button className="btn-ghost" style={{ color: 'var(--red)' }} onClick={() => deleteProgram(p.id)}>Delete</button>}
                 </div>
               </div>
 
               {open === p.id && (
                 <div style={{ marginTop: 10 }}>
-                  <NotesBox label="Program instructions" value={p.notes} rows={8}
+                  {locked ? (
+                    <div style={{ whiteSpace: 'pre-wrap', fontSize: 13 }}><strong>📝 Program instructions</strong>{'\n'}{p.notes || <span className="muted">None yet.</span>}</div>
+                  ) : <NotesBox label="Program instructions" value={p.notes} rows={8}
                     hint="Clients see this at the top of their Train page: how the program works, how to warm up, RIR, rest, what to log."
                     placeholder={'How this program works:\n• Warm up with the first 2–3 exercises, then the jumps/throws at full effort.\n• RIR = reps left in the tank. Stop each set at the target.\n• Supersets (A1/A2): one set of each, then rest.\n• Log every set so I can adjust next week.'}
-                    onSave={async v => { await supabase.from('programs').update({ notes: v }).eq('id', p.id); load() }} />
+                    onSave={async v => { await supabase.from('programs').update({ notes: v }).eq('id', p.id); load() }} />}
                 </div>
               )}
 
@@ -1654,7 +1660,7 @@ export default function CoachPrograms() {
               )}
 
               {open === p.id && (
-                <div style={{ marginTop: 16, borderTop: '1px solid var(--line)', paddingTop: 16 }}>
+                <div className={locked ? 'view-only' : undefined} style={{ marginTop: 16, borderTop: '1px solid var(--line)', paddingTop: 16 }}>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
                     <span className="eyebrow" style={{ marginRight: 4 }}>Blocks</span>
                     {pBlocks.map(b => (
@@ -1663,22 +1669,22 @@ export default function CoachPrograms() {
                           onClick={() => openBlockView(b)}>
                           {b.name} <span className="muted" style={{ fontSize: 11 }}>({b.weeks}w)</span>
                         </button>
-                        <button className={openBlock === b.id ? 'btn' : 'btn-ghost'} title="Rename or change week count"
+                        {!locked && <button className={openBlock === b.id ? 'btn' : 'btn-ghost'} title="Rename or change week count"
                           style={{ padding: '6px 9px', fontSize: 12, borderRadius: '0 8px 8px 0', borderLeft: openBlock === b.id ? '1px solid rgba(255,255,255,0.25)' : '1px solid var(--line)' }}
-                          onClick={() => renameBlock(p.id, b)}>✎</button>
+                          onClick={() => renameBlock(p.id, b)}>✎</button>}
                       </span>
                     ))}
-                    <button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => addBlock(p.id)}>+ Block</button>
-                    {activeBlock && (
+                    {!locked && <button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => addBlock(p.id)}>+ Block</button>}
+                    {activeBlock && !locked && (
                       <button className={blockPasteOpen ? 'btn' : 'btn-ghost'} style={{ padding: '6px 12px', fontSize: 13 }}
                         onClick={() => setBlockPasteOpen(o => !o)}>⇩ Paste whole block</button>
                     )}
-                    {activeBlock && (
+                    {activeBlock && !locked && (
                       <button className={nextFrom === activeBlock.id ? 'btn' : 'btn-ghost'} style={{ padding: '6px 12px', fontSize: 13 }}
                         title="Same days and pattern, a notch harder. Swap or change exercises before saving."
                         onClick={() => setNextFrom(f => (f === activeBlock.id ? null : activeBlock.id))}>⇢ Build next block</button>
                     )}
-                    {pBlocks.length > 1 && activeBlock && (
+                    {pBlocks.length > 1 && activeBlock && !locked && (
                       <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12, color: 'var(--red)' }} onClick={() => deleteBlock(p.id, activeBlock.id)}>Delete block</button>
                     )}
                   </div>

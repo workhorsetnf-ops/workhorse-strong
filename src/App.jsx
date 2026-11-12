@@ -16,7 +16,7 @@ const GUIDES = [
 ]
 
 export default function App() {
-  const { session, profile, loading, needsPassword } = useAuth()
+  const { session, profile, loading, needsPassword, isStaff, assistantOff, signOut } = useAuth()
 
   if (loading) {
     return (
@@ -36,7 +36,20 @@ export default function App() {
   }
   if (needsPassword) return <SetPassword />
 
-  if (profile?.role === 'coach') {
+  // a deactivated assistant: nothing to show, and the database refuses them anyway
+  if (assistantOff) {
+    return (
+      <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 24 }}>
+        <div className="card" style={{ maxWidth: 380, textAlign: 'center' }}>
+          <div className="wordmark" style={{ marginBottom: 14 }}>Workhorse <span>Strong</span></div>
+          <p style={{ marginBottom: 18 }}>Your team access has been turned off. If that’s a mistake, ask the coach to switch it back on.</p>
+          <button className="btn-ghost" onClick={signOut}>Sign out</button>
+        </div>
+      </div>
+    )
+  }
+
+  if (isStaff) {   // the coach, or an active assistant
     return (
       <Routes>
         {GUIDES}

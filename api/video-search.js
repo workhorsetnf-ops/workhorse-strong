@@ -11,6 +11,7 @@ export default async function handler(req, res) {
     const sb = admin()
     const me = await userFromReq(sb, req)
     if (!me || me.role !== 'coach') return res.status(403).json({ error: 'Coach only' })
+    if (me.actor) return res.status(403).json({ error: 'View only: assistants can’t change the library.' })
     return await runVideoSearch(req.body || {}, res)
   } catch (e) { res.status(500).json({ error: e.message }) }
 }

@@ -13,7 +13,8 @@ export function checkinsNeedingReview(rows, activeIds) {
   return Object.values(latest).filter(r => (!activeIds || activeIds.has(r.client_id)) && !r.coach_feedback && (r.status || 'pending') !== 'done').length
 }
 
-export async function loadCoachBadges(me) {
+// me: the inbox (the coach's id, also for an assistant); self: who is signed in
+export async function loadCoachBadges(me, self = me) {
   if (!me) return {}
   const since = d => new Date(Date.now() - d * DAY).toISOString()
   const [messages, checkins, community, formChecks] = await Promise.all([
@@ -31,7 +32,7 @@ export async function loadCoachBadges(me) {
       return checkinsNeedingReview(rows || [], new Set((active || []).map(a => a.id)))
     }),
     safe(async () => {
-      const { data: seen } = await supabase.from('section_seen').select('seen_at').eq('user_id', me).eq('section', 'community').maybeSingle()
+      const { data: seen } = await supabase.from('section_seen').select('seen_at').eq('user_id', self).eq('section', 'community').maybeSingle()
       const after = seen?.seen_at || since(7)
       const [p, c] = await Promise.all([
         supabase.from('community_posts').select('id', { count: 'exact', head: true }).neq('author_id', me).gt('created_at', after),

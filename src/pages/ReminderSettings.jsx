@@ -26,7 +26,7 @@ const COACH_ITEMS = [
 
 export default function ReminderSettings() {
   const { profile } = useAuth()
-  const coach = profile?.role === 'coach'
+  const coach = ['coach', 'assistant'].includes(profile?.role)
   const [st, setSt] = useState(() => pushStatus())
   const [on, setOn] = useState(null)
   const [prefs, setPrefs] = useState({ ...DEFAULT_PREFS, call_lead_minutes: DEFAULT_CALL_LEAD })

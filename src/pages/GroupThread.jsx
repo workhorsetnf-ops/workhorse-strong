@@ -33,7 +33,9 @@ export function showNameAt(msgs, i, me) {
   return i === 0 || msgs[i - 1].sender_id !== m.sender_id
 }
 
-export default function GroupThread({ group, profile, isCoach = false, onManage, height = '65vh' }) {
+// selfId: who is signed in (an assistant views the thread as the coach, but
+// uploads files into their own folder)
+export default function GroupThread({ group, profile, selfId, isCoach = false, onManage, height = '65vh' }) {
   const [msgs, setMsgs] = useState([])
   const [people, setPeople] = useState({})     // id -> { full_name, avatar_url, role }
   const [text, setText] = useState('')
@@ -41,7 +43,7 @@ export default function GroupThread({ group, profile, isCoach = false, onManage,
   const [attaching, setAttaching] = useState(false)
   const bottomRef = useRef(null)
   const gid = group.id
-  const folder = `${gid}/${profile.id}`
+  const folder = `${gid}/${selfId || profile.id}`
 
   useEffect(() => {
     let alive = true
@@ -147,6 +149,7 @@ export default function GroupThread({ group, profile, isCoach = false, onManage,
                   <button onClick={async () => { const u = await signed(m); if (u) window.open(u, '_blank') }}
                     style={{ background: 'none', color: 'inherit', fontWeight: 700, fontSize: 13, textAlign: 'left' }}>📎 {m.file_name || 'Attachment'}</button>
                 ) : <span style={{ whiteSpace: 'pre-wrap' }}>{m.body}</span>}
+                {m.sent_by_name && <div style={{ fontSize: 10.5, opacity: 0.7, marginTop: 3 }}>sent by {m.sent_by_name}</div>}
                 {(mine || isCoach) && (
                   <button className="bubble-del" onClick={() => remove(m)} title="Delete for everyone" aria-label="Delete message">✕</button>
                 )}

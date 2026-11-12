@@ -12,7 +12,7 @@ export function checkNewAccount({ full_name, email, password }) {
   return { name, mail }
 }
 
-export async function createClientAccount(sb, { name, mail, password }) {
+export async function createClientAccount(sb, { name, mail, password }, role = 'client') {
   const { data, error } = await sb.auth.admin.createUser({
     email: mail, password, email_confirm: true, user_metadata: { full_name: name },
   })
@@ -21,6 +21,7 @@ export async function createClientAccount(sb, { name, mail, password }) {
     return { error: error.message, status: 400 }
   }
   // the sign-up trigger creates the profile; make sure name/email/role are set
-  await sb.from('profiles').upsert({ id: data.user.id, full_name: name, email: mail, role: 'client' }, { onConflict: 'id' })
+  const { error: pErr } = await sb.from('profiles').upsert({ id: data.user.id, full_name: name, email: mail, role }, { onConflict: 'id' })
+  if (pErr) return { error: pErr.message, status: 400 }
   return { user: data.user }
 }
