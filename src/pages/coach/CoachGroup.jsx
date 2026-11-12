@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { callApi, notifyEvent } from '../../lib/push'
+import { marked } from 'marked'
+import { DEFAULT_GUIDE, GUIDE_TITLE, STARTER_GROUP_PLAN, STARTER_GROUP_PLAN_NAME } from '../../lib/nutritionGuide'
 import { memberState, groupStats, offerLabel } from '../../lib/groupAccess'
 export { memberState, groupStats, offerLabel }
 
@@ -26,7 +28,7 @@ export default function CoachGroup() {
 
   async function load() {
     const [t, c, m] = await Promise.all([
-      supabase.from('tracks').select('id, name, description, program_id, group_offer, group_position, chat_group_id').order('group_position').order('name'),
+      supabase.from('tracks').select('id, name, description, program_id, meal_template_id, group_offer, group_position, chat_group_id').order('group_position').order('name'),
       supabase.from('message_groups').select('id, name').eq('archived', false).order('name'),
       supabase.from('profiles').select('id, full_name, email, group_status, group_tier, group_option, group_access_until, group_track_id, group_joined_at, group_period_end, group_cancel_at_period_end, created_at').eq('plan', 'group').order('created_at', { ascending: false }),
     ])
@@ -119,6 +121,8 @@ export default function CoachGroup() {
         ))}
         <p className="muted" style={{ fontSize: 12, margin: 0 }}>Chat: paying members on that track are added to this group chat automatically and removed if they cancel. Create the chat in Messages first.</p>
       </div>
+
+      <GroupNutrition tracks={tracks} onTracksChanged={load} />
 
       <div className="card">
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -259,6 +263,95 @@ function Workhorse90({ status, onSetUp }) {
           </div>
         ))}
         {past.length > 0 && <div className="muted" style={{ fontSize: 12 }}>Recent: {past.map(c => fmt(c.starts_at)).join(' · ')}</div>}
+      </div>
+      {msg && <p style={{ fontSize: 13, margin: 0 }}>{msg}</p>}
+    </div>
+  )
+}
+
+// Group nutrition (Update 181): the written guide members read under Eat, and
+// the starter meal plan that scales to each member's macros.
+function GroupNutrition({ tracks, onTracksChanged }) {
+  const [guide, setGuide] = useState(null)       // { title, body_md, saved }
+  const [preview, setPreview] = useState(false)
+  const [tpl, setTpl] = useState(undefined)      // the starter template row, or null
+  const [busy, setBusy] = useState('')
+  const [msg, setMsg] = useState('')
+
+  async function load() {
+    const [{ data: g, error }, { data: t }] = await Promise.all([
+      supabase.from('group_guides').select('*').eq('id', 'nutrition').maybeSingle(),
+      supabase.from('plan_templates').select('id, name').eq('kind', 'meal_plan').eq('name', STARTER_GROUP_PLAN_NAME).maybeSingle(),
+    ])
+    if (error) setMsg(/group_guides/.test(error.message) ? 'Run migration_update181_group_nutrition.sql in Supabase first.' : error.message)
+    setGuide({ title: g?.title || GUIDE_TITLE, body_md: g?.body_md?.trim() ? g.body_md : DEFAULT_GUIDE, saved: !!g })
+    setTpl(t || null)
+  }
+  useEffect(() => { load() }, [])
+
+  async function saveGuide() {
+    setBusy('guide'); setMsg('')
+    const { error } = await supabase.from('group_guides').upsert({ id: 'nutrition', title: guide.title.trim() || GUIDE_TITLE, body_md: guide.body_md, updated_at: new Date().toISOString() })
+    setBusy('')
+    if (error) { setMsg(error.message); return }
+    setGuide(g => ({ ...g, saved: true })); setMsg('Guide saved. Members see it right away.')
+  }
+  function resetGuide() {
+    if (!window.confirm('Replace what’s in the editor with the built-in guide? Nothing changes for members until you save.')) return
+    setGuide(g => ({ ...g, title: GUIDE_TITLE, body_md: DEFAULT_GUIDE }))
+  }
+
+  const onSale = tracks.filter(t => t.group_offer)
+  const missing = onSale.filter(t => !t.meal_template_id)
+  async function addStarterPlan() {
+    setBusy('plan'); setMsg('')
+    try {
+      let id = tpl?.id
+      if (!id) {
+        const { data, error } = await supabase.from('plan_templates').insert({ name: STARTER_GROUP_PLAN_NAME, kind: 'meal_plan', data: STARTER_GROUP_PLAN }).select('id').single()
+        if (error) throw error
+        id = data.id
+      }
+      for (const t of missing) {
+        const { error } = await supabase.from('tracks').update({ meal_template_id: id, scale_meals: true }).eq('id', t.id)
+        if (error) throw error
+      }
+      setMsg(missing.length ? `Starter meal plan added to ${missing.map(t => t.name).join(' and ')}. New members get it sized to their macros.` : 'Starter meal plan template is ready in Templates & Tracks.')
+      await load(); onTracksChanged?.()
+    } catch (e) { setMsg('Could not add it: ' + e.message) }
+    setBusy('')
+  }
+
+  if (!guide) return null
+  return (
+    <div className="card" style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <strong style={{ fontSize: 15 }}>Group nutrition</strong>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ fontWeight: 800, fontSize: 13.5 }}>Meal plan</div>
+        {onSale.length === 0 ? <p className="muted" style={{ fontSize: 13, margin: 0 }}>Put a track on sale first.</p>
+          : missing.length === 0 ? <p style={{ fontSize: 13, margin: 0, color: 'var(--green)' }}>✓ Every track on sale has a meal plan. New members get it scaled to their own macros.</p>
+          : <>
+              <p className="muted" style={{ fontSize: 13, margin: 0 }}>{missing.map(t => t.name).join(' and ')} {missing.length === 1 ? 'has' : 'have'} no meal plan. Add the starter plan: breakfast, lunch, snack and dinner with road-friendly swaps, sized to each member’s macros when they join. You can edit it later in Templates &amp; Tracks.</p>
+              <button className="btn" style={{ alignSelf: 'flex-start', padding: '7px 14px', fontSize: 13 }} disabled={busy === 'plan'} onClick={addStarterPlan}>{busy === 'plan' ? 'Adding…' : 'Add the starter meal plan'}</button>
+            </>}
+        <p className="muted" style={{ fontSize: 12, margin: 0 }}>Members who already joined: give it to them from <Link to="/coach/templates" style={{ color: 'var(--orange-hot)' }}>Templates &amp; Tracks</Link> (copy the template to clients, with scaling on).</p>
+      </div>
+
+      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ fontWeight: 800, fontSize: 13.5 }}>Nutrition guide {!guide.saved && <span className="muted" style={{ fontWeight: 600 }}>(showing the built-in version)</span>}</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className={preview ? 'btn' : 'btn-ghost'} style={{ padding: '5px 12px', fontSize: 12.5 }} onClick={() => setPreview(p => !p)}>{preview ? 'Edit' : 'Preview'}</button>
+            <button className="btn-ghost" style={{ padding: '5px 12px', fontSize: 12.5 }} onClick={resetGuide}>Reset to built-in</button>
+          </div>
+        </div>
+        <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Group members find it in the Eat tab. Use ## for headings, - for bullets and **bold**.</p>
+        <input value={guide.title} onChange={e => setGuide({ ...guide, title: e.target.value })} placeholder="Title" />
+        {preview
+          ? <div className="guide-md" style={{ background: 'var(--steel)', borderRadius: 8, padding: 14, maxHeight: 520, overflowY: 'auto' }} dangerouslySetInnerHTML={{ __html: marked.parse(guide.body_md || '') }} />
+          : <textarea rows={18} value={guide.body_md} onChange={e => setGuide({ ...guide, body_md: e.target.value })} style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12.5, lineHeight: 1.5 }} />}
+        <button className="btn" style={{ alignSelf: 'flex-start', padding: '7px 14px', fontSize: 13 }} disabled={busy === 'guide'} onClick={saveGuide}>{busy === 'guide' ? 'Saving…' : 'Save guide'}</button>
       </div>
       {msg && <p style={{ fontSize: 13, margin: 0 }}>{msg}</p>}
     </div>

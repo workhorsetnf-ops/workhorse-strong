@@ -313,3 +313,13 @@ table.data tr:hover td { background: rgba(255,255,255,0.04); }
    can't be typed in or dragged; the database refuses any change regardless. */
 .view-only input:not(.keep-live), .view-only textarea, .view-only select:not(.keep-live) { pointer-events: none; opacity: 0.85; }
 .view-only [draggable="true"] { -webkit-user-drag: none; }
+
+/* Group nutrition guide (Update 181) */
+.guide-md { font-size: 15px; line-height: 1.65; }
+.guide-md h2 { font-size: 19px; margin: 22px 0 8px; color: var(--orange-hot); letter-spacing: .02em; }
+.guide-md h2:first-child { margin-top: 0; }
+.guide-md h3 { font-size: 16px; margin: 16px 0 6px; }
+.guide-md p { margin: 0 0 10px; }
+.guide-md ul, .guide-md ol { margin: 0 0 12px; padding-left: 20px; }
+.guide-md li { margin: 4px 0; }
+.guide-md strong { color: var(--white, #fff); }
