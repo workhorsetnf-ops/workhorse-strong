@@ -180,3 +180,39 @@ export function morningDigest({ now, tz, today, coachId, prefs = {}, agenda, sen
     url: '/coach', tag: 'agenda-digest',
   }
 }
+
+// Workhorse 90 monthly group call (Update 180): each member, and the coach,
+// gets "📞 Workhorse 90 group call at 7:00 PM" their usual call-reminder time
+// before it starts. Members: [{ id }] already filtered to those with access.
+export function dueGroupCallReminders({ now, tz, calls = [], members = [], coachIds = [], prefs = {}, sent = new Set() }) {
+  const out = []
+  const grace = GRACE_MIN * 60000
+  for (const c of calls) {
+    const start = new Date(c.starts_at)
+    if (start <= now - grace) continue
+    const date = localDateIn(tz, start)
+    const people = [...coachIds.map(id => ({ id, coach: true })), ...members.map(m => ({ id: m.id, coach: false }))]
+    for (const r of people) {
+      if (sent.has(`group_call:${c.id}:${r.id}:${date}`)) continue
+      const p = prefs[r.id] || {}
+      if (p.calls === false) continue
+      const lead = Number.isFinite(p.call_lead_minutes) ? p.call_lead_minutes : DEFAULT_CALL_LEAD
+      if (now < start - lead * 60000) continue
+      out.push({
+        key: { kind: 'group_call', item_id: c.id, user_id: r.id, for_date: date }, user_id: r.id,
+        title: `📞 ${String(c.title || 'Group call').slice(0, 70)} at ${fmtTime(start, tz, !r.coach)}`,
+        body: `${startsInText(start, now)}. Tap to join.`,
+        url: c.link_url || (r.coach ? '/coach/group' : '/app'), tag: `gcall-${c.id}`,
+      })
+    }
+  }
+  return out
+}
+
+// the next call that hasn't finished yet
+export function nextGroupCall(calls, now = new Date()) {
+  return (calls || [])
+    .map(c => ({ ...c, status: 'booked', ends_at: new Date(new Date(c.starts_at).getTime() + (c.duration_minutes || 60) * 60000).toISOString() }))
+    .filter(c => new Date(c.ends_at) > now)
+    .sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))[0] || null
+}

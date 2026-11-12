@@ -30,6 +30,7 @@ export default function App() {
     // Setup guides work without logging in, so the link can be texted to anyone.
     const g = window.location.pathname.match(/^\/guide\/(notifications|steps)/)
     if (g) return g[1] === 'steps' ? <StepsGuide /> : <NotificationsGuide />
+    if (/^\/start\/90\/?$/.test(window.location.pathname)) return <GroupSignup offer="w90" />   // Workhorse 90 sign-up (Update 180)
     if (/^\/start\/?$/.test(window.location.pathname)) return <GroupSignup />   // group offer sign-up (Update 166)
     const m = window.location.pathname.match(/^\/join\/([^/]+)/)
     return m ? <Join code={decodeURIComponent(m[1])} /> : <Login />

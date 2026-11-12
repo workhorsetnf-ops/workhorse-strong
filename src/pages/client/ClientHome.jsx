@@ -11,6 +11,7 @@ import QuickCheckin from './QuickCheckin'
 import TodayCard from './TodayCard'
 import AnnouncementBanner from './AnnouncementBanner'
 import NextCallCard from './NextCallCard'
+import GroupCallCard from './GroupCallCard'
 import SetupChecklist from './SetupChecklist'
 import WinsCard from './WinsCard'
 import ShowFuelCard from './ShowFuelCard'
@@ -170,6 +171,7 @@ export default function ClientHome() {
       <AnnouncementBanner profile={profile} />
       <TodayCard profile={profile} />
       {profile?.plan !== 'group' && <NextCallCard profile={profile} />}
+      <GroupCallCard profile={profile} />
       <ShowFuelCard profile={profile} />
       <SetupChecklist profile={profile} onVisible={setSetupShown} />
       <WinsCard profile={profile} />
