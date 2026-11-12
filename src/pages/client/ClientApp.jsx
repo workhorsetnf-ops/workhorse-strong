@@ -33,6 +33,7 @@ import ClientCardio from './ClientCardio'
 import ClientHabits from './ClientHabits'
 import ClientMealPlan from './ClientMealPlan'
 import ClientShopping from './ClientShopping'
+import ClientNutritionGuide from './ClientNutritionGuide'
 import ContractPrint from '../ContractPrint'
 import ReminderSettings from '../ReminderSettings'
 import ClientProfile from './ClientProfile'
@@ -135,6 +136,7 @@ export default function ClientApp() {
           <Route path="nutrition" element={<ClientNutrition />} />
           <Route path="nutrition/plan" element={<ClientMealPlan />} />
           <Route path="nutrition/shopping" element={<ClientShopping />} />
+          <Route path="nutrition/guide" element={<ClientNutritionGuide />} />
           <Route path="messages" element={<ClientMessages />} />
           <Route path="checkin" element={<ClientCheckin />} />
           <Route path="progress" element={<ClientProgress />} />

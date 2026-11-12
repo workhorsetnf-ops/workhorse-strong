@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { NutritionGuideCard } from './ClientNutritionGuide'
 import { localDateStr } from '../../lib/weeks'
 import NutritionTabs from './NutritionTabs'
 import { mondayOf, weekDaysFrom } from '../../lib/weeks'
@@ -241,6 +242,8 @@ export default function ClientNutrition() {
       </div>
 
       <DailyTotalsCard clientId={profile.id} onSaved={load} openDay={totalsDay} onClose={() => setTotalsDay(null)} />
+
+      {profile?.plan === 'group' && <NutritionGuideCard />}
 
       {plan.meals.length > 0 && (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
