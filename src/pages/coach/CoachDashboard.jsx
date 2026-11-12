@@ -37,13 +37,17 @@ import CoachIntakeForms from './CoachIntakeForms'
 import CoachContracts from './CoachContracts'
 import ContractPrint from '../ContractPrint'
 import CoachProblems from './CoachProblems'
-import { Bug } from 'lucide-react'
+import { Bug, UserCog } from 'lucide-react'
+import CoachTeam from './CoachTeam'
+
+const ViewOnly = () => <span className="muted" style={{ marginLeft: 'auto', fontSize: 11, letterSpacing: '.04em' }}>view</span>
 
 export default function CoachDashboard() {
-  const { signOut, profile } = useAuth()
+  const { signOut, profile, inboxId, isHeadCoach, programsLocked } = useAuth()
   const location = useLocation()
   const [badges, setBadges] = useState({})
-  const me = profile?.id
+  const me = inboxId          // assistants see the coach's inbox counts
+  const self = profile?.id
 
   // Re-count what's waiting on every page change, every minute, when the app
   // comes back to the foreground, and right after something is marked read.
@@ -51,8 +55,8 @@ export default function CoachDashboard() {
     if (!me) return
     let alive = true
     const refresh = async () => {
-      if (location.pathname.startsWith('/coach/community')) await markSectionSeen(me, 'community')
-      const b = await loadCoachBadges(me)
+      if (location.pathname.startsWith('/coach/community')) await markSectionSeen(self, 'community')
+      const b = await loadCoachBadges(me, self)
       if (alive) setBadges(b)
     }
     const t = setTimeout(refresh, 600)
@@ -62,7 +66,7 @@ export default function CoachDashboard() {
     window.addEventListener('ws-badges', refresh)
     document.addEventListener('visibilitychange', vis)
     return () => { alive = false; clearTimeout(t); clearInterval(i); window.removeEventListener('ws-coach-badges', refresh); window.removeEventListener('ws-badges', refresh); document.removeEventListener('visibilitychange', vis) }
-  }, [me, location.pathname])
+  }, [me, self, location.pathname])
 
   // A lit tab: orange glow plus the count.
   const Item = ({ to, end, icon: Icon, label, n }) => (
@@ -91,8 +95,8 @@ export default function CoachDashboard() {
         <NavLink to="/coach/hub"><BookOpen size={17} strokeWidth={2} /><span>Client Hub</span></NavLink>
         <NavLink to="/coach/roadmap"><Map size={17} strokeWidth={2} /><span>Roadmap</span></NavLink>
         <Item to="/coach/community" icon={Users2} label="Community" n={badges.community} />
-        <NavLink to="/coach/programs"><ClipboardList size={17} strokeWidth={2} /><span>Programs</span></NavLink>
-        <NavLink to="/coach/library"><Library size={17} strokeWidth={2} /><span>Library</span></NavLink>
+        <NavLink to="/coach/programs"><ClipboardList size={17} strokeWidth={2} /><span>Programs</span>{programsLocked && <ViewOnly />}</NavLink>
+        <NavLink to="/coach/library"><Library size={17} strokeWidth={2} /><span>Library</span>{programsLocked && <ViewOnly />}</NavLink>
         <NavLink to="/coach/templates"><Copy size={17} strokeWidth={2} /><span>Templates & Tracks</span></NavLink>
         <NavLink to="/coach/forms"><ListChecks size={17} strokeWidth={2} /><span>Forms</span></NavLink>
         <NavLink to="/coach/intake-forms"><FileCheck2 size={17} strokeWidth={2} /><span>Intake Forms</span></NavLink>
@@ -104,6 +108,7 @@ export default function CoachDashboard() {
         <NavLink to="/coach/testimonials"><Quote size={17} strokeWidth={2} /><span>Testimonials</span></NavLink>
         <NavLink to="/coach/notifications"><BellRing size={17} strokeWidth={2} /><span>Notifications</span></NavLink>
         <NavLink to="/coach/problems"><Bug size={17} strokeWidth={2} /><span>Problems</span></NavLink>
+        {isHeadCoach && <NavLink to="/coach/team"><UserCog size={17} strokeWidth={2} /><span>Team</span></NavLink>}
         <div style={{ flex: 1 }} />
         <button className="btn-ghost" onClick={signOut}>Sign out</button>
       </aside>
@@ -138,6 +143,7 @@ export default function CoachDashboard() {
           <Route path="scorecard" element={<CoachScorecard />} />
           <Route path="calls" element={<CoachCalls />} />
           <Route path="messages" element={<CoachMessages />} />
+          {isHeadCoach && <Route path="team" element={<CoachTeam />} />}
           <Route path="notifications" element={<ReminderSettings />} />
           <Route path="problems" element={<CoachProblems />} />
           <Route path="*" element={<Navigate to="/coach" replace />} />

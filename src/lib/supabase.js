@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { guardProgramWrites } from './team'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -17,3 +18,15 @@ export const authLink = {
 }
 
 export const supabase = createClient(url, anonKey)
+
+// Assistants can view programs and the library but not change them (Update 179).
+// The database refuses those writes anyway; this stops them early with a clear
+// message instead of an edit that looks saved but isn't.
+let programsLocked = false
+let lastWarned = 0
+export function setProgramsLocked(v) { programsLocked = !!v }
+guardProgramWrites(supabase, () => programsLocked, (msg) => {
+  if (Date.now() - lastWarned < 4000) return
+  lastWarned = Date.now()
+  try { window.alert(msg) } catch { /* not in a browser */ }
+})

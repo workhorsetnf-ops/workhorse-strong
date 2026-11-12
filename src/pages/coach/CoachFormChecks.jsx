@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
 export default function CoachFormChecks() {
-  const { profile } = useAuth()
+  const { inboxId: me } = useAuth()   // the coach's account, also for an assistant
   const [items, setItems] = useState([])
   const [clientsById, setClientsById] = useState({})
   const [filter, setFilter] = useState('pending')
@@ -36,9 +36,9 @@ export default function CoachFormChecks() {
     setComments(cm => ({ ...cm, [item.id]: c || [] }))
     setTimeout(() => bottomRef.current?.scrollIntoView(), 100)
     // client replies on this one now count as seen (lights the Form Checks tab until then)
-    if ((c || []).some(x => x.sender_id !== profile.id && !x.read_at)) {
+    if ((c || []).some(x => x.sender_id !== me && !x.read_at)) {
       await supabase.from('form_check_comments').update({ read_at: new Date().toISOString() })
-        .eq('form_check_id', item.id).neq('sender_id', profile.id).is('read_at', null)
+        .eq('form_check_id', item.id).neq('sender_id', me).is('read_at', null)
       coachBadgesChanged()
     }
   }
@@ -47,7 +47,7 @@ export default function CoachFormChecks() {
     if (!reply.trim()) return
     const body = reply.trim()
     setReply('')
-    await supabase.from('form_check_comments').insert({ form_check_id: itemId, sender_id: profile.id, body })
+    await supabase.from('form_check_comments').insert({ form_check_id: itemId, sender_id: me, body })
     await supabase.from('form_checks').update({ reviewed: true }).eq('id', itemId)
     coachBadgesChanged()
     const { data: c } = await supabase.from('form_check_comments').select('*').eq('form_check_id', itemId).order('created_at')
@@ -98,7 +98,7 @@ export default function CoachFormChecks() {
 
                 <div className="chat-scroll" style={{ marginTop: 10, maxHeight: 220, overflowY: 'auto' }}>
                   {(comments[item.id] || []).map(c => (
-                    <div key={c.id} className={`bubble ${c.sender_id === profile.id ? 'me' : 'them'}`}>{c.body}</div>
+                    <div key={c.id} className={`bubble ${c.sender_id === me ? 'me' : 'them'}`}>{c.body}{c.sent_by_name && <div style={{ fontSize: 10.5, opacity: 0.7, marginTop: 3 }}>sent by {c.sent_by_name}</div>}</div>
                   ))}
                   <div ref={bottomRef} />
                 </div>

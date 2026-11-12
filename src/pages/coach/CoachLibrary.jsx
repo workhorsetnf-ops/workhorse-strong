@@ -1,4 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
+import { useAuth } from '../../context/AuthContext'
+import ViewOnlyBanner from '../../components/ViewOnlyBanner'
 import { supabase } from '../../lib/supabase'
 import FoodLibrary from './FoodLibrary'
 import RoutineLibrary from './RoutineLibrary'
@@ -16,6 +18,7 @@ const EMPTY_LIFE = { name: '', category: '', instructions: '', video_url: '', tr
 const TRACK_LABEL = { count: 'Count', time: 'Time', yesno: 'Yes / No', scale: 'Quality 1–10' }
 
 export default function CoachLibrary() {
+  const { programsLocked: locked } = useAuth()   // assistants: view only, except Foods (Update 179)
   const [tab, setTab] = useState('exercises')
   const [items, setItems] = useState([])
   const [uploadingIcon, setUploadingIcon] = useState(false)
@@ -239,6 +242,8 @@ export default function CoachLibrary() {
         <button className={tab === 'routines' ? 'btn' : 'btn-ghost'} onClick={() => { setTab('routines'); setEditingId(null) }}>Warm-ups &amp; Cool-downs</button>
         <button className={tab === 'foods' ? 'btn' : 'btn-ghost'} onClick={() => { setTab('foods'); setEditingId(null) }}>Foods</button>
       </div>
+      {locked && tab !== 'foods' && <ViewOnlyBanner what="The exercise, conditioning, lifestyle and warm-up libraries" also="The Foods tab is open to you." />}
+      <div className={locked && tab !== 'foods' ? 'view-only' : undefined}>
 
       {matchPanel && tab === 'exercises' && <MatchPanel m={matchPanel} setM={setMatchPanel} library={items} apply={applyMatches} addToLib={addUnmatchedToLibrary} />}
       {pushPanel && <PushPanel p={pushPanel} setP={setPushPanel} apply={applyPush} />}
@@ -295,7 +300,7 @@ export default function CoachLibrary() {
           </div>
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14 }}>
-            <input placeholder="Search exercises…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: 1 }} />
+            <input className="keep-live" placeholder="Search exercises…" value={q} onChange={e => setQ(e.target.value)} style={{ flex: 1 }} />
             {items.some(i => !i.video_url) && (
               <button className="btn" style={{ whiteSpace: 'nowrap' }} onClick={() => { setFinderNote(''); setFinder({ key: Date.now(), queue: items.filter(i => !i.video_url) }); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
                 🎬 Find videos ({items.filter(i => !i.video_url).length} missing)</button>
@@ -366,7 +371,7 @@ export default function CoachLibrary() {
             </div>
           </div>
 
-          <input placeholder="Search lifestyle…" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 14 }} />
+          <input className="keep-live" placeholder="Search lifestyle…" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 14 }} />
 
           <table className="data">
             <thead><tr><th>Name &amp; Type</th><th>Tracking</th><th>Reminder</th><th>Instructions</th><th>Video</th><th></th></tr></thead>
@@ -409,7 +414,7 @@ export default function CoachLibrary() {
             </div>
           </div>
 
-          <input placeholder="Search conditioning…" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 14 }} />
+          <input className="keep-live" placeholder="Search conditioning…" value={q} onChange={e => setQ(e.target.value)} style={{ marginBottom: 14 }} />
 
           <table className="data">
             <thead><tr><th>Name</th><th>Format</th><th>Instructions</th><th>Video</th><th></th></tr></thead>
@@ -432,6 +437,7 @@ export default function CoachLibrary() {
           </table>
         </>
       )}
+      </div>
     </div>
   )
 }

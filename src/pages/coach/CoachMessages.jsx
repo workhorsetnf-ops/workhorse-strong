@@ -47,7 +47,9 @@ async function markRead(me, other) {
 }
 
 export default function CoachMessages() {
-  const { profile } = useAuth()
+  const { profile, inboxId } = useAuth()
+  // the inbox being worked: the coach's own, also when an assistant is signed in
+  const me = inboxId
   const [clients, setClients] = useState([])
   const [active, setActive] = useState(null)
   const [msgs, setMsgs] = useState([])
@@ -77,7 +79,7 @@ export default function CoachMessages() {
     setGroupsReady(true)
     setGroups(data || [])
   }
-  useEffect(() => { if (profile) loadGroups() }, [profile])
+  useEffect(() => { if (profile) loadGroups() }, [me])
 
   // A new group message anywhere bumps that group's unread count (or refreshes
   // its preview if it's the one open).
@@ -97,13 +99,13 @@ export default function CoachMessages() {
   // Unread messages from each client: loaded once, then kept live so a new
   // message lights up that client's card without opening their thread.
   useEffect(() => {
-    if (!profile) return
-    const loadUnread = () => supabase.from('messages').select('sender_id, body, created_at').eq('recipient_id', profile.id).is('read_at', null)
+    if (!me) return
+    const loadUnread = () => supabase.from('messages').select('sender_id, body, created_at').eq('recipient_id', me).is('read_at', null)
       .order('created_at', { ascending: false }).limit(1000)
       .then(({ data }) => {
         const u = unreadBySender(data || [])
         const open = activeRef.current?.id
-        if (open && u[open]) { delete u[open]; markRead(profile.id, open) }
+        if (open && u[open]) { delete u[open]; markRead(me, open) }
         setUnread(u)
       })
     loadUnread()
@@ -113,20 +115,20 @@ export default function CoachMessages() {
     const channel = supabase.channel('coach-unread')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         const m = payload.new
-        if (m.recipient_id !== profile.id) return
-        if (activeRef.current?.id === m.sender_id) { markRead(profile.id, m.sender_id); return }   // their thread is open
+        if (m.recipient_id !== me) return
+        if (activeRef.current?.id === m.sender_id) { markRead(me, m.sender_id); return }   // their thread is open
         setUnread(u => addUnread(u, m))
       })
       .subscribe()
     return () => { supabase.removeChannel(channel); document.removeEventListener('visibilitychange', vis) }
-  }, [profile])
+  }, [me])
 
   function openClient(c) {
     setActive(c); setActiveGroup(null); setPane('client')
     // Always stamp read, even if the unread list hasn't loaded yet; otherwise it
     // lands a moment later and lights this client up while their thread is open.
     setUnread(u => { if (!u[c.id]) return u; const n = { ...u }; delete n[c.id]; return n })
-    markRead(profile.id, c.id)
+    markRead(me, c.id)
   }
 
   useEffect(() => {
@@ -153,23 +155,23 @@ export default function CoachMessages() {
   }
 
   useEffect(() => {
-    if (!profile || !active) return
+    if (!me || !active) return
     supabase.from('messages').select('*')
-      .or(`and(sender_id.eq.${profile.id},recipient_id.eq.${active.id}),and(sender_id.eq.${active.id},recipient_id.eq.${profile.id})`)
+      .or(`and(sender_id.eq.${me},recipient_id.eq.${active.id}),and(sender_id.eq.${active.id},recipient_id.eq.${me})`)
       .order('created_at')
       .then(({ data }) => setMsgs(data || []))
 
     const channel = supabase.channel('coach-chat')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         const m = payload.new
-        if ((m.sender_id === active.id && m.recipient_id === profile.id) ||
-            (m.sender_id === profile.id && m.recipient_id === active.id)) {
+        if ((m.sender_id === active.id && m.recipient_id === me) ||
+            (m.sender_id === me && m.recipient_id === active.id)) {
           setMsgs(prev => prev.some(x => x.id === m.id) ? prev : [...prev, m])
         }
       })
       .subscribe()
     return () => supabase.removeChannel(channel)
-  }, [profile, active])
+  }, [me, active])
 
   useEffect(() => { bottomRef.current?.scrollIntoView() }, [msgs])
 
@@ -177,13 +179,13 @@ export default function CoachMessages() {
     if (!text.trim() || !active) return
     const body = text.trim()
     setText('')
-    const { error } = await supabase.from('messages').insert({ sender_id: profile.id, recipient_id: active.id, body })
+    const { error } = await supabase.from('messages').insert({ sender_id: me, recipient_id: active.id, body })
     if (!error) notifyEvent('message', { to: active.id })
   }
 
   async function sendVoice(path) {
     if (!active) { alert('Select a client first.'); return }
-    const { error } = await supabase.from('messages').insert({ sender_id: profile.id, recipient_id: active.id, body: '🎙 Voice note', msg_type: 'audio', audio_path: path })
+    const { error } = await supabase.from('messages').insert({ sender_id: me, recipient_id: active.id, body: '🎙 Voice note', msg_type: 'audio', audio_path: path })
     if (error) alert('Could not send voice note: ' + error.message + '\n\nIf this mentions a missing column, the database update (migration14.sql) needs to be run in Supabase first.')
     else notifyEvent('message', { to: active.id })
   }
@@ -203,10 +205,10 @@ export default function CoachMessages() {
   async function sendFile(file) {
     if (!file || !active) return
     setAttaching(true)
-    const path = `${profile.id}/${Date.now()}-${file.name}`
+    const path = `${me}/${Date.now()}-${file.name}`
     const { error } = await supabase.storage.from('message-files').upload(path, file)
     if (error) { alert('Could not attach file: ' + error.message); setAttaching(false); return }
-    const { error: msgErr } = await supabase.from('messages').insert({ sender_id: profile.id, recipient_id: active.id, body: `📎 ${file.name}`, msg_type: 'file', file_path: path, file_name: file.name })
+    const { error: msgErr } = await supabase.from('messages').insert({ sender_id: me, recipient_id: active.id, body: `📎 ${file.name}`, msg_type: 'file', file_path: path, file_name: file.name })
     if (msgErr) alert('Could not send: ' + msgErr.message)
     else notifyEvent('message', { to: active.id })
     setAttaching(false)
@@ -283,25 +285,25 @@ export default function CoachMessages() {
         </div>
         <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '65vh', overflowY: pane === 'client' || pane === 'group' ? undefined : 'auto' }}>
           {pane === 'announce' ? (
-            <Announcements coachId={profile.id} />
+            <Announcements coachId={me} />
           ) : pane === 'newGroup' ? (
-            <NewGroup clients={clients} coachId={profile.id} onCancel={() => setPane('client')}
+            <NewGroup clients={clients} coachId={me} onCancel={() => setPane('client')}
               onCreated={async g => { await loadGroups(); openGroup({ ...g, unread: 0 }) }} />
           ) : pane === 'broadcast' ? (
-            <Broadcast clients={clients} coachId={profile.id} onCancel={() => setPane('client')}
+            <Broadcast clients={clients} coachId={me} onCancel={() => setPane('client')}
               onDone={n => { setPane('client'); setFlash(`Sent to ${n} client${n === 1 ? '' : 's'}.`); setTimeout(() => setFlash(''), 4000) }} />
           ) : pane === 'manage' && activeGroup ? (
-            <ManageGroup group={activeGroup} clients={clients} coachId={profile.id} onClose={() => setPane('group')}
+            <ManageGroup group={activeGroup} clients={clients} coachId={me} onClose={() => setPane('group')}
               onSaved={g => { setActiveGroup(g); setPane('group'); loadGroups() }}
               onDeleted={() => { setActiveGroup(null); setPane('client'); loadGroups() }} />
           ) : pane === 'group' && activeGroup ? (
-            <GroupThread key={activeGroup.id} group={activeGroup} profile={profile} isCoach height="100%" onManage={() => setPane('manage')} />
+            <GroupThread key={activeGroup.id} group={activeGroup} profile={{ ...profile, id: me }} selfId={profile.id} isCoach height="100%" onManage={() => setPane('manage')} />
           ) : !active
             ? <p className="muted" style={{ margin: 'auto' }}>Select a client or group.</p>
             : <>
                 <div className="chat-scroll" style={{ flex: 1, overflowY: 'auto', paddingBottom: 10 }}>
                   {msgs.map(m => (
-                    <div key={m.id} className={`bubble ${m.sender_id === profile.id ? 'me' : 'them'}`}>
+                    <div key={m.id} className={`bubble ${m.sender_id === me ? 'me' : 'them'}`}>
                       {m.msg_type === 'audio' ? (
                         audioUrls[m.id]
                           ? <audio src={audioUrls[m.id]} controls style={{ height: 34, maxWidth: 220 }} />
@@ -309,6 +311,7 @@ export default function CoachMessages() {
                       ) : m.msg_type === 'file' ? (
                         <button onClick={() => openFile(m)} style={{ background: 'none', color: 'inherit', fontWeight: 700, fontSize: 13, textAlign: 'left' }}>📎 {m.file_name || 'Attachment'}</button>
                       ) : m.body}
+                      {m.sent_by_name && <div style={{ fontSize: 10.5, opacity: 0.7, marginTop: 3 }}>sent by {m.sent_by_name}</div>}
                     </div>
                   ))}
                   <div ref={bottomRef} />
@@ -342,7 +345,7 @@ export default function CoachMessages() {
                     {attaching ? '…' : '📎'}
                     <input type="file" style={{ display: 'none' }} disabled={attaching} onChange={e => sendFile(e.target.files[0])} />
                   </label>
-                  <VoiceRecorder userId={profile.id} onSent={sendVoice} />
+                  <VoiceRecorder userId={me} onSent={sendVoice} />
                 </MessageBox>
               </>}
         </div>

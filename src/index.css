@@ -308,3 +308,8 @@ table.data tr:hover td { background: rgba(255,255,255,0.04); }
 .coach-side a.has-new.active { background: rgba(255,85,0, 0.22); }
 .coach-side .nav-count { margin-left: auto; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; background: var(--orange); color: #000; font-size: 12px; font-weight: 900; display: inline-grid; place-items: center; line-height: 1; }
 @media (max-width: 760px) { .coach-side a { white-space: nowrap; flex-shrink: 0; } .coach-side a.has-new { order: -1; } }
+
+/* Assistants: program builder and library are view-only (Update 179). Fields
+   can't be typed in or dragged; the database refuses any change regardless. */
+.view-only input:not(.keep-live), .view-only textarea, .view-only select:not(.keep-live) { pointer-events: none; opacity: 0.85; }
+.view-only [draggable="true"] { -webkit-user-drag: none; }
