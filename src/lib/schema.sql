@@ -2593,54 +2593,54 @@ create policy "paid group members only (log edits)" on workout_logs as restricti
 --     next request.
 
 -- ---- 1. the role ------------------------------------------------------------
-do $$ declare c text; begin
+do $fn$ declare c text; begin
   for c in select conname from pg_constraint
             where conrelid = 'public.profiles'::regclass and contype = 'c'
-              and pg_get_constraintdef(oid) ilike '%role%' and pg_get_constraintdef(oid) ilike '%''coach''%'
+              and pg_get_constraintdef(oid) ilike '%role%' and pg_get_constraintdef(oid) ilike '%coach%'
   loop execute format('alter table public.profiles drop constraint %I', c); end loop;
-end $$;
+end $fn$;
 alter table profiles add constraint profiles_role_check check (role in ('coach', 'client', 'assistant'));
 
 -- ---- 2. who is who ---------------------------------------------------------
 create or replace function public.is_head_coach()
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public as $fn$
   select exists (select 1 from profiles where id = auth.uid() and role = 'coach');
-$$;
+$fn$;
 
 create or replace function public.is_assistant()
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public as $fn$
   select exists (select 1 from profiles where id = auth.uid() and role = 'assistant' and coalesce(status, 'active') = 'active');
-$$;
+$fn$;
 
 -- every existing "coach can..." rule now also covers an active assistant
 create or replace function public.is_coach()
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public as $fn$
   select exists (select 1 from profiles where id = auth.uid()
                   and (role = 'coach' or (role = 'assistant' and coalesce(status, 'active') = 'active')));
-$$;
+$fn$;
 
 -- the head coach's account (the shared inbox assistants work from)
 create or replace function public.coach_id()
-returns uuid language sql stable security definer set search_path = public as $$
+returns uuid language sql stable security definer set search_path = public as $fn$
   select id from profiles where role = 'coach' order by created_at limit 1;
-$$;
+$fn$;
 
 revoke all on function public.is_head_coach(), public.is_assistant(), public.coach_id() from public, anon;
 grant execute on function public.is_head_coach(), public.is_assistant(), public.coach_id() to authenticated;
 
 -- ---- 3. programs and libraries are view-only for assistants -----------------
 create or replace function public.block_assistant_program_edits()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger language plpgsql security definer set search_path = public as $fn$
 begin
   if is_assistant() then
-    raise exception 'View only: assistants can''t create or change programs or the library.'
+    raise exception 'View only: assistants cannot create or change programs or the library.'
       using errcode = '42501';
   end if;
   if tg_op = 'DELETE' then return old; end if;
   return new;
-end $$;
+end $fn$;
 
-do $$ declare t text; begin
+do $fn$ declare t text; begin
   foreach t in array array['programs', 'program_blocks', 'program_days', 'program_exercises',
                            'program_rotations', 'exercise_library', 'exercise_alternatives',
                            'conditioning_library', 'lifestyle_library', 'routine_library']
@@ -2651,11 +2651,11 @@ do $$ declare t text; begin
                       for each row execute function public.block_assistant_program_edits()', t);
     end if;
   end loop;
-end $$;
+end $fn$;
 
 -- ---- 4. the shared inbox ---------------------------------------------------
 -- who actually sent it, when it went out from the coach's account
-do $$ declare t text; begin
+do $fn$ declare t text; begin
   foreach t in array array['messages', 'group_messages', 'form_check_comments', 'community_posts', 'community_comments']
   loop
     if to_regclass('public.' || t) is not null then
@@ -2663,13 +2663,13 @@ do $$ declare t text; begin
       execute format('alter table public.%I add column if not exists sent_by_name text', t);
     end if;
   end loop;
-end $$;
+end $fn$;
 
 -- An assistant's message goes out from the coach's account (so the client sees
 -- one "Coach" thread) and is stamped with who really wrote it. Works whether the
 -- app sends it as the assistant or as the coach. TG_ARGV[0] = the sender column.
 create or replace function public.send_as_coach()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger language plpgsql security definer set search_path = public as $fn$
 declare col text := tg_argv[0]; j jsonb; cid uuid;
 begin
   if not is_assistant() then return new; end if;
@@ -2679,12 +2679,12 @@ begin
     j := jsonb_set(j, array[col], to_jsonb(cid));
   end if;
   j := j || jsonb_build_object('sent_by', auth.uid(),
-                               'sent_by_name', (select nullif(trim(full_name), '') from profiles where id = auth.uid()));
+                               'sent_by_name', (select case when length(btrim(full_name)) > 0 then btrim(full_name) end from profiles where id = auth.uid()));
   new := jsonb_populate_record(new, j);
   return new;
-end $$;
+end $fn$;
 
-do $$ declare t text; c text; begin
+do $fn$ declare t text; c text; begin
   for t, c in select * from (values ('messages', 'sender_id'), ('group_messages', 'sender_id'),
                                     ('form_check_comments', 'sender_id'), ('community_posts', 'author_id'),
                                     ('community_comments', 'author_id')) v(t, c)
@@ -2695,7 +2695,7 @@ do $$ declare t text; c text; begin
                       for each row execute function public.send_as_coach(%L)', t, c);
     end if;
   end loop;
-end $$;
+end $fn$;
 
 -- assistants read and send in the coach's 1-on-1 threads
 drop policy if exists "assistant reads coach inbox" on messages;
@@ -2707,14 +2707,14 @@ create policy "assistant sends as coach" on messages for insert
 
 -- marking a thread read marks it read in the coach's inbox
 create or replace function mark_messages_read(other_id uuid)
-returns int language plpgsql security definer set search_path = public as $$
+returns int language plpgsql security definer set search_path = public as $fn$
 declare n int; me uuid := case when is_assistant() then coach_id() else auth.uid() end;
 begin
   update messages set read_at = now()
    where recipient_id = me and sender_id = other_id and read_at is null;
   get diagnostics n = row_count;
   return n;
-end $$;
+end $fn$;
 revoke all on function mark_messages_read(uuid) from public, anon;
 grant execute on function mark_messages_read(uuid) to authenticated;
 
@@ -2723,7 +2723,7 @@ create policy "assistant posts to groups as coach" on group_messages for insert
   with check (is_assistant() and sender_id = coach_id()
               and exists (select 1 from message_groups g where g.id = group_id and not g.archived));
 
-do $$ begin
+do $fn$ begin
   if to_regclass('public.form_check_comments') is not null then
     execute 'drop policy if exists "assistant replies to form checks as coach" on form_check_comments';
     execute 'create policy "assistant replies to form checks as coach" on form_check_comments for insert
@@ -2734,7 +2734,7 @@ do $$ begin
     execute 'create policy "assistant marks form check comments read" on form_check_comments for update
              using (is_assistant()) with check (is_assistant())';
   end if;
-end $$;
+end $fn$;
 
 drop policy if exists "assistant posts to community as coach" on community_posts;
 create policy "assistant posts to community as coach" on community_posts for insert
@@ -2757,7 +2757,7 @@ create policy "assistant reads coach attachments" on storage.objects for select
 -- Runs after the existing client guard. Nobody but the head coach (or a server
 -- job) may change a role, and team accounts can only edit their own details.
 create or replace function public.guard_staff_profile_update()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger language plpgsql security definer set search_path = public as $fn$
 declare
   editable text[] := array['full_name','phone','age','height_in','sex','goal','limitations','last_seen_at','avatar_url'];
 begin
@@ -2772,7 +2772,7 @@ begin
     new := jsonb_populate_record(new, to_jsonb(old) - editable);   -- own name/photo only, never status
   end if;
   return new;
-end $$;
+end $fn$;
 
 drop trigger if exists guard_staff_profile_update on profiles;
 create trigger guard_staff_profile_update
@@ -2782,7 +2782,7 @@ create trigger guard_staff_profile_update
 -- An assistant can reset a CLIENT's password or email (Clients page), but never
 -- the coach's or a teammate's: that would hand over the account.
 create or replace function public.guard_staff_login_change()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger language plpgsql security definer set search_path = public as $fn$
 begin
   if auth.uid() is not null and not is_head_coach() and old.id <> auth.uid()
      and exists (select 1 from public.profiles where id = old.id and role in ('coach', 'assistant')) then
@@ -2790,7 +2790,7 @@ begin
   end if;
   if tg_op = 'DELETE' then return old; end if;
   return new;
-end $$;
+end $fn$;
 
 drop trigger if exists guard_staff_login_change on auth.users;
 create trigger guard_staff_login_change
@@ -2798,7 +2798,7 @@ create trigger guard_staff_login_change
   for each row execute function public.guard_staff_login_change();
 
 -- the same check, up front, in the coach's password/email tools
-do $$ begin
+do $fn$ begin
   if to_regprocedure('public.admin_reset_password(uuid,text)') is not null
      and to_regprocedure('public.admin_reset_password_core(uuid,text)') is null then
     alter function public.admin_reset_password(uuid, text) rename to admin_reset_password_core;
@@ -2807,16 +2807,16 @@ do $$ begin
      and to_regprocedure('public.admin_update_email_core(uuid,text)') is null then
     alter function public.admin_update_email(uuid, text) rename to admin_update_email_core;
   end if;
-end $$;
+end $fn$;
 
 create or replace function public.staff_target_ok(target uuid)
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public as $fn$
   select is_head_coach()
       or target = auth.uid()
       or not exists (select 1 from profiles where id = target and role in ('coach', 'assistant'));
-$$;
+$fn$;
 
-do $$ begin
+do $fn$ begin
   if to_regprocedure('public.admin_reset_password_core(uuid,text)') is not null then
     revoke all on function public.admin_reset_password_core(uuid, text) from public, anon, authenticated;
     execute $f$
@@ -2845,4 +2845,4 @@ do $$ begin
     revoke all on function public.admin_update_email(uuid, text) from public, anon;
     grant execute on function public.admin_update_email(uuid, text) to authenticated;
   end if;
-end $$;
+end $fn$;
