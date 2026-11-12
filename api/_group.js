@@ -2,6 +2,7 @@
 // Stripe, and setting them up the first time they're paid.
 import { applyTrack } from '../src/lib/plans.js'
 import { calcMacros, ACTIVITY } from '../src/lib/macros.js'
+import { w90AccessUntil } from './_w90.js'
 
 export const GOALS = ['cut', 'maintain', 'build']
 
@@ -34,17 +35,31 @@ const ACCESS = new Set(['active', 'past_due'])
 // last one applied (Stripe doesn't promise order). First time they become
 // paid, their track is applied: program (auto weeks), templates, chat.
 export async function applyGroupState(sb, profileId, s) {
-  const { data: p } = await sb.from('profiles').select('id, plan, group_status, group_status_at, group_track_id, group_joined_at').eq('id', profileId).maybeSingle()
+  const { data: p } = await sb.from('profiles').select('id, plan, group_status, group_status_at, group_track_id, group_joined_at, group_access_until, group_last_checkout').eq('id', profileId).maybeSingle()
   if (!p) return { skipped: 'no profile' }
   const at = s.eventTime ? new Date(s.eventTime * 1000).toISOString() : new Date().toISOString()
-  if (p.group_status_at && new Date(p.group_status_at) > new Date(at)) return { skipped: 'stale event' }
+  const stale = p.group_status_at && new Date(p.group_status_at) > new Date(at)
+  // An older event can't undo a newer one. A completed checkout still records
+  // which offer was bought and the days it paid for (Stripe often sends the
+  // subscription events first), just not the older status.
+  if (stale && !s.checkoutId) return { skipped: 'stale event' }
 
-  const patch = { plan: 'group', group_status: s.status, group_status_at: at }
+  const patch = stale ? { plan: 'group' } : { plan: 'group', group_status: s.status, group_status_at: at }
   if (s.customer) patch.stripe_customer_id = s.customer
   if (s.subscription) patch.stripe_subscription_id = s.subscription
-  if (s.periodEnd) patch.group_period_end = new Date(s.periodEnd * 1000).toISOString()
-  if (s.cancelAtPeriodEnd !== undefined) patch.group_cancel_at_period_end = !!s.cancelAtPeriodEnd
-  const nowPaid = ACCESS.has(s.status)
+  if (s.periodEnd && !stale) patch.group_period_end = new Date(s.periodEnd * 1000).toISOString()
+  if (s.cancelAtPeriodEnd !== undefined && !stale) patch.group_cancel_at_period_end = !!s.cancelAtPeriodEnd
+  // which offer they're on (Update 180): 'monthly' ($50/month) or 'w90' (Workhorse 90)
+  if (s.tier) patch.group_tier = s.tier
+  if (s.option !== undefined) patch.group_option = s.option
+  if (s.tier === 'monthly') patch.group_access_until = null           // a monthly plan runs until cancelled
+  // Workhorse 90: each paid checkout adds 90 days. A checkout is only counted
+  // once, however many times Stripe delivers the event.
+  if (s.extendW90 && s.checkoutId && p.group_last_checkout !== s.checkoutId) {
+    patch.group_access_until = w90AccessUntil(new Date(), p.group_access_until)
+    patch.group_last_checkout = s.checkoutId
+  }
+  const nowPaid = ACCESS.has(stale ? p.group_status : s.status)
   if (nowPaid && !p.group_joined_at) patch.group_joined_at = new Date().toISOString()
   if (nowPaid) patch.status = 'active'
   const { error } = await sb.from('profiles').update(patch).eq('id', profileId)
@@ -65,9 +80,9 @@ export async function applyGroupState(sb, profileId, s) {
   }
   if (track?.chat_group_id) {
     if (nowPaid) await sb.from('message_group_members').upsert({ group_id: track.chat_group_id, profile_id: profileId }, { onConflict: 'group_id,profile_id', ignoreDuplicates: true })
-    else if (s.status === 'canceled') await sb.from('message_group_members').delete().eq('group_id', track.chat_group_id).eq('profile_id', profileId)
+    else if (!stale && s.status === 'canceled') await sb.from('message_group_members').delete().eq('group_id', track.chat_group_id).eq('profile_id', profileId)
   }
-  return { status: s.status, setUp }
+  return { status: stale ? p.group_status : s.status, setUp, ...(stale ? { stale: true } : {}) }
 }
 
 // Which profile a Stripe object belongs to.

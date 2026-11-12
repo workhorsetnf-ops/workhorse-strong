@@ -1,4 +1,6 @@
-// Public sign-up for the group offer: /start (Update 166).
+// Public sign-up for the group offer: /start (Update 166), and Workhorse 90 at
+// /start/90 (Update 180): same programs, 90 days, a monthly group call, paid in
+// full or in 2 payments.
 // 1. pick a program  2. your numbers (for starting targets)  3. account
 // -> account created as a group member -> signed in -> Stripe Checkout.
 import { useEffect, useState } from 'react'
@@ -9,7 +11,9 @@ import { ACTIVITY } from '../lib/macros'
 const GOALS = [['cut', 'Lose fat'], ['maintain', 'Recomp / maintain'], ['build', 'Build muscle']]
 const ACTIVITY_HINT = { 'lifting-only': 'Training, not wrestling right now', 'light-schedule': '1-2 shows or practices a week', 'working-talent': 'Regular shows + training', 'heavy-schedule': 'Lots of shows and travel' }
 
-export default function GroupSignup() {
+export default function GroupSignup({ offer = 'monthly' }) {
+  const w90 = offer === 'w90'
+  const [option, setOption] = useState('full')   // Workhorse 90: 'full' | 'split'
   const [info, setInfo] = useState(null)       // { tracks, price }
   const [step, setStep] = useState(1)
   const [track, setTrack] = useState(null)
@@ -19,7 +23,7 @@ export default function GroupSignup() {
   const [busy, setBusy] = useState('')
 
   useEffect(() => {
-    callApi('/api/group-signup', { list: true }).then(setInfo).catch(e => setInfo({ tracks: [], error: e.message }))
+    callApi('/api/group-signup', { list: true, ...(w90 ? { offer: 'w90' } : {}) }).then(setInfo).catch(e => setInfo({ tracks: [], error: e.message }))
   }, [])
 
   const numbersOk = Number(n.weight) >= 80 && Number(n.height_ft) >= 4 && Number(n.age) >= 16 && n.sex
@@ -28,16 +32,16 @@ export default function GroupSignup() {
     if (f.password !== f.again) return setErr('The two passwords don’t match.')
     setErr(''); setBusy('Creating your account…')
     try {
-      await callApi('/api/group-signup', { track_id: track.id, full_name: f.full_name, email: f.email, password: f.password, numbers: n })
+      await callApi('/api/group-signup', { track_id: track.id, full_name: f.full_name, email: f.email, password: f.password, numbers: n, ...(w90 ? { offer: 'w90' } : {}) })
       const { error } = await supabase.auth.signInWithPassword({ email: f.email.trim().toLowerCase(), password: f.password })
       if (error) throw new Error('Account created. Sign in to finish joining.')
       setBusy('Opening secure checkout…')
-      const { url } = await callApi('/api/group-billing', { action: 'checkout' })
+      const { url } = await callApi('/api/group-billing', { action: 'checkout', ...(w90 ? { offer: 'w90', option } : {}) })
       window.location.href = url
     } catch (x) { setErr(x.message); setBusy('') }
   }
 
-  const price = info?.price || '$50/month'
+  const price = w90 ? (option === 'full' ? '$495 · 90 days' : '2 × $249') : (info?.price || '$50/month')
   return (
     <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 20 }}>
       <div style={{ width: '100%', maxWidth: 460 }}>
@@ -64,8 +68,11 @@ export default function GroupSignup() {
             {step === 1 && (
               <>
                 <div>
+                  {w90 && <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: '.08em', color: 'var(--orange-hot)', marginBottom: 4 }}>WORKHORSE 90</div>}
                   <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Pick your program</h1>
-                  <p className="muted" style={{ fontSize: 13.5, margin: 0 }}>Full training program in the app, new blocks every month, cancel anytime.</p>
+                  <p className="muted" style={{ fontSize: 13.5, margin: 0 }}>{w90
+                    ? '90 days of the full training program in the app, the team chat, and a live group call with Anthony every month.'
+                    : 'Full training program in the app, new blocks every month, cancel anytime.'}</p>
                 </div>
                 {info.tracks.map(t => {
                   const on = track?.id === t.id
@@ -121,6 +128,17 @@ export default function GroupSignup() {
                   <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Create your account</h1>
                   <p className="muted" style={{ fontSize: 13.5, margin: 0 }}><strong>{track?.name}</strong> · {price}. You’ll pay on the next screen (secure checkout by Stripe).</p>
                 </div>
+                {w90 && (
+                  <div role="radiogroup" aria-label="How to pay" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {[['full', '$495', 'Pay in full · 90 days'], ['split', '2 × $249', 'Today, then in 6 weeks']].map(([v, big, small]) => (
+                      <button key={v} type="button" role="radio" aria-checked={option === v} onClick={() => setOption(v)}
+                        style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 12, cursor: 'pointer', background: option === v ? 'rgba(255,85,0,.12)' : 'var(--steel)', border: `2px solid ${option === v ? 'var(--orange)' : 'transparent'}`, color: 'inherit' }}>
+                        <div style={{ fontSize: 17, fontWeight: 900 }}>{big}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>{small}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <input placeholder="Full name" autoComplete="name" value={f.full_name} onChange={e => { setF({ ...f, full_name: e.target.value }); setErr('') }} />
                 <input type="email" placeholder="Email" autoComplete="email" inputMode="email" autoCapitalize="none" value={f.email} onChange={e => { setF({ ...f, email: e.target.value }); setErr('') }} />
                 <input type="password" placeholder="Password (8+ characters)" autoComplete="new-password" value={f.password} onChange={e => { setF({ ...f, password: e.target.value }); setErr('') }} />

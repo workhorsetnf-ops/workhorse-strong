@@ -5,8 +5,10 @@
 //   { type: 'group', group: <group id> }  new group-chat message -> the other members
 //   { type: 'broadcast', to: [ids] }      coach sent the same 1-on-1 message to many clients
 //   { type: 'announcement', id }          coach posted an announcement -> every active client
+//   { type: 'group_call', id }            coach posted a Workhorse 90 group call -> its members (Update 180)
 // The server re-checks who is allowed to notify whom; the app can't spoof it.
 import { admin, sendToUsers, userFromReq, prefsFor, staffIds } from './_push.js'
+import { groupAccess } from '../src/lib/groupAccess.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
@@ -108,6 +110,20 @@ export default async function handler(req, res) {
       const want = ids.filter(id => !prefs[id] || prefs[id].messages !== false)
       return res.json(await sendToUsers(sb, want, {
         title: `📢 ${String(a.title).slice(0, 80)}`, body: String(a.body || 'Tap to read.').slice(0, 120), url: '/app', tag: 'announcement',
+      }))
+    }
+
+    if (type === 'group_call') {
+      if (me.role !== 'coach') return res.status(403).json({ error: 'Not allowed' })
+      const { data: c } = await sb.from('group_calls').select('title, starts_at, created_at').eq('id', String(req.body?.id || '')).maybeSingle()
+      if (!c || Date.now() - new Date(c.created_at).getTime() > 5 * 60 * 1000) return res.json({ skipped: 'no new call' })
+      const { data: recs } = await sb.from('profiles').select('id, plan, group_status, group_tier, group_access_until').eq('plan', 'group').eq('group_tier', 'w90')
+      const ids = (recs || []).filter(m => groupAccess(m)).map(m => m.id)
+      const prefs = await prefsFor(sb, ids)
+      const want = ids.filter(id => !prefs[id] || prefs[id].calls !== false)
+      const when = new Date(c.starts_at).toLocaleString('en-US', { timeZone: process.env.COACH_TIMEZONE || 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+      return res.json(await sendToUsers(sb, want, {
+        title: `📅 ${String(c.title).slice(0, 70)}`, body: `${when}. It’s on your Home screen with the join link.`, url: '/app', tag: 'group-call',
       }))
     }
 

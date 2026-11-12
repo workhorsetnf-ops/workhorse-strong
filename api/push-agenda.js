@@ -8,7 +8,8 @@
 // Env: CRON_SECRET (sent automatically by Vercel Cron). Times use the timezone
 // on the Calls page settings, falling back to COACH_TIMEZONE / America/New_York.
 import { admin, sendToUsers } from './_push.js'
-import { buildAgenda, dueReminders, morningDigest, localDateIn } from '../src/lib/agenda.js'
+import { buildAgenda, dueReminders, morningDigest, localDateIn, dueGroupCallReminders } from '../src/lib/agenda.js'
+import { groupAccess } from '../src/lib/groupAccess.js'
 
 export default async function handler(req, res) {
   if (process.env.CRON_SECRET && (req.headers.authorization || '') !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -57,6 +58,16 @@ export async function runAgenda(sb, now) {
   for (const id of coachIds) {
     const d = morningDigest({ now, tz, today, coachId: id, prefs, agenda, sent })
     if (d) msgs.unshift(d)
+  }
+
+  // Workhorse 90 monthly group call (Update 180)
+  const { data: gcalls, error: gErr } = await sb.from('group_calls').select('id, title, starts_at, link_url').gte('starts_at', from).lte('starts_at', until)
+  if (!gErr && gcalls?.length) {
+    const { data: w90 } = await sb.from('profiles').select('id, plan, group_status, group_tier, group_access_until').eq('plan', 'group').eq('group_tier', 'w90')
+    const members = (w90 || []).filter(m => groupAccess(m, now) && withDevice.has(m.id))
+    const ids = [...members.map(m => m.id), ...coachIds]
+    const { data: gp } = ids.length ? await sb.from('reminder_prefs').select('user_id, calls, call_lead_minutes').in('user_id', ids) : { data: [] }
+    msgs.push(...dueGroupCallReminders({ now, tz, calls: gcalls, members, coachIds, prefs: Object.fromEntries((gp || []).map(p => [p.user_id, p])), sent }))
   }
 
   let sentCount = 0, claimed = 0
