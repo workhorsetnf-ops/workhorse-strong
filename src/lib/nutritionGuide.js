@@ -42,12 +42,14 @@ Your meal plan (Eat → Meal plan) is already sized to your numbers. Eat it as w
 
 ## When to adjust
 
-Give any change two full weeks before you judge it. Then:
+The app does this for you. Look for the **macro check** card at the top of the Eat tab.
 
-- **Weight hasn't moved in two weeks** and you logged at least 6 of 7 days both weeks? Take 25 to 35 g of carbs off each day (about 100 to 150 calories).
-- **Logged less than 6 of 7 days?** Nothing changes yet. Tighten up your logging first. You can't fix what you didn't track.
-- **Building and the scale won't move?** Add 25 to 35 g of carbs a day.
-- **Never drop protein,** and don't take fat under 40 g.
+- **Your first check comes three weeks after you join:** one week to set your starting average, then two weeks to compare. After any change, the next check is two full weeks later.
+- **You need at least 6 of 7 days logged, both weeks,** and at least 4 weigh-ins a week. Logged less? Nothing changes yet. Tighten up first. You can't fix what you didn't track.
+- **Cutting and your weekly average dropped less than 0.5% in two weeks?** The card offers to take 30 g of carbs off (120 calories). Tap Apply and your targets and meal plan update.
+- **Building and it rose less than 0.25%?** The card offers to add 30 g of carbs.
+- **Moving at the right pace?** Nothing changes. Keep going.
+- **Protein and fat never change,** and carbs never go under 100 g. If you're cutting and already near that, the card tells you to message Coach.
 
 ## Training days and show days
 
