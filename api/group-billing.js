@@ -47,7 +47,7 @@ export async function runGroupBilling(sb, me, body, res, { base, fetchFn } = {})
         } })
       : await stripe('checkout/sessions', { fetchFn, body: {
           ...who, mode: 'subscription', line_items: [{ price: prices.split, quantity: 1 }], metadata: meta,
-          subscription_data: { metadata: meta, description: 'Workhorse 90: 2 payments of $249, six weeks apart' },
+          subscription_data: { metadata: meta, description: 'Workhorse 90: 2 payments of $375, six weeks apart' },
         } })
     return res.json({ url: s.url })
   }

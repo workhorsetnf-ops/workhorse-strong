@@ -26,9 +26,9 @@ export function W90Options({ busy, setBusy, setErr, withMonthly = false }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <button className="btn" disabled={!!busy} onClick={() => go({ offer: 'w90', option: 'full' })}>
-        {busy === 'full' ? 'Opening checkout…' : 'Pay in full: $495 for 90 days'}</button>
+        {busy === 'full' ? 'Opening checkout…' : 'Pay in full: $695 for 90 days'}</button>
       <button className="btn" disabled={!!busy} onClick={() => go({ offer: 'w90', option: 'split' })}>
-        {busy === 'split' ? 'Opening checkout…' : '2 payments of $249 (today + in 6 weeks)'}</button>
+        {busy === 'split' ? 'Opening checkout…' : '2 payments of $375 (today + in 6 weeks)'}</button>
       {withMonthly && (
         <button className="btn-ghost" disabled={!!busy} onClick={() => go({ offer: 'monthly' })}>
           {busy === 'monthly' ? 'Opening checkout…' : 'Or keep the program for $50/month (no calls)'}</button>
@@ -58,7 +58,7 @@ export function GroupPaywall() {
   const title = timeUp ? 'Your 90 days are up' : ended ? 'Come back and pick up where you left off' : w90 ? 'Finish joining Workhorse 90' : 'Finish joining to unlock your program'
   const sub = timeUp ? 'Strong work. Run it back for another 90 days, or keep the program going month to month. Your history, PRs and logs are all still here.'
     : ended ? 'Your history, PRs and logs are all still here.'
-    : w90 ? 'Your account is ready. Pick how you want to pay and your program, food tracking, team chat and the monthly group call open up.'
+    : w90 ? 'Your account is ready. Pick how you want to pay and your program, food tracking, team chat, the monthly group call, your form check, week-6 check-in and the nutrition Q&A open up.'
     : 'Your account is ready. Complete checkout and your program, food tracking and the team chat open up.'
   return (
     <div style={{ minHeight: '80dvh', display: 'grid', placeItems: 'center', padding: 8 }}>
@@ -129,7 +129,7 @@ export function GroupMembershipCard() {
           <strong>Workhorse 90</strong>
           {profile.group_status === 'past_due' ? ' · Payment problem: update your card to keep access.'
             : groupAccess(profile) ? (until ? ` · access until ${fmtDay(until)}` : ' · active') : ' · ended'}
-          {secondDue && profile.group_status !== 'past_due' && <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>Second payment of $249 on {fmtDay(profile.group_period_end)}.</div>}
+          {secondDue && profile.group_status !== 'past_due' && <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>Second payment of $375 on {fmtDay(profile.group_period_end)}.</div>}
         </div>
         {w90CanRenew(profile) && groupAccess(profile) && <W90Options busy={busy} setBusy={setBusy} setErr={setErr} />}
         {profile.stripe_customer_id && <button className="btn-ghost" disabled={!!busy} onClick={() => goBilling('portal', setErr, setBusy)}>{busy === 'portal' ? 'Opening…' : 'Card & receipts'}</button>}
