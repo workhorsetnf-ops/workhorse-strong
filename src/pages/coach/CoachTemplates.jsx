@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { localDateStr } from '../../lib/weeks'
-import { KINDS, snapshot, applySnapshot, assignProgram, applyTrack, isEmptySnap, snapSummary } from '../../lib/plans'
+import { KINDS, snapshot, applySnapshot, assignProgram, applyTrack, isEmptySnap, snapSummary, programForDays } from '../../lib/plans'
 
 const TPL_COL = { meal_plan: 'meal_template_id', habits: 'habits_template_id', supplements: 'supps_template_id', cardio: 'cardio_template_id' }
 
@@ -69,7 +69,7 @@ export default function CoachTemplates() {
   const [tplTo, setTplTo] = useState(new Set())
 
   // tracks
-  const blankTrack = { name: '', description: '', price: '', program_id: '', meal_template_id: '', habits_template_id: '', supps_template_id: '', cardio_template_id: '', scale_meals: true }
+  const blankTrack = { name: '', description: '', price: '', program_id: '', program_3day_id: '', meal_template_id: '', habits_template_id: '', supps_template_id: '', cardio_template_id: '', scale_meals: true }
   const [trackForm, setTrackForm] = useState(null)      // null | {..., id?}
   const [joinTrack, setJoinTrack] = useState(null)      // track id with its add-clients panel open
   const [joinTo, setJoinTo] = useState(new Set())
@@ -77,7 +77,7 @@ export default function CoachTemplates() {
 
   async function load() {
     const [{ data: c }, { data: p }, { data: t, error }, { data: tr }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, status, track_id').eq('role', 'client').neq('status', 'exited').order('full_name'),
+      supabase.from('profiles').select('id, full_name, status, track_id, group_days').eq('role', 'client').neq('status', 'exited').order('full_name'),
       supabase.from('programs').select('id, name').order('name'),
       supabase.from('plan_templates').select('*').order('kind').order('name'),
       supabase.from('tracks').select('*').order('name'),
@@ -148,7 +148,7 @@ export default function CoachTemplates() {
     const f = trackForm
     if (!f.name.trim()) return
     const row = { name: f.name.trim(), description: f.description, price: f.price, scale_meals: f.scale_meals }
-    for (const k of ['program_id', 'meal_template_id', 'habits_template_id', 'supps_template_id', 'cardio_template_id']) row[k] = f[k] || null
+    for (const k of ['program_id', 'program_3day_id', 'meal_template_id', 'habits_template_id', 'supps_template_id', 'cardio_template_id']) row[k] = f[k] || null
     const { error } = f.id ? await supabase.from('tracks').update(row).eq('id', f.id) : await supabase.from('tracks').insert(row)
     if (error) { alert('Could not save track: ' + error.message); return }
     setTrackForm(null); load()
@@ -170,9 +170,11 @@ export default function CoachTemplates() {
     if (!window.confirm(`Re-apply "${t.name}" to all ${members.length} members? Programs keep their current start dates only if unchanged; meal and cardio plans are replaced.`)) return
     setBusy('track')
     for (const c of members) {
+      // 3-day members keep the 3-day version (Update 183)
+      const mine = { ...t, program_id: programForDays(t, c.group_days) }
       const { data: asg } = await supabase.from('program_assignments').select('program_id, start_date').eq('client_id', c.id).maybeSingle()
-      const start = asg && asg.program_id === t.program_id ? asg.start_date : localDateStr()
-      await applyTrack(supabase, c.id, t, tplById, start)
+      const start = asg && asg.program_id === mine.program_id ? asg.start_date : localDateStr()
+      await applyTrack(supabase, c.id, mine, tplById, start)
       note(`Re-applied "${t.name}" → ${c.full_name}`)
     }
     setBusy('')
@@ -205,6 +207,7 @@ export default function CoachTemplates() {
           {tracks.map(t => {
             const members = clients.filter(c => c.track_id === t.id)
             const prog = programs.find(p => p.id === t.program_id)
+            const prog3 = programs.find(p => p.id === t.program_3day_id)
             return (
               <div key={t.id} className="card" style={{ borderTop: '3px solid var(--orange)', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
@@ -214,12 +217,13 @@ export default function CoachTemplates() {
                 {t.description && <p className="muted" style={{ fontSize: 12.5 }}>{t.description}</p>}
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', fontSize: 11.5 }}>
                   <span style={{ padding: '2px 8px', borderRadius: 12, border: '1px solid var(--line)' }}>Program: {prog?.name || '—'}</span>
+                  {prog3 && <span style={{ padding: '2px 8px', borderRadius: 12, border: '1px solid var(--line)' }}>3-day: {prog3.name}</span>}
                   {Object.entries(TPL_COL).map(([k, col]) => <span key={k} style={{ padding: '2px 8px', borderRadius: 12, border: '1px solid var(--line)', opacity: t[col] ? 1 : 0.45 }}>{KINDS[k]}: {tplById[t[col]]?.name || '—'}</span>)}
                   {t.meal_template_id && <span style={{ padding: '2px 8px', borderRadius: 12, border: '1px solid var(--orange)', color: 'var(--orange-hot)' }}>{t.scale_meals ? 'Meals scale to each client' : 'Meals as written'}</span>}
                 </div>
                 <div style={{ fontSize: 12.5 }}>
                   <strong>{members.length}</strong> member{members.length === 1 ? '' : 's'}{members.length > 0 && ': '}
-                  {members.map((c, i) => <span key={c.id}>{i ? ', ' : ''}{c.full_name} <button aria-label={`Remove ${c.full_name} from track`} onClick={() => removeFromTrack(c)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 11 }}>✕</button></span>)}
+                  {members.map((c, i) => <span key={c.id}>{i ? ', ' : ''}{c.full_name}{prog3 && c.group_days === 3 ? ' (3-day)' : ''} <button aria-label={`Remove ${c.full_name} from track`} onClick={() => removeFromTrack(c)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 11 }}>✕</button></span>)}
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button className="btn" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => { setJoinTrack(joinTrack === t.id ? null : t.id); setJoinTo(new Set()) }}>+ Add clients</button>
@@ -254,6 +258,8 @@ export default function CoachTemplates() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
               <div><label className="muted" style={lbl}>Program</label>
                 <select value={trackForm.program_id} onChange={e => setTrackForm({ ...trackForm, program_id: e.target.value })}><option value="">None</option>{programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+              <div><label className="muted" style={lbl}>3-day version (optional)</label>
+                <select value={trackForm.program_3day_id} onChange={e => setTrackForm({ ...trackForm, program_3day_id: e.target.value })}><option value="">None: 4 days only</option>{programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
               {Object.entries(TPL_COL).map(([k, col]) => (
                 <div key={k}><label className="muted" style={lbl}>{KINDS[k]} template</label>
                   <select value={trackForm[col]} onChange={e => setTrackForm({ ...trackForm, [col]: e.target.value })}><option value="">None</option>{tplOptions(k).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>

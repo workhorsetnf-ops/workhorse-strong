@@ -120,6 +120,12 @@ export async function assignProgram(sb, clientId, programId, startDate) {
   return sb.from('program_assignments').upsert({ program_id: programId, client_id: clientId, current_week: 1, current_block_id: bs?.[0]?.id || null, start_date: startDate }, { onConflict: 'client_id' })
 }
 
+// Which of a track's programs a member gets (Update 183): the 3-day version
+// if they picked 3 days and the track has one, otherwise the normal one.
+export function programForDays(track, days) {
+  return Number(days) === 3 && track?.program_3day_id ? track.program_3day_id : track?.program_id || null
+}
+
 // Everything a track holds, onto one client.
 export async function applyTrack(sb, clientId, track, templatesById, startDate) {
   const done = []
