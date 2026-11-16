@@ -214,7 +214,7 @@ function Workhorse90({ status, onSetUp }) {
     <div className="card" style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 12, borderColor: 'var(--orange)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
         <strong style={{ fontSize: 15 }}>Workhorse 90</strong>
-        <span className="muted" style={{ fontSize: 12.5 }}>90 days · same programs · monthly group call · $495 or 2 × $249</span>
+        <span className="muted" style={{ fontSize: 12.5 }}>90 days · same programs · monthly group call · form check each block · week-6 check-in · nutrition Q&A · $695 or 2 × $375</span>
       </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

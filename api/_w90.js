@@ -1,7 +1,7 @@
 // Workhorse 90 (Update 180): the 90-day group with a monthly group call.
 // Same group programming as the $50/month group, paid up front for 90 days:
-//   full  — $495 once
-//   split — $249 now + $249 six weeks later (halfway), then it stops
+//   full  — $695 once
+//   split — $375 now + $375 six weeks later (halfway), then it stops
 // The Stripe product and both prices are created in the coach's Stripe account
 // the first time they're needed (found again by lookup key after that), so
 // there's nothing to set up in the Stripe dashboard.
@@ -10,26 +10,31 @@ import { stripe } from './_stripe.js'
 export const W90 = {
   name: 'Workhorse 90',
   days: 90,
-  full: { cents: 49500, lookup: 'workhorse90_full' },
-  split: { cents: 24900, lookup: 'workhorse90_split', everyWeeks: 6, payments: 2 },
+  full: { cents: 69500, lookup: 'workhorse90_full_695' },
+  split: { cents: 37500, lookup: 'workhorse90_split_375', everyWeeks: 6, payments: 2 },
+  // Earlier prices ($495 / 2 × $249). Kept active in Stripe so anyone already
+  // on the 2-payment plan is charged what they signed up for; only used here
+  // to find the existing product so a second one isn't made.
+  legacyLookups: ['workhorse90_full', 'workhorse90_split'],
 }
 export const W90_LABELS = {
-  full: '$495 for 90 days',
-  split: '2 payments of $249',
+  full: '$695 for 90 days',
+  split: '2 payments of $375',
 }
 const DAY = 864e5
 
 // Find both prices, creating the product and whichever price is missing.
 export async function ensureW90Prices(fetchFn) {
-  const q = `prices?active=true&lookup_keys[]=${W90.full.lookup}&lookup_keys[]=${W90.split.lookup}&expand[]=data.product`
+  const keys = [W90.full.lookup, W90.split.lookup, ...W90.legacyLookups].map(k => `lookup_keys[]=${k}`).join('&')
+  const q = `prices?active=true&${keys}&expand[]=data.product`
   const found = (await stripe(q, { method: 'GET', fetchFn })).data || []
   const by = k => found.find(p => p.lookup_key === k)
   let full = by(W90.full.lookup), split = by(W90.split.lookup)
   const created = []
-  let product = (full || split)?.product
+  let product = (full || split || found[0])?.product
   product = typeof product === 'object' ? product?.id : product
   if (!product) {
-    const p = await stripe('products', { fetchFn, body: { name: W90.name, description: '90-day group training with a monthly group call.', metadata: { workhorse_offer: 'w90' } } })
+    const p = await stripe('products', { fetchFn, body: { name: W90.name, description: '90-day group training with a monthly group call, a form check each block, a week-6 check-in and a group nutrition Q&A.', metadata: { workhorse_offer: 'w90' } } })
     product = p.id
     created.push('product')
   }
@@ -55,7 +60,7 @@ export function w90AccessUntil(now = new Date(), current = null) {
 }
 
 // When the split subscription should stop: exactly at the end of its second
-// 6-week period (day 84), so the second charge is the full $249 and no third
+// 6-week period (day 84), so the second charge is the full $375 and no third
 // is ever made. Stripe prorates a cancel date that cuts a later period short,
 // so this lands on the period boundary, measured from the billing anchor.
 export function splitCancelAt(anchorUnix) {

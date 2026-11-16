@@ -1,4 +1,4 @@
-// Workhorse 90 (Update 180): 90-day group, $495 in full or 2 × $249 six
+// Workhorse 90 (Update 180): 90-day group, $695 in full or 2 × $375 six
 // weeks apart, renewal when the 90 days are up, monthly group call.
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
@@ -33,16 +33,16 @@ const pricesExist = { prices: () => ({ data: [
 ] }) }
 
 // ---------- the Stripe product
-test('first time: creates the product, $495 one-time and $249 every 6 weeks', async () => {
+test('first time: creates the product, $695 one-time and $375 every 6 weeks', async () => {
   let n = 0
   const { fetchFn, calls } = fakeStripe({ 'prices?': () => ({ data: [] }), products: () => ({ id: 'prod_new' }), prices: () => ({ id: `price_${++n}` }) })
   const r = await ensureW90Prices(fetchFn)
   assert.deepEqual(r.created, ['product', 'full', 'split']); assert.equal(r.product, 'prod_new')
   const full = calls.find(c => c.path === 'prices' && c.body.includes(W90.full.lookup)).body
   const split = calls.find(c => c.path === 'prices' && c.body.includes(W90.split.lookup)).body
-  for (const s of ['unit_amount=49500', 'currency=usd', 'product=prod_new']) assert.ok(full.includes(s), s)
+  for (const s of ['unit_amount=69500', 'currency=usd', 'product=prod_new']) assert.ok(full.includes(s), s)
   assert.ok(!full.includes('recurring'))
-  for (const s of ['unit_amount=24900', 'recurring[interval]=week', 'recurring[interval_count]=6', 'product=prod_new']) assert.ok(split.includes(s), s)
+  for (const s of ['unit_amount=37500', 'recurring[interval]=week', 'recurring[interval_count]=6', 'product=prod_new']) assert.ok(split.includes(s), s)
 })
 test('after that: found by lookup key, nothing created again', async () => {
   const { fetchFn, calls } = fakeStripe(pricesExist)
@@ -109,13 +109,13 @@ test('/start sign-up still makes $50/month members', async () => {
 
 // ---------- checkout
 const member = o => ({ id: 'u1', email: 'j@x.com', plan: 'group', group_status: 'pending', group_tier: 'w90', ...o })
-test('pay in full: one-time $495 checkout tagged Workhorse 90', async () => {
+test('pay in full: one-time $695 checkout tagged Workhorse 90', async () => {
   const sb = makeSb({ profiles: [member()] }); const { fetchFn, calls } = fakeStripe(pricesExist); const r = res()
   await runGroupBilling(sb, { id: 'u1' }, { action: 'checkout', offer: 'w90', option: 'full' }, r, { base: 'https://app.test', fetchFn })
   assert.equal(r.code, 200); const b = calls.find(c => c.path === 'checkout/sessions').body
   for (const s of ['mode=payment', 'line_items[0][price]=price_full', 'metadata[offer]=w90', 'metadata[option]=full', 'payment_intent_data[metadata][profile_id]=u1', 'customer_creation=always', 'client_reference_id=u1']) assert.ok(b.includes(s), s)
 })
-test('2 payments: $249 subscription checkout tagged Workhorse 90 split', async () => {
+test('2 payments: $375 subscription checkout tagged Workhorse 90 split', async () => {
   const sb = makeSb({ profiles: [member()] }); const { fetchFn, calls } = fakeStripe(pricesExist); const r = res()
   await runGroupBilling(sb, { id: 'u1' }, { action: 'checkout', offer: 'w90', option: 'split' }, r, { base: 'https://app.test', fetchFn })
   const b = calls.find(c => c.path === 'checkout/sessions').body
@@ -173,12 +173,12 @@ test('2 payments: active for 90 days and the subscription is set to stop after t
 })
 const paidW90 = () => { const d = w90Db(); Object.assign(d.profiles[0], { group_status: 'active', group_option: 'split', stripe_subscription_id: 'sub_w90', group_status_at: '2025-11-05T00:00:00Z', group_access_until: new Date(Date.now() + 7 * DAY).toISOString() }); return d }
 test('the planned stop after both payments: they keep their 90 days', async () => {
-  const sb = makeSb(paidW90()); const { fetchFn } = fakeStripe({ invoices: () => ({ data: [{ amount_paid: 24900 }, { amount_paid: 24900 }] }) })
+  const sb = makeSb(paidW90()); const { fetchFn } = fakeStripe({ invoices: () => ({ data: [{ amount_paid: 37500 }, { amount_paid: 37500 }] }) })
   await runStripeEvent(sb, ev('customer.subscription.deleted', splitSub({ status: 'canceled' }), 1769500000), res(), { fetchFn })
   assert.equal(sb.db.profiles[0].group_status, 'active'); assert.ok(groupAccess(sb.db.profiles[0]))
 })
 test('second payment never went through: membership ends', async () => {
-  const sb = makeSb(paidW90()); const { fetchFn } = fakeStripe({ invoices: () => ({ data: [{ amount_paid: 24900 }] }) })
+  const sb = makeSb(paidW90()); const { fetchFn } = fakeStripe({ invoices: () => ({ data: [{ amount_paid: 37500 }] }) })
   await runStripeEvent(sb, ev('customer.subscription.updated', splitSub({ status: 'past_due', cancel_at: 1 }), 1766000000), res(), { fetchFn })
   assert.equal(sb.db.profiles[0].group_status, 'past_due'); assert.ok(groupAccess(sb.db.profiles[0]), 'still in while Stripe retries')
   await runStripeEvent(sb, ev('customer.subscription.deleted', splitSub({ status: 'canceled' }), 1766500000), res(), { fetchFn })
@@ -250,4 +250,12 @@ test('coach list: time-up members shown as such, revenue counts the $50 plan onl
   const st = groupStats(ms, 50, now)
   assert.equal(st.paying, 3); assert.equal(st.w90, 1); assert.equal(st.mrr, 100); assert.equal(st.ended, 1)
   assert.deepEqual(ms.slice(0, 4).map(offerLabel), ['$50/month', '$50/month', 'W90 · paid in full', 'W90 · 2 payments'])
+})
+
+test('price change: reuses the existing Workhorse 90 product from the old prices', async () => {
+  const { fetchFn, calls } = fakeStripe({ prices: (path, body) => body ? { id: body.includes('unit_amount=69500') ? 'price_full_new' : 'price_split_new' } : { data: [{ id: 'price_old', lookup_key: 'workhorse90_full', product: { id: 'prod_w90' } }] } })
+  const r = await ensureW90Prices(fetchFn)
+  assert.equal(r.product, 'prod_w90'); assert.deepEqual(r.created, ['full', 'split'])
+  assert.ok(!calls.some(c => c.path === 'products' && c.method !== 'GET'), 'no second product')
+  assert.ok(calls.filter(c => c.path === 'prices' && c.body).every(c => c.body.includes('product=prod_w90')))
 })

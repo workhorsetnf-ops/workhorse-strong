@@ -41,7 +41,7 @@ export default function GroupSignup({ offer = 'monthly' }) {
     } catch (x) { setErr(x.message); setBusy('') }
   }
 
-  const price = w90 ? (option === 'full' ? '$495 · 90 days' : '2 × $249') : (info?.price || '$50/month')
+  const price = w90 ? (option === 'full' ? '$695 · 90 days' : '2 × $375') : (info?.price || '$50/month')
   return (
     <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 20 }}>
       <div style={{ width: '100%', maxWidth: 460 }}>
@@ -71,7 +71,7 @@ export default function GroupSignup({ offer = 'monthly' }) {
                   {w90 && <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: '.08em', color: 'var(--orange-hot)', marginBottom: 4 }}>WORKHORSE 90</div>}
                   <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Pick your program</h1>
                   <p className="muted" style={{ fontSize: 13.5, margin: 0 }}>{w90
-                    ? '90 days of the full training program in the app, the team chat, and a live group call with Anthony every month.'
+                    ? '90 days of the full training program in the app, the team chat, a live group call with Anthony every month, a video form check from Anthony each 6-week block, a week-6 check-in so your next block is adjusted to you, and a group nutrition Q&A.'
                     : 'Full training program in the app, a new block every 6 weeks, cancel anytime.'}</p>
                 </div>
                 {info.tracks.map(t => {
@@ -130,7 +130,7 @@ export default function GroupSignup({ offer = 'monthly' }) {
                 </div>
                 {w90 && (
                   <div role="radiogroup" aria-label="How to pay" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    {[['full', '$495', 'Pay in full · 90 days'], ['split', '2 × $249', 'Today, then in 6 weeks']].map(([v, big, small]) => (
+                    {[['full', '$695', 'Pay in full · 90 days'], ['split', '2 × $375', 'Today, then in 6 weeks']].map(([v, big, small]) => (
                       <button key={v} type="button" role="radio" aria-checked={option === v} onClick={() => setOption(v)}
                         style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 12, cursor: 'pointer', background: option === v ? 'rgba(255,85,0,.12)' : 'var(--steel)', border: `2px solid ${option === v ? 'var(--orange)' : 'transparent'}`, color: 'inherit' }}>
                         <div style={{ fontSize: 17, fontWeight: 900 }}>{big}</div>

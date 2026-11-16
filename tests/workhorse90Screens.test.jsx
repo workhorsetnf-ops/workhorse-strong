@@ -36,8 +36,8 @@ test('joining Workhorse 90: both ways to pay, no monthly option', async () => {
   as({ id: 'u1', plan: 'group', group_tier: 'w90', group_status: 'pending' })
   const el = await mount(<GroupPaywall />)
   expect(el.textContent).toContain('Finish joining Workhorse 90')
-  expect(buttons(el)).toContain('Pay in full: $495 for 90 days')
-  expect(buttons(el)).toContain('2 payments of $249 (today + in 6 weeks)')
+  expect(buttons(el)).toContain('Pay in full: $695 for 90 days')
+  expect(buttons(el)).toContain('2 payments of $375 (today + in 6 weeks)')
   expect(buttons(el).some(b => b.includes('$50/month'))).toBe(false)
   await act(async () => [...el.querySelectorAll('button')].find(b => b.textContent.startsWith('2 payments')).click())
   expect(apiCalls[0]).toEqual({ action: 'checkout', offer: 'w90', option: 'split' })
@@ -47,7 +47,7 @@ test('day 90: renewal screen with another 90 days or $50/month', async () => {
   as({ id: 'u1', plan: 'group', group_tier: 'w90', group_status: 'active', group_access_until: new Date(Date.now() - DAY).toISOString() })
   const el = await mount(<GroupPaywall />)
   expect(el.textContent).toContain('Your 90 days are up')
-  expect(buttons(el).filter(b => b.includes('$495') || b.includes('$249')).length).toBe(2)
+  expect(buttons(el).filter(b => b.includes('$695') || b.includes('$375')).length).toBe(2)
   const monthly = [...el.querySelectorAll('button')].find(b => b.textContent.includes('$50/month'))
   await act(async () => monthly.click())
   expect(apiCalls[0]).toEqual({ action: 'checkout', offer: 'monthly' })
@@ -56,7 +56,7 @@ test('day 90: renewal screen with another 90 days or $50/month', async () => {
 test('$50/month members: unchanged paywall', async () => {
   as({ id: 'u1', plan: 'group', group_tier: 'monthly', group_status: 'canceled' })
   const el = await mount(<GroupPaywall />)
-  expect(buttons(el)).toContain('Rejoin'); expect(el.textContent).not.toContain('$495')
+  expect(buttons(el)).toContain('Rejoin'); expect(el.textContent).not.toContain('$695')
 })
 
 test('last 14 days: heads-up with renewal; earlier: nothing', async () => {
@@ -73,7 +73,7 @@ test('membership card shows the end date and the second payment date', async () 
        group_access_until: new Date(Date.now() + 80 * DAY).toISOString(), group_period_end: new Date(Date.now() + 32 * DAY).toISOString() })
   const el = await mount(<GroupMembershipCard />)
   expect(el.textContent).toContain('Workhorse 90'); expect(el.textContent).toContain('access until')
-  expect(el.textContent).toContain('Second payment of $249')
+  expect(el.textContent).toContain('Second payment of $375')
 })
 
 test('Home: next monthly call with a Join link, only for Workhorse 90', async () => {
