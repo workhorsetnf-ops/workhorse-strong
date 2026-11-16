@@ -44,14 +44,73 @@ async function loadQuestions(checkin) {
   return qs || []
 }
 
+export const POSES = ['Front', 'Side', 'Back']
+
+// The photos a check-in already has, as {label, path}. Old check-ins only stored
+// photo_urls with no pose, so those come back with an empty label.
+export function currentPhotos(checkin) {
+  if (Array.isArray(checkin?.photos) && checkin.photos.length) return checkin.photos.filter(p => p && p.path)
+  return (checkin?.photo_urls || []).filter(Boolean).map(path => ({ label: '', path }))
+}
+
+// The photo list to save after an edit: a newly uploaded pose replaces the old
+// one, a removed pose is dropped, anything untouched (including old unlabelled
+// photos) is kept. Poses come out in Front/Side/Back order.
+export function nextPhotos(existing, uploaded, removed) {
+  const gone = new Set([...(removed || []), ...(uploaded || []).map(u => u.label)])
+  const kept = (existing || []).filter(p => !(p.label && gone.has(p.label)))
+  const all = [...kept, ...(uploaded || [])]
+  const rank = l => { const i = POSES.indexOf(l); return i === -1 ? POSES.length : i }
+  const photos = all.map((p, i) => ({ p, i })).sort((a, b) => rank(a.p.label) - rank(b.p.label) || a.i - b.i).map(x => x.p)
+  return { photos, photo_urls: photos.map(p => p.path) }
+}
+
 const num = v => (String(v ?? '').trim() === '' ? null : Number(v))
 
-export default function CheckinEditor({ checkin, onSaved, onCancel }) {
+// photosEditable: only the client who owns the check-in can upload into their
+// photo folder (storage rules), so the coach-side editor leaves photos alone.
+export default function CheckinEditor({ checkin, onSaved, onCancel, photosEditable = false }) {
   const [rows, setRows] = useState(null)
   const [notes, setNotes] = useState(checkin.notes || '')
   const [weight, setWeight] = useState(checkin.weight ?? '')
   const [waist, setWaist] = useState(checkin.waist ?? '')
   const [busy, setBusy] = useState(false)
+  const existing = currentPhotos(checkin)
+  const [picked, setPicked] = useState({})      // pose -> File chosen in this edit
+  const [removed, setRemoved] = useState([])    // poses taken off in this edit
+  const [thumbs, setThumbs] = useState({})      // path -> signed URL
+  const [pickedUrls, setPickedUrls] = useState({})
+
+  useEffect(() => {
+    if (!photosEditable) return
+    let live = true
+    ;(async () => {
+      const map = {}
+      for (const p of existing) {
+        const { data } = await supabase.storage.from('checkin-photos').createSignedUrl(p.path, 3600)
+        if (data?.signedUrl) map[p.path] = data.signedUrl
+      }
+      if (live) setThumbs(map)
+    })()
+    return () => { live = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkin, photosEditable])
+
+  useEffect(() => {
+    const urls = {}
+    for (const [pose, f] of Object.entries(picked)) if (f) { try { urls[pose] = URL.createObjectURL(f) } catch { /* no preview */ } }
+    setPickedUrls(urls)
+    return () => { for (const u of Object.values(urls)) { try { URL.revokeObjectURL(u) } catch { /* ignore */ } } }
+  }, [picked])
+
+  const pick = (pose, file) => {
+    setPicked(p => ({ ...p, [pose]: file || null }))
+    if (file) setRemoved(r => r.filter(x => x !== pose))
+  }
+  const removePose = pose => {
+    setPicked(p => ({ ...p, [pose]: null }))
+    setRemoved(r => (r.includes(pose) ? r : [...r, pose]))
+  }
 
   useEffect(() => {
     let live = true
@@ -66,10 +125,24 @@ export default function CheckinEditor({ checkin, onSaved, onCancel }) {
     if ((w !== null && !(w > 0)) || (wa !== null && !(wa > 0))) { alert('Weight and waist need to be numbers.'); return }
     setBusy(true)
     const patch = { form_responses: toResponses(rows || []), notes, weight: w, waist: wa }
+    const fails = []
+    if (photosEditable) {
+      const uploaded = []
+      for (const pose of POSES) {
+        const file = picked[pose]
+        if (!file) continue
+        const path = `${checkin.client_id}/${Date.now()}-${pose.toLowerCase()}-${file.name}`
+        const { error } = await supabase.storage.from('checkin-photos').upload(path, file)
+        if (error) fails.push(pose)
+        else uploaded.push({ label: pose, path })
+      }
+      if (uploaded.length || removed.length) Object.assign(patch, nextPhotos(existing, uploaded, removed))
+    }
     const { data, error } = await supabase.from('checkins').update(patch).eq('id', checkin.id).select()
     setBusy(false)
     if (error) { alert('Could not save: ' + error.message); return }
     if (!data?.length) { alert("Couldn't save. This check-in may have been deleted, or you don't have permission to edit it."); return }
+    if (fails.length) alert(`Your changes were saved, but these photos didn't upload: ${fails.join(', ')}. Try adding them again.`)
     onSaved && onSaved(data[0])
   }
 
@@ -106,6 +179,41 @@ export default function CheckinEditor({ checkin, onSaved, onCancel }) {
         <div style={lbl}>Notes</div>
         <textarea rows="3" value={notes} onChange={e => setNotes(e.target.value)} />
       </div>
+      {photosEditable && (
+        <div>
+          <div style={lbl}>Progress photos</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            {POSES.map(pose => {
+              const old = existing.find(p => p.label === pose)
+              const isRemoved = removed.includes(pose)
+              const src = pickedUrls[pose] || (!isRemoved && old ? thumbs[old.path] : null)
+              const has = !!(picked[pose] || (old && !isRemoved))
+              return (
+                <div key={pose} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ aspectRatio: '3 / 4', borderRadius: 6, background: 'var(--black, #111)', border: '1px solid ' + (picked[pose] ? 'var(--orange)' : 'var(--line)'),
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {src ? <img src={src} alt={pose} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <span className="muted" style={{ fontSize: 11.5 }}>{has ? 'Loading…' : 'No photo'}</span>}
+                  </div>
+                  <label className="btn-ghost" style={{ textAlign: 'center', padding: '6px 4px', fontSize: 12, cursor: 'pointer' }}>
+                    {has ? `Replace ${pose}` : `Add ${pose}`}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} aria-label={`${pose} photo`}
+                      onChange={e => pick(pose, e.target.files?.[0])} />
+                  </label>
+                  {has && (
+                    <button type="button" className="btn-ghost" style={{ padding: '4px', fontSize: 11.5 }} onClick={() => removePose(pose)}>Remove</button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          {existing.some(p => !p.label) && (
+            <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
+              {existing.filter(p => !p.label).length} earlier photo(s) without a pose are kept as they are.
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="btn" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
         <button className="btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>

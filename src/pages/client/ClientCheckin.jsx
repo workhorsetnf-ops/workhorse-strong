@@ -102,6 +102,8 @@ export default function ClientCheckin() {
   const bodyText = v => [v?.weight && `${v.weight} lbs`, v?.waist && `${v.waist} in`].filter(Boolean).join(', ')
 
   async function submit() {
+    // Photos sit at the bottom of the form and were easy to scroll past
+    if (!Object.values(photos).some(Boolean) && !window.confirm("You haven't added any progress photos. Submit without them? (You can still add them afterwards from History below.)")) return
     if (fewWeighIns && !window.confirm(`Only ${summary.days_weighed} of 7 weigh-ins are logged, so your weekly average won't be accurate. Submit anyway?`)) return
     setBusy(true)
     const photoRows = []
@@ -281,12 +283,12 @@ export default function ClientCheckin() {
                 <span>{new Date(c.submitted_at).toLocaleDateString()}</span>
                 <span className="muted">{c.weight ? `${c.weight} lbs${c.period_start ? ' (7-day avg)' : ''}` : ''}</span>
               </div>
-              {/* Editable until the coach marks it reviewed, e.g. sent before it was finished */}
+              {/* Editable until the coach marks it reviewed, e.g. sent before it was finished or without photos */}
               {(c.status || 'pending') !== 'done' && editingId !== c.id && (
-                <button className="btn-ghost" style={{ marginTop: 8, padding: '5px 10px', fontSize: 12 }} onClick={() => setEditingId(c.id)}>Edit answers</button>
+                <button className="btn-ghost" style={{ marginTop: 8, padding: '5px 10px', fontSize: 12 }} onClick={() => setEditingId(c.id)}>Edit answers & photos</button>
               )}
               {editingId === c.id && (
-                <CheckinEditor checkin={c} onCancel={() => setEditingId(null)}
+                <CheckinEditor checkin={c} photosEditable onCancel={() => setEditingId(null)}
                   onSaved={row => { setHistory(h => h.map(x => x.id === row.id ? row : x)); setEditingId(null) }} />
               )}
               {c.coach_feedback && (
