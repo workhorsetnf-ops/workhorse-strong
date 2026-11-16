@@ -72,7 +72,7 @@ export default function GroupSignup({ offer = 'monthly' }) {
                   <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Pick your program</h1>
                   <p className="muted" style={{ fontSize: 13.5, margin: 0 }}>{w90
                     ? '90 days of the full training program in the app, the team chat, a live group call with Anthony every month, a video form check from Anthony each 6-week block, a week-6 check-in so your next block is adjusted to you, and a group nutrition Q&A.'
-                    : 'Full training program in the app, new blocks every month, cancel anytime.'}</p>
+                    : 'Full training program in the app, a new block every 6 weeks, cancel anytime.'}</p>
                 </div>
                 {info.tracks.map(t => {
                   const on = track?.id === t.id
