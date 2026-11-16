@@ -3075,3 +3075,9 @@ end $fn$;
 
 revoke all on function public.self_adjust_check(date), public.apply_self_adjustment(date) from public, anon;
 grant execute on function public.self_adjust_check(date), public.apply_self_adjustment(date) to authenticated;
+
+-- ===== Update 183: 3-day option for group tracks =====
+alter table tracks add column if not exists program_3day_id uuid references programs(id) on delete set null;
+alter table profiles add column if not exists group_days smallint not null default 4;
+alter table profiles drop constraint if exists profiles_group_days_check;
+alter table profiles add constraint profiles_group_days_check check (group_days in (3, 4));

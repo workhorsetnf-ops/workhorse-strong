@@ -1,6 +1,6 @@
 // Group-offer membership (Update 166): setting a member's billing state from
 // Stripe, and setting them up the first time they're paid.
-import { applyTrack } from '../src/lib/plans.js'
+import { applyTrack, programForDays } from '../src/lib/plans.js'
 import { calcMacros, ACTIVITY } from '../src/lib/macros.js'
 import { w90AccessUntil } from './_w90.js'
 
@@ -35,7 +35,7 @@ const ACCESS = new Set(['active', 'past_due'])
 // last one applied (Stripe doesn't promise order). First time they become
 // paid, their track is applied: program (auto weeks), templates, chat.
 export async function applyGroupState(sb, profileId, s) {
-  const { data: p } = await sb.from('profiles').select('id, plan, group_status, group_status_at, group_track_id, group_joined_at, group_access_until, group_last_checkout').eq('id', profileId).maybeSingle()
+  const { data: p } = await sb.from('profiles').select('id, plan, group_status, group_status_at, group_track_id, group_days, group_joined_at, group_access_until, group_last_checkout').eq('id', profileId).maybeSingle()
   if (!p) return { skipped: 'no profile' }
   const at = s.eventTime ? new Date(s.eventTime * 1000).toISOString() : new Date().toISOString()
   const stale = p.group_status_at && new Date(p.group_status_at) > new Date(at)
@@ -72,7 +72,7 @@ export async function applyGroupState(sb, profileId, s) {
     if (!asg) {
       const ids = ['meal_template_id', 'habits_template_id', 'supps_template_id', 'cardio_template_id'].map(k => track[k]).filter(Boolean)
       const { data: tpls } = ids.length ? await sb.from('plan_templates').select('*').in('id', ids) : { data: [] }
-      await applyTrack(sb, profileId, track, Object.fromEntries((tpls || []).map(t => [t.id, t])), groupStartDate())
+      await applyTrack(sb, profileId, { ...track, program_id: programForDays(track, p.group_days) }, Object.fromEntries((tpls || []).map(t => [t.id, t])), groupStartDate())
       // nobody is moving a group member's week by hand: count it from the start date
       await sb.from('program_assignments').update({ week_mode: 'auto' }).eq('client_id', profileId)
       setUp = true

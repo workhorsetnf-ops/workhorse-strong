@@ -17,6 +17,7 @@ export default function GroupSignup({ offer = 'monthly' }) {
   const [info, setInfo] = useState(null)       // { tracks, price }
   const [step, setStep] = useState(1)
   const [track, setTrack] = useState(null)
+  const [days, setDays] = useState(4)          // 3 or 4 training days a week (Update 183)
   const [n, setN] = useState({ weight: '', height_ft: '', height_in: '', age: '', sex: '', activity: 'light-schedule', goal: 'cut' })
   const [f, setF] = useState({ full_name: '', email: '', password: '', again: '' })
   const [err, setErr] = useState('')
@@ -32,7 +33,7 @@ export default function GroupSignup({ offer = 'monthly' }) {
     if (f.password !== f.again) return setErr('The two passwords don’t match.')
     setErr(''); setBusy('Creating your account…')
     try {
-      await callApi('/api/group-signup', { track_id: track.id, full_name: f.full_name, email: f.email, password: f.password, numbers: n, ...(w90 ? { offer: 'w90' } : {}) })
+      await callApi('/api/group-signup', { track_id: track.id, days: track.three_day ? days : 4, full_name: f.full_name, email: f.email, password: f.password, numbers: n, ...(w90 ? { offer: 'w90' } : {}) })
       const { error } = await supabase.auth.signInWithPassword({ email: f.email.trim().toLowerCase(), password: f.password })
       if (error) throw new Error('Account created. Sign in to finish joining.')
       setBusy('Opening secure checkout…')
@@ -77,13 +78,29 @@ export default function GroupSignup({ offer = 'monthly' }) {
                 {info.tracks.map(t => {
                   const on = track?.id === t.id
                   return (
-                    <button key={t.id} type="button" onClick={() => setTrack(t)} aria-pressed={on}
+                    <button key={t.id} type="button" onClick={() => { setTrack(t); if (!t.three_day) setDays(4) }} aria-pressed={on}
                       style={{ textAlign: 'left', padding: '14px 14px', borderRadius: 12, cursor: 'pointer', background: on ? 'rgba(255,85,0,.12)' : 'var(--steel)', border: `2px solid ${on ? 'var(--orange)' : 'transparent'}`, color: 'inherit' }}>
                       <div style={{ fontSize: 16, fontWeight: 900 }}>{t.name}</div>
+                      {t.three_day && <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '.06em', color: 'var(--orange-hot)', marginTop: 2 }}>3 OR 4 DAYS A WEEK</div>}
                       {t.description && <div className="muted" style={{ fontSize: 13, marginTop: 4, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{t.description}</div>}
                     </button>
                   )
                 })}
+                {track?.three_day && (
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>How many days a week can you train?</div>
+                    <div role="radiogroup" aria-label="Training days a week" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      {[[4, '4 days', 'Upper / lower split'], [3, '3 days', 'Full body each session']].map(([v, big, small]) => (
+                        <button key={v} type="button" role="radio" aria-checked={days === v} onClick={() => setDays(v)}
+                          style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 12, cursor: 'pointer', background: days === v ? 'rgba(255,85,0,.12)' : 'var(--steel)', border: `2px solid ${days === v ? 'var(--orange)' : 'transparent'}`, color: 'inherit' }}>
+                          <div style={{ fontSize: 17, fontWeight: 900 }}>{big}</div>
+                          <div className="muted" style={{ fontSize: 12 }}>{small}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>Same program, same 6-week blocks. You can move sessions to the days that suit you inside the app.</p>
+                  </div>
+                )}
                 <button className="btn" disabled={!track} onClick={() => setStep(2)}>Continue</button>
               </>
             )}
@@ -126,7 +143,7 @@ export default function GroupSignup({ offer = 'monthly' }) {
               <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div>
                   <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Create your account</h1>
-                  <p className="muted" style={{ fontSize: 13.5, margin: 0 }}><strong>{track?.name}</strong> · {price}. You’ll pay on the next screen (secure checkout by Stripe).</p>
+                  <p className="muted" style={{ fontSize: 13.5, margin: 0 }}><strong>{track?.name}</strong>{track?.three_day ? ` · ${days} days a week` : ''} · {price}. You’ll pay on the next screen (secure checkout by Stripe).</p>
                 </div>
                 {w90 && (
                   <div role="radiogroup" aria-label="How to pay" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
