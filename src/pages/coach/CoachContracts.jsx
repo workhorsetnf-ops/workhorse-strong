@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { notifyEvent } from '../../lib/push'
 import RecipientPicker from './RecipientPicker'
+import OnboardingSettings from './OnboardingSettings'
 
 function resolveBody(body, client) {
   return (body || '')
@@ -108,6 +109,7 @@ export default function CoachContracts() {
     <div>
       <div className="eyebrow">Paperwork</div>
       <h1 style={{ fontSize: 28, margin: '6px 0 20px' }}>Contracts</h1>
+      <OnboardingSettings />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <h2 style={{ fontSize: 18 }}>Templates</h2>

@@ -39,6 +39,7 @@ import ReminderSettings from '../ReminderSettings'
 import ClientProfile from './ClientProfile'
 import StepsSync from './StepsSync'
 import ClientRecords from './ClientRecords'
+import { useOnboardingContracts, ContractGate } from './Onboarding'
 import { isGroup, groupHasAccess, hiddenForGroup, GroupPaywall, GroupPaymentBanner } from './GroupMembership'
 
 function Dot() {
@@ -50,6 +51,7 @@ export default function ClientApp() {
   const location = useLocation()
   const [badges, setBadges] = useState({ messages: false, checkin: false, filmChecks: false })
   const [weekly, setWeekly] = useState(null)   // weekly check-in status, for the banner and full-screen card
+  const onboarding = useOnboardingContracts(profile)   // Update 184: new client's unsigned contract
 
   async function refreshBadges() {
     if (!profile) return
@@ -122,6 +124,9 @@ export default function ClientApp() {
 
   // group member who hasn't paid (or whose membership ended): paywall only
   if (group && !groupHasAccess(profile)) return <div className="client-shell"><main className="client-main"><GroupPaywall /></main></div>
+  // new client from a payment: the contract comes first, everything else waits (Update 184)
+  if (onboarding.pending === null) return <div className="client-shell"><main className="client-main" /></div>
+  if (onboarding.pending.length) return <div className="client-shell"><main className="client-main"><ContractGate contracts={onboarding.pending} profile={profile} onSigned={onboarding.reload} /></main></div>
 
   return (
     <div className="client-shell">

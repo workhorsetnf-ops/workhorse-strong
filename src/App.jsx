@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import SetPassword from './pages/SetPassword'
 import Join from './pages/Join'
 import GroupSignup from './pages/GroupSignup'
+import Welcome from './pages/Welcome'
 import ClientArchived from './pages/client/ClientArchived'
 import ClientApp from './pages/client/ClientApp'
 import CoachDashboard from './pages/coach/CoachDashboard'
@@ -32,6 +33,8 @@ export default function App() {
     if (g) return g[1] === 'steps' ? <StepsGuide /> : <NotificationsGuide />
     if (/^\/start\/90\/?$/.test(window.location.pathname)) return <GroupSignup offer="w90" />   // Workhorse 90 sign-up (Update 180)
     if (/^\/start\/?$/.test(window.location.pathname)) return <GroupSignup />   // group offer sign-up (Update 166)
+    const w = window.location.pathname.match(/^\/welcome\/([^/]+)/)   // new client's setup link (Update 184)
+    if (w) return <Welcome token={decodeURIComponent(w[1])} />
     const m = window.location.pathname.match(/^\/join\/([^/]+)/)
     return m ? <Join code={decodeURIComponent(m[1])} /> : <Login />
   }
