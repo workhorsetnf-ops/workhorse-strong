@@ -4,7 +4,7 @@ import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { makeSb, res } from './helpers/fakeSupabase.js'
 import { onboardFromPayment, sendWelcome, hashToken, resolveContract } from '../api/_onboard.js'
-import { runOnboard } from '../api/onboard.js'
+import { runOnboard, runKitHook } from '../api/onboard.js'
 import { runStripeEvent, isOutsidePayment } from '../api/stripe-webhook.js'
 import { onboardingStage, slotsByDay } from '../src/lib/onboarding.js'
 
@@ -163,3 +163,16 @@ test('slots group by the coach’s day, not UTC', () => {
   assert.deepEqual(g.map(x => [x.day, x.slots.length]), [['2026-11-18', 2], ['2026-11-19', 1]])
 })
 test('contract placeholders', () => assert.equal(resolveContract('{{client_name}} / {{date}}', 'A B', new Date('2026-11-17T15:00:00Z')), 'A B / 11/17/2026'))
+
+// ---------- Newie via Zapier -> Kit tag -> Kit webhook (Update 185)
+const kitFake = (tags, sub = { email_address: 'newbie@x.com', first_name: 'New', fields: { last_name: 'Guy' } }) => async path =>
+  path.endsWith('/tags?per_page=100') ? { tags } : { subscriber: sub }
+test('Kit tag webhook onboards only a subscriber who really has the newie-purchase tag', async () => {
+  const sb = makeSb(db()); const seen = []
+  const onboard = async (_s, info) => { seen.push(info); return { onboarded: 'x' } }
+  let r = res(); await runKitHook(sb, { subscriber: { id: 5, email_address: 'spoof@evil.com' } }, r, { kit: kitFake([{ name: 'Newie-Purchase' }]), onboard })
+  assert.deepEqual(seen, [{ email: 'newbie@x.com', name: 'New Guy', source: 'newie' }])   // email from Kit, not the body
+  r = res(); await runKitHook(sb, { subscriber: { id: 6 } }, r, { kit: kitFake([{ name: 'lead-magnet' }]), onboard })
+  assert.equal(r.body.ignored, 'not tagged'); assert.equal(seen.length, 1)
+  r = res(); await runKitHook(sb, {}, r, { kit: kitFake([]), onboard }); assert.equal(r.code, 400)
+})

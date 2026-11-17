@@ -4,14 +4,20 @@
 //   POST { action: 'signed' }                             -> client: contract signed, send the welcome email
 //   POST { action: 'link', client_id }                    -> coach: a fresh setup link to copy or text
 //   POST { action: 'kit' }                                -> coach: { ready, sequences } for the settings card
-import { admin, userFromReq } from './_push.js'
-import { liveToken, issueSetupLink, sendWelcome, resolveContract } from './_onboard.js'
-import { kitReady, kitSequences } from './_kit.js'
+//   POST ?source=kit  (Kit webhook: subscriber.tag_add)    -> a Newie sale (Update 185)
+import { admin, userFromReq, sendToUsers, staffIds } from './_push.js'
+import { liveToken, issueSetupLink, sendWelcome, resolveContract, onboardFromPayment } from './_onboard.js'
+import { kit, kitReady, kitSequences } from './_kit.js'
+
+// Newie only talks to Zapier, so a Newie sale arrives as:
+// Newie "new purchase" -> Zapier adds this tag in Kit -> Kit's tag webhook -> here.
+export const PURCHASE_TAG = 'newie-purchase'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
   try {
     const sb = admin()
+    if (req.query?.source === 'kit') return await runKitHook(sb, req.body || {}, res)
     return await runOnboard(sb, req.body || {}, res, { me: () => userFromReq(sb, req) })
   } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
 }
@@ -68,4 +74,22 @@ export async function runOnboard(sb, body, res, deps = {}) {
     catch (e) { return res.json({ ready: false, sequences: [], error: e.message }) }
   }
   return res.status(400).json({ error: 'Unknown action' })
+}
+
+// Kit's webhook isn't signed, so nothing in the body is trusted: the subscriber
+// is looked up in Kit with our own key, and only runs if they really carry the tag.
+export async function runKitHook(sb, body, res, deps = {}) {
+  const id = body?.subscriber?.id
+  if (!id) return res.status(400).json({ error: 'No subscriber' })
+  const k = deps.kit || kit
+  const [{ subscriber: sub } = {}, { tags = [] } = {}] = await Promise.all([
+    k(`subscribers/${encodeURIComponent(id)}`, { method: 'GET' }),
+    k(`subscribers/${encodeURIComponent(id)}/tags?per_page=100`, { method: 'GET' }),
+  ])
+  if (!tags.some(t => String(t.name).toLowerCase() === PURCHASE_TAG)) return res.json({ ignored: 'not tagged' })
+  const name = [sub?.first_name, sub?.fields?.last_name].filter(Boolean).join(' ')
+  const onboard = deps.onboard || ((s, info) => onboardFromPayment(s, info, {
+    notify: async msg => { try { await sendToUsers(s, await staffIds(s), { ...msg, tag: 'new-client' }) } catch { /* push is a bonus */ } },
+  }))
+  return res.json(await onboard(sb, { email: sub?.email_address, name, source: 'newie' }))
 }
