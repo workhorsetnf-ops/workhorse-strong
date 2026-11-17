@@ -3,6 +3,7 @@
 //   POST { action: 'claim', token, password, full_name }  -> { ok, email }         (public: sets their password)
 //   POST { action: 'signed' }                             -> client: contract signed, send the welcome email
 //   POST { action: 'link', client_id }                    -> coach: a fresh setup link to copy or text
+//   POST { action: 'start', email, full_name }            -> coach: start onboarding by hand (Update 186)
 //   POST { action: 'kit' }                                -> coach: { ready, sequences } for the settings card
 //   POST ?source=kit  (Kit webhook: subscriber.tag_add)    -> a Newie sale (Update 185)
 import { admin, userFromReq, sendToUsers, staffIds } from './_push.js'
@@ -67,6 +68,16 @@ export async function runOnboard(sb, body, res, deps = {}) {
     const { data: p } = await sb.from('profiles').select('id, onboarding_started_at').eq('id', body.client_id).maybeSingle()
     if (!p) return res.status(404).json({ error: 'Client not found.' })
     return res.json({ link: await issueSetupLink(sb, p.id) })
+  }
+  if (action === 'start') {
+    const r = await (deps.onboard || onboardFromPayment)(sb, { email: body.email, name: body.full_name, source: 'manual' }, {
+      manual: true,
+      notify: async () => {},   // the coach is the one pressing the button
+    })
+    if (r.skipped === 'already has an account') return res.status(409).json({ error: 'That email already has an account.' })
+    if (r.skipped) return res.status(400).json({ error: r.skipped === 'no email on the payment' ? 'Enter a valid email.' : r.skipped })
+    if (r.error) return res.status(400).json({ error: r.error })
+    return res.json(r)
   }
   if (action === 'kit') {
     if (!(deps.kitReady || kitReady)()) return res.json({ ready: false, sequences: [] })

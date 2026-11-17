@@ -176,3 +176,19 @@ test('Kit tag webhook onboards only a subscriber who really has the newie-purcha
   assert.equal(r.body.ignored, 'not tagged'); assert.equal(seen.length, 1)
   r = res(); await runKitHook(sb, {}, r, { kit: kitFake([]), onboard }); assert.equal(r.code, 400)
 })
+
+// ---------- coach's "Start onboarding" button (Update 186)
+test('coach can start onboarding by hand, even with auto switched off; clients cannot', async () => {
+  const sb = makeSb(db({ enabled: false })); const coach = { me: async () => ({ id: 'c', role: 'coach' }) }
+  const real = (s, info, d) => onboardFromPayment(s, info, { ...d, createAccount: makeAccount, kitReady: () => true, subscribe: async () => {} })
+  let r = res(); await runOnboard(sb, { action: 'start', email: 'walkin@x.com', full_name: 'Walk In' }, r, { ...coach, onboard: real })
+  assert.equal(r.body.onboarded, 'new1'); assert.match(r.body.link, /\/welcome\//); assert.equal(sb.db.contracts.length, 1)
+  assert.equal(sb.db.profiles.find(p => p.id === 'new1').onboarding_source, 'manual')
+  r = res(); await runOnboard(sb, { action: 'start', email: 'old@x.com', full_name: 'Old' }, r, { ...coach, onboard: real }); assert.equal(r.code, 409)
+  r = res(); await runOnboard(sb, { action: 'start', email: 'nope', full_name: 'No' }, r, { ...coach, onboard: real }); assert.equal(r.code, 400)
+  r = res(); await runOnboard(sb, { action: 'start', email: 'x@y.com' }, r, { me: async () => ({ id: 'k', role: 'client' }) }); assert.equal(r.code, 403)
+})
+test('automatic path still respects the off switch', async () => {
+  const sb = makeSb(db({ enabled: false })); const { d } = deps()
+  assert.equal((await onboardFromPayment(sb, { email: 'z@x.com' }, d)).skipped, 'onboarding is off')
+})

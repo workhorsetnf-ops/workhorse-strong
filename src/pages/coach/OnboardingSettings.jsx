@@ -17,6 +17,9 @@ export default function OnboardingSettings() {
   const [people, setPeople] = useState([])
   const [copied, setCopied] = useState(null)
   const [missing, setMissing] = useState(false)
+  const [nw, setNw] = useState({ full_name: '', email: '' })
+  const [starting, setStarting] = useState(false)
+  const [started, setStarted] = useState(null)   // { name, link, kitError } | { error }
 
   async function load() {
     const { data: row, error } = await supabase.from('onboarding_settings').select('*').eq('id', 1).maybeSingle()
@@ -63,6 +66,18 @@ export default function OnboardingSettings() {
       try { await navigator.clipboard.writeText(link) } catch { window.prompt('Copy this link:', link) }
       setCopied(p.id); setTimeout(() => setCopied(null), 2500)
     } catch (e) { alert(e.message) }
+  }
+
+  async function startNew(e) {
+    e.preventDefault()
+    setStarting(true); setStarted(null)
+    try {
+      const r = await callApi('/api/onboard', { action: 'start', full_name: nw.full_name.trim(), email: nw.email.trim() })
+      setStarted({ name: nw.full_name.trim() || nw.email.trim(), link: r.link, kitError: r.kitError })
+      setNw({ full_name: '', email: '' })
+      loadPeople(s)
+    } catch (x) { setStarted({ error: x.message }) }
+    setStarting(false)
   }
 
   if (missing) return <div className="card" style={{ marginBottom: 24 }}><b>Auto-onboarding</b><p className="muted" style={{ fontSize: 13, marginTop: 4 }}>Run migration_update184_auto_onboarding.sql in Supabase to turn this on.</p></div>
@@ -126,6 +141,28 @@ export default function OnboardingSettings() {
           </div>
         ) : <p className="muted" style={{ fontSize: 13 }}>No forms yet. Make one in Intake Forms.</p>}
       </div>
+
+      <form onSubmit={startNew} style={{ borderTop: '1px solid var(--line)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div>
+          <b style={{ fontSize: 14 }}>Start onboarding by hand</b>
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>For a sale that didn’t come through automatically. Same flow: setup email, contract, welcome email, forms, call.</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+          <input placeholder="Client’s full name" value={nw.full_name} onChange={e => setNw(x => ({ ...x, full_name: e.target.value }))} />
+          <input type="email" placeholder="Email they paid with" value={nw.email} onChange={e => setNw(x => ({ ...x, email: e.target.value }))} />
+        </div>
+        <button className="btn" type="submit" disabled={starting || !nw.email.trim() || nw.full_name.trim().length < 2}>{starting ? 'Starting…' : 'Start onboarding'}</button>
+        {started?.error && <div style={{ color: 'var(--red)', fontSize: 13, fontWeight: 600 }}>{started.error}</div>}
+        {started?.link && (
+          <div style={{ fontSize: 13 }}>
+            {started.kitError ? <>Account made for <b>{started.name}</b>, but the setup email didn’t send ({started.kitError}). Text them this link instead:</> : <>Done. <b>{started.name}</b> is getting the setup email now. Their link, in case they need it:</>}
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <input readOnly value={started.link} onFocus={e => e.target.select()} style={{ flex: 1, fontSize: 12 }} />
+              <button type="button" className="btn-ghost" style={{ fontSize: 12.5 }} onClick={() => navigator.clipboard?.writeText(started.link)}>Copy</button>
+            </div>
+          </div>
+        )}
+      </form>
 
       {problems.length > 0 && (
         <div style={{ background: 'rgba(255,85,0,0.1)', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>

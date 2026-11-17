@@ -45,7 +45,7 @@ export async function liveToken(sb, token, now = new Date()) {
 
 export async function onboardFromPayment(sb, { email, name, source }, deps = {}) {
   const settings = await onboardingSettings(sb)
-  if (!settings.enabled) return { skipped: 'onboarding is off' }
+  if (!settings.enabled && !deps.manual) return { skipped: 'onboarding is off' }   // the coach's own button works either way
   const mail = String(email || '').trim().toLowerCase()
   if (!EMAIL.test(mail)) return { skipped: 'no email on the payment' }
   const { data: existing } = await sb.from('profiles').select('id').eq('email', mail).limit(1).maybeSingle()
