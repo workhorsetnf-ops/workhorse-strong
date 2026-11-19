@@ -23,4 +23,17 @@ export function setupItems(f) {
   return { items, done: items.filter(i => i.done).length, total: items.length }
 }
 
-export const SHORT = { install: 'Home Screen', push: 'Notifications', steps: 'Steps', workout: 'Workout', food: 'Food', checkin: 'Check-in' }
+// Which of these clients have at least one row in `table`?
+// Asks per client for a single row instead of downloading everyone's rows:
+// log tables have one row per set / per day, so a bulk select blows past
+// Supabase's per-request row cap and most clients silently look "not done".
+// `refine` adds extra filters, e.g. q => q.eq('steps_source', 'shortcut').
+export async function clientsWith(sb, table, ids, refine = q => q) {
+  const hits = await Promise.all(ids.map(async id => {
+    const { data, error } = await refine(sb.from(table).select('client_id').eq('client_id', id)).limit(1)
+    return !error && data && data.length ? id : null
+  }))
+  return new Set(hits.filter(Boolean))
+}
+
+export const SHORT ={ install: 'Home Screen', push: 'Notifications', steps: 'Steps', workout: 'Workout', food: 'Food', checkin: 'Check-in' }

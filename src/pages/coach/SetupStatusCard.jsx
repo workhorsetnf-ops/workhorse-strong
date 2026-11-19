@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { setupItems, SHORT } from '../../lib/setup'
+import { setupItems, SHORT, clientsWith } from '../../lib/setup'
 
 export default function SetupStatusCard() {
   const [rows, setRows] = useState(null)
@@ -13,19 +13,18 @@ export default function SetupStatusCard() {
       const { data: clients } = await supabase.from('profiles').select('id, full_name').eq('role', 'client').eq('status', 'active').neq('plan', 'group')
       const ids = (clients || []).map(c => c.id)
       if (!ids.length) return setRows([])
-      const ninety = new Date(Date.now() - 90 * 864e5).toISOString()
-      const [setup, synced, steps, wl, ml, ck] = await Promise.all([
+      // One small yes/no lookup per client per log table (see clientsWith) —
+      // same rules as the client's own checklist, so the two always agree.
+      const [setup, sy, st, w, m, c] = await Promise.all([
         supabase.from('client_setup').select('*').in('client_id', ids),
-        supabase.from('daily_logs').select('client_id').in('client_id', ids).eq('steps_source', 'shortcut').limit(5000),
-        supabase.from('daily_logs').select('client_id').in('client_id', ids).not('steps', 'is', null).limit(5000),
-        supabase.from('workout_logs').select('client_id').in('client_id', ids).gte('logged_at', ninety).limit(5000),
-        supabase.from('meal_logs').select('client_id').in('client_id', ids).limit(5000),
-        supabase.from('checkins').select('client_id').in('client_id', ids).limit(5000),
+        clientsWith(supabase, 'daily_logs', ids, q => q.eq('steps_source', 'shortcut')),
+        clientsWith(supabase, 'daily_logs', ids, q => q.not('steps', 'is', null)),
+        clientsWith(supabase, 'workout_logs', ids),
+        clientsWith(supabase, 'meal_logs', ids),
+        clientsWith(supabase, 'checkins', ids),
       ])
       if (setup.error) return setRows([])   // migration not run yet
-      const has = r => new Set((r.data || []).map(x => x.client_id))
       const S = Object.fromEntries((setup.data || []).map(s => [s.client_id, s]))
-      const sy = has(synced), st = has(steps), w = has(wl), m = has(ml), c = has(ck)
       const out = (clients || []).map(cl => {
         const s = S[cl.id] || {}
         const r = setupItems({ platform: s.platform || 'ios', installed: !!s.installed_at, pushOn: !!s.push_on_at,
