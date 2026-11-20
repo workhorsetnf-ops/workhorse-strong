@@ -23,6 +23,7 @@ export function makeSb(tables = {}) {
     const api = {
       select() { return api }, order() { return api }, limit(n) { limitN = n; return api },
       eq(c, v) { filters.push(r => r[c] === v); return api }, neq(c, v) { filters.push(r => r[c] !== v); return api },
+      gte(c, v) { filters.push(r => r[c] != null && r[c] >= v); return api }, lte(c, v) { filters.push(r => r[c] != null && r[c] <= v); return api },
       in(c, vs) { filters.push(r => vs.includes(r[c])); return api }, not(c, op, v) { if (op === 'is') filters.push(r => (r[c] ?? null) !== v); return api }, is(c, v) { filters.push(r => (r[c] ?? null) === v); return api },
       update(p) { mode = 'update'; payload = p; return api }, delete() { mode = 'delete'; return api },
       upsert(p, o = {}) { mode = 'upsert'; payload = p; opts = o; return api }, insert(p) { mode = 'insert'; payload = p; return api },
