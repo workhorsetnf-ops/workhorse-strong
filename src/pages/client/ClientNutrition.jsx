@@ -11,6 +11,7 @@ import DailyTotalsCard from './DailyTotalsCard'
 import { itemMacros, sumMacros, targetsFrom } from '../../lib/mealplan'
 import { WeekTotals, DayLog } from '../coach/FoodLogViews'
 import PhotoFoodLog from './PhotoFoodLog'
+import FoodHistoryCard, { SaveTodayMeals } from './FoodHistoryCard'
 
 const slotForNow = () => { const h = new Date().getHours(); return h < 10 ? 'Breakfast' : h < 14 ? 'Lunch' : h < 17 ? 'Snack' : 'Dinner' }
 
@@ -36,6 +37,7 @@ export default function ClientNutrition() {
   const [weekLogs, setWeekLogs] = useState([])
   const [totalsDay, setTotalsDay] = useState(null)   // a day tapped in the week grid
   const [plan, setPlan] = useState({ meals: [], items: [], plan: null, me: null })
+  const [historyKey, setHistoryKey] = useState(0)   // bump to refresh Recent / Saved after logging elsewhere
 
   async function load() {
     const { data } = await supabase.from('meal_logs').select('*')
@@ -43,6 +45,7 @@ export default function ClientNutrition() {
     setMeals(data || [])
     const { data: wk } = await supabase.from('meal_logs').select('*').eq('client_id', profile.id).gte('logged_on', week[0]).lte('logged_on', week[6])
     setWeekLogs(wk || [])
+    setHistoryKey(k => k + 1)
   }
   async function loadPlan() {
     const [{ data: me }, { data: pl }, { data: pm }, { data: pi }] = await Promise.all([
@@ -275,6 +278,8 @@ export default function ClientNutrition() {
         </select>
       </div>
 
+      <FoodHistoryCard profile={profile} today={today} slot={slot} onLogged={load} refreshKey={historyKey} />
+
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div className="eyebrow">Search foods</div>
         <div style={{ position: 'relative' }}>
@@ -382,6 +387,7 @@ export default function ClientNutrition() {
       <div>
         <div style={{ borderBottom: '3px solid var(--orange)', paddingBottom: 4, marginBottom: 8, color: 'var(--orange-hot)', fontWeight: 900, fontSize: 13, letterSpacing: '.08em' }}>TODAY'S FOOD LOG</div>
         <DayLog logs={meals} onRemove={removeMeal} />
+        <SaveTodayMeals profile={profile} meals={meals} onSaved={() => setHistoryKey(k => k + 1)} />
       </div>
 
       <div>
