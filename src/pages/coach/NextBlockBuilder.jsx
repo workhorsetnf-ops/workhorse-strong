@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase'
 import { buildLibraryIndex, findInLibrary, withLibrary } from '../../lib/parse'
 import { DEFAULT_STEP, METHODS, nextExercise, weeksPreview, nextBlockName, rolloverStart } from '../../lib/nextBlock'
 import { mondayOf, localDateStr } from '../../lib/weeks'
+import { blockSwapCarry } from '../../lib/swaps'
 
 export default function NextBlockBuilder({ program, block, blocks, assignments, library, onDone, onClose }) {
   const [days, setDays] = useState(null)
@@ -18,6 +19,7 @@ export default function NextBlockBuilder({ program, block, blocks, assignments, 
   const [roll, setRoll] = useState(true)
   const [busy, setBusy] = useState('')
   const [err, setErr] = useState('')
+  const [carried, setCarried] = useState({}) // exId -> { alt_name, reason } from clients' block-long swaps (Update 187)
 
   useEffect(() => {
     ;(async () => {
@@ -30,6 +32,19 @@ export default function NextBlockBuilder({ program, block, blocks, assignments, 
       const by = {}
       for (const x of e || []) (by[x.day_id] ||= []).push(x)
       setDays(d || []); setExs(by); setRots(r || [])
+      // clients who kept a swap all block (no equipment etc.): start the new block with it
+      const exIds = (e || []).map(x => x.id)
+      const clientIds = assignments.filter(a => a.program_id === program.id).map(a => a.client_id)
+      if (exIds.length && clientIds.length) {
+        const { data: bs, error: bse } = await supabase.from('exercise_block_swaps').select('*').in('exercise_id', exIds).in('client_id', clientIds)
+        const carry = bse ? {} : blockSwapCarry(bs, clientIds)
+        setCarried(carry)
+        setPlan(p => {
+          const n = { ...p }
+          for (const [id, c] of Object.entries(carry)) if (n[id]?.name === undefined) n[id] = { ...(n[id] || {}), name: c.alt_name }
+          return n
+        })
+      }
     })()
   }, [block.id])
 
@@ -147,6 +162,12 @@ export default function NextBlockBuilder({ program, block, blocks, assignments, 
                     {METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
                 </div>
+                {carried[ex.id] && (p.name ?? ex.name) === carried[ex.id].alt_name && (
+                  <div style={{ fontSize: 11.5, paddingLeft: 30, color: 'var(--orange-hot)' }}>
+                    ⇄ Swapped from {ex.name} all last block{carried[ex.id].reason === 'equipment' ? ' (no equipment)' : ''}.{' '}
+                    <button type="button" onClick={() => setP(ex.id, { name: ex.name })} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--muted)', textDecoration: 'underline', fontSize: 11.5, cursor: 'pointer' }}>Use {ex.name}</button>
+                  </div>
+                )}
                 {p.method === 'custom' && (
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 30 }}>
                     <input value={p.custom || ''} onChange={e => setP(ex.id, { custom: e.target.value })} placeholder="e.g. 4x6-8 @1  or  5@8, 8@7, 8@7"

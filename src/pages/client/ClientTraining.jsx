@@ -15,7 +15,7 @@ import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, programWeekDates, sche
 import { eventAdvice, eventIcons } from '../../lib/clientEvents'
 import { bestOf, prFor, nameKey } from '../../lib/prs'
 import SessionFeel from './SessionFeel'
-import { alternativesFor, applySwap, REASONS } from '../../lib/swaps'
+import { alternativesFor, applySwap, activeSwap, scopeForReason, SCOPES, REASONS } from '../../lib/swaps'
 import { addDays as addDaysStr } from '../../lib/dashboard'
 
 function roundTo5(n) { return Math.round(n / 5) * 5 }
@@ -177,8 +177,10 @@ export default function ClientTraining() {
   const [swaps, setSwaps] = useState({})          // program exercise id -> today's swap row
   const [swapFor, setSwapFor] = useState(null)    // exercise whose swap sheet is open
   const [swapReason, setSwapReason] = useState('taken')
+  const [blockSwaps, setBlockSwaps] = useState({}) // program exercise id -> swap kept for the whole block (Update 187)
+  const [swapScope, setSwapScope] = useState('day')
   const libById = useMemo(() => Object.fromEntries(swapLib.library.map(l => [l.id, l])), [swapLib])
-  const exercises = useMemo(() => baseExercises.map(ex => applySwap(ex, swaps[ex.id], libById)), [baseExercises, swaps, libById])
+  const exercises = useMemo(() => baseExercises.map(ex => applySwap(ex, activeSwap(swaps[ex.id], blockSwaps[ex.id]), libById)), [baseExercises, swaps, blockSwaps, libById])
   const [maxes, setMaxes] = useState({})
   const [log, setLog] = useState({})
   const [results, setResults] = useState({})
@@ -608,22 +610,48 @@ export default function ClientTraining() {
     supabase.from('exercise_swaps').select('*').eq('client_id', profile.id).eq('swap_date', todayStr())
       .then(({ data, error }) => { if (!error) setSwaps(Object.fromEntries((data || []).map(w => [w.exercise_id, w]))) })
   }, [profile?.id, activeDay?.id])
+  useEffect(() => {
+    if (!profile) return
+    supabase.from('exercise_block_swaps').select('*').eq('client_id', profile.id)
+      .then(({ data, error }) => { if (!error) setBlockSwaps(Object.fromEntries((data || []).map(w => [w.exercise_id, w]))) })
+  }, [profile?.id, activeDay?.id])
   async function doSwap(ex, alt) {
-    const row = { client_id: profile.id, exercise_id: ex.id, swap_date: todayStr(), from_name: ex.swappedFrom || ex.name, alt_library_id: alt.id, alt_name: alt.name, reason: swapReason }
-    setSwaps(m => ({ ...m, [ex.id]: row })); setSwapFor(null)
+    const from_name = ex.swappedFrom || ex.name
+    const base = { client_id: profile.id, exercise_id: ex.id, from_name, alt_library_id: alt.id, alt_name: alt.name, reason: swapReason }
+    setSwapFor(null)
+    if (swapScope === 'block') {
+      // kept for every session of this exercise until the block ends; replaces any one-day swap today
+      setBlockSwaps(m => ({ ...m, [ex.id]: base }))
+      setSwaps(m => { const n = { ...m }; delete n[ex.id]; return n })
+      const { error } = await supabase.from('exercise_block_swaps').upsert(base, { onConflict: 'client_id,exercise_id' })
+      await supabase.from('exercise_swaps').delete().eq('client_id', profile.id).eq('exercise_id', ex.id).eq('swap_date', todayStr())
+      if (error) alert('Swap shows for now but wasn’t saved: ' + error.message)
+      return
+    }
+    const row = { ...base, swap_date: todayStr() }
+    setSwaps(m => ({ ...m, [ex.id]: row }))
     const { error } = await supabase.from('exercise_swaps').upsert(row, { onConflict: 'client_id,exercise_id,swap_date' })
     if (error) alert('Swap shows for now but wasn’t saved: ' + error.message)
   }
+  // back to the programmed exercise: clears today's swap and any block-long one
   async function undoSwap(ex) {
-    setSwaps(m => { const n = { ...m }; delete n[ex.id]; return n }); setSwapFor(null)
-    await supabase.from('exercise_swaps').delete().eq('client_id', profile.id).eq('exercise_id', ex.id).eq('swap_date', todayStr())
+    const drop = m => { const n = { ...m }; delete n[ex.id]; return n }
+    setSwaps(drop); setBlockSwaps(drop); setSwapFor(null)
+    await Promise.all([
+      supabase.from('exercise_swaps').delete().eq('client_id', profile.id).eq('exercise_id', ex.id).eq('swap_date', todayStr()),
+      supabase.from('exercise_block_swaps').delete().eq('client_id', profile.id).eq('exercise_id', ex.id),
+    ])
+  }
+  function openSwap(ex) {
+    const reason = ex.swapReason || 'taken'
+    setSwapReason(reason); setSwapScope(ex.swapScope || scopeForReason(reason)); setSwapFor(ex)
   }
   function swapButton(ex) {
     if (ex.kind === 'conditioning') return null
-    return <button onClick={() => { setSwapReason('taken'); setSwapFor(ex) }} className="btn-ghost" style={{ padding: '3px 9px', fontSize: 11, borderColor: ex.swappedFrom ? 'var(--orange)' : undefined }} title="Swap this exercise">⇄ Swap</button>
+    return <button onClick={() => openSwap(ex)} className="btn-ghost" style={{ padding: '3px 9px', fontSize: 11, borderColor: ex.swappedFrom ? 'var(--orange)' : undefined }} title="Swap this exercise">⇄ Swap</button>
   }
   function swappedNote(ex) {
-    return ex.swappedFrom ? <div style={{ fontSize: 12, color: 'var(--orange-hot)', fontWeight: 700, width: '100%' }}>⇄ Swapped from {ex.swappedFrom} for today</div> : null
+    return ex.swappedFrom ? <div style={{ fontSize: 12, color: 'var(--orange-hot)', fontWeight: 700, width: '100%' }}>⇄ Swapped from {ex.swappedFrom} {ex.swapScope === 'block' ? 'for this block' : 'for today'}</div> : null
   }
 
   useEffect(() => {
@@ -1416,18 +1444,25 @@ export default function ClientTraining() {
         return (
           <div onClick={() => setSwapFor(null)} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
             <div onClick={e => e.stopPropagation()} className="card" style={{ width: '100%', maxWidth: 520, borderRadius: '18px 18px 0 0', padding: 16, paddingBottom: 28, maxHeight: '80dvh', overflowY: 'auto' }}>
-              <div className="eyebrow">Swap for today</div>
+              <div className="eyebrow">Swap</div>
               <h2 style={{ fontSize: 22, margin: '4px 0 10px' }}>{orig}</h2>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-                {REASONS.map(([k, label]) => <button key={k} className={swapReason === k ? 'btn' : 'btn-ghost'} style={{ padding: '6px 11px', fontSize: 12.5 }} onClick={() => setSwapReason(k)}>{label}</button>)}
+                {REASONS.map(([k, label]) => <button key={k} className={swapReason === k ? 'btn' : 'btn-ghost'} style={{ padding: '6px 11px', fontSize: 12.5 }} onClick={() => { setSwapReason(k); setSwapScope(scopeForReason(k)) }}>{label}</button>)}
               </div>
+              <div role="radiogroup" aria-label="How long" style={{ display: 'flex', gap: 6, marginBottom: 12, background: 'var(--coal)', padding: 4, borderRadius: 10 }}>
+                {SCOPES.map(([k, label]) => (
+                  <button key={k} role="radio" aria-checked={swapScope === k} onClick={() => setSwapScope(k)}
+                    style={{ flex: 1, padding: '8px 10px', fontSize: 13, fontWeight: 800, borderRadius: 8, border: 'none', background: swapScope === k ? 'var(--orange)' : 'transparent', color: swapScope === k ? '#000' : 'var(--muted)' }}>{label}</button>
+                ))}
+              </div>
+              {swapScope === 'block' && <p className="muted" style={{ fontSize: 12.5, margin: '-4px 0 10px' }}>Every session of this exercise uses the swap until this block ends.</p>}
               {swapReason === 'hurts' && <p style={{ fontSize: 13, color: 'var(--orange-hot)', margin: '0 0 10px' }}>Pick a swap below, then tap ⚠️ on the exercise to tell your coach what hurts.</p>}
               {options.length === 0 ? (
                 <div className="muted" style={{ fontSize: 14 }}>Your coach hasn’t set swaps for this one yet. <Link to="/app/messages" style={{ color: 'var(--orange)' }}>Message your coach</Link> and they’ll tell you what to do instead.</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {options.map(o => (
-                    <button key={o.id} onClick={() => doSwap(swapFor, o)} className="btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', fontSize: 15, fontWeight: 700, borderColor: swaps[swapFor.id]?.alt_library_id === o.id ? 'var(--orange)' : undefined }}>
+                    <button key={o.id} onClick={() => doSwap(swapFor, o)} className="btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', fontSize: 15, fontWeight: 700, borderColor: activeSwap(swaps[swapFor.id], blockSwaps[swapFor.id])?.alt_library_id === o.id ? 'var(--orange)' : undefined }}>
                       {o.icon_url ? <img src={o.icon_url} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'cover' }} /> : <span style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(255,85,0,.14)', display: 'grid', placeItems: 'center' }}>⇄</span>}
                       <span style={{ flex: 1 }}>{o.name}</span>{o.video_url && <span className="muted" style={{ fontSize: 11 }}>▶ demo</span>}
                     </button>
