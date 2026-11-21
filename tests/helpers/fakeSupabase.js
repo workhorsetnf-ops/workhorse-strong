@@ -10,11 +10,13 @@ export function makeSb(tables = {}) {
       if (mode === 'delete') { const keep = rows().filter(r => !match(r)); const n = rows().length - keep.length; db[table] = keep; return { data: n, error: null } }
       if (mode === 'upsert') {
         const keys = (opts.onConflict || 'id').split(',')
+        const written = []
         for (const p of [].concat(payload)) {
           const ex = rows().find(r => keys.every(k => r[k] === p[k]))
-          if (ex) { if (!opts.ignoreDuplicates) Object.assign(ex, p) } else rows().push({ id: p.id || `id${Math.random().toString(36).slice(2, 8)}`, ...p })
+          if (ex) { if (!opts.ignoreDuplicates) { Object.assign(ex, p); written.push(ex) } } else { const n = { id: p.id || `id${Math.random().toString(36).slice(2, 8)}`, ...p }; rows().push(n); written.push(n) }
         }
-        return { data: null, error: null }
+        // like supabase-js with .select(): the rows actually written (none for skipped duplicates)
+        return { data: written, error: null }
       }
       if (mode === 'insert') { for (const p of [].concat(payload)) rows().push({ id: p.id || `id${Math.random().toString(36).slice(2, 8)}`, ...p }); return { data: payload, error: null } }
       let out = rows().filter(match); if (limitN) out = out.slice(0, limitN)

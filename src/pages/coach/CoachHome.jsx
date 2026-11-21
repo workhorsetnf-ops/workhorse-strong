@@ -9,6 +9,7 @@ import Avatar from '../Avatar'
 import TodayAgenda from './TodayAgenda'
 import ClientEventsCard from './ClientEventsCard'
 import SetupStatusCard from './SetupStatusCard'
+import ProgramsEndingCard from './ProgramsEndingCard'
 import CheckinTexts from './CheckinTexts'
 
 function startOfWeek(d = new Date()) {
@@ -362,6 +363,7 @@ export default function CoachHome() {
     <div>
       <TodayAgenda />
       <CheckinTexts />
+      <ProgramsEndingCard />
       <ClientEventsCard />
       <SetupStatusCard />
 

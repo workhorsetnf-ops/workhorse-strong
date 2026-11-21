@@ -13,6 +13,7 @@ import { resolveAssignment, dayShowsInWeek } from '../src/lib/weeks.js'
 import { splitForWeek, addDays } from '../src/lib/dashboard.js'
 import { checkinState, morningFor, middayFor, eveningFor, coachDigest } from '../src/lib/reminders.js'
 import { quickDone, quickDue } from '../src/lib/adherence.js'
+import { loadEnding, programEndPush } from '../src/lib/programEnd.js'
 
 export default async function handler(req, res) {
   if (process.env.CRON_SECRET && (req.headers.authorization || '') !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -44,6 +45,12 @@ export async function runSlot(sb, slot, today, tz) {
     for (const f of facts) { const m = slot === 'morning' ? morningFor(f) : slot === 'midday' ? middayFor(f) : eveningFor(f); if (m) msgs.push(m) }
   }
 
+  // Update 186: programs running out -> the coach hears at 2 weeks, 1 week, and when it's over
+  if (slot === 'morning' && coaches.length) {
+    const wanted = coaches.filter(c => prefs[c.id]?.programs !== false)
+    if (wanted.length) msgs.push(...await programEndMessages(sb, wanted, today))
+  }
+
   if (slot === 'evening' && coaches.length) {
     const { data: all } = await sb.from('profiles').select('id, full_name, status, last_seen_at, created_at').eq('role', 'client').neq('plan', 'group')
     const { count } = await sb.from('checkins').select('id', { count: 'exact', head: true }).neq('status', 'done').gte('submitted_at', addDays(today, -14))
@@ -53,6 +60,27 @@ export async function runSlot(sb, slot, today, tz) {
   let sent = 0
   for (const m of msgs) sent += (await sendToUsers(sb, [m.user_id], m)).sent
   return { people: userIds.length, messages: msgs.length, sent }
+}
+
+// One push per coach listing every client who just crossed a reminder point.
+// Each client/end/point is claimed in program_end_alerts first, so it's
+// sent once even if the job runs twice; a missed morning still sends the next day.
+export async function programEndMessages(sb, coaches, today) {
+  const ending = await loadEnding(sb, today)
+  if (!ending.length) return []
+  const { data: sentRows, error } = await sb.from('program_end_alerts').select('assignment_id, end_key, bucket, coach_id')
+    .in('assignment_id', ending.map(r => r.assignment.id))
+  if (error) return [] // Update 186 SQL not run yet
+  const out = []
+  for (const c of coaches) {
+    const sent = new Set((sentRows || []).filter(r => r.coach_id === c.id).map(r => `${r.assignment_id}|${r.end_key}|${r.bucket}`))
+    const p = programEndPush(c.id, ending, sent)
+    if (!p) continue
+    const { data: got } = await sb.from('program_end_alerts')
+      .upsert(p.claims.map(k => ({ ...k, coach_id: c.id })), { onConflict: 'assignment_id,end_key,bucket,coach_id', ignoreDuplicates: true }).select()
+    if (got?.length) out.push(p.msg)
+  }
+  return out
 }
 
 async function gatherFacts(sb, clients, today, tz, prefs) {
