@@ -22,6 +22,7 @@ const COACH_ITEMS = [
   ['checkin', 'New check-ins', 'When a client submits a check-in, plus the count waiting each evening.'],
   ['slipping', 'Clients going quiet', 'Evening “Client radar”: anyone who hasn’t opened the app in 3+ days.'],
   ['calls', 'Calls & timed tasks', 'Before each booked call (tap to join) and timed task, plus a “Today” rundown at 7am.'],
+  ['programs', 'Programs ending', 'Morning heads-up when a client’s program has 2 weeks left, 1 week left, and when it runs out.'],
 ]
 
 export default function ReminderSettings() {
