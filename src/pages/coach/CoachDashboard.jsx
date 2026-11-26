@@ -8,7 +8,7 @@ import ReminderSettings from '../ReminderSettings'
 import {
   LayoutDashboard, Users, Bell, Video, Trophy, FileText, BookOpen, Map, Users2,
   ClipboardList, Library, ListChecks, CalendarCheck, MessageCircle, Quote, Target, Webcam,
-  FileCheck2, ClipboardSignature, Copy, BellRing, Gauge, UsersRound } from 'lucide-react'
+  FileCheck2, ClipboardSignature, Copy, BellRing, Gauge, UsersRound, MessageSquareText } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import CoachHome from './CoachHome'
 import CoachGroup from './CoachGroup'
@@ -39,6 +39,7 @@ import ContractPrint from '../ContractPrint'
 import CoachProblems from './CoachProblems'
 import { Bug, UserCog } from 'lucide-react'
 import CoachTeam from './CoachTeam'
+import TextBlast from './TextBlast'
 
 const ViewOnly = () => <span className="muted" style={{ marginLeft: 'auto', fontSize: 11, letterSpacing: '.04em' }}>view</span>
 
@@ -105,6 +106,7 @@ export default function CoachDashboard() {
         <NavLink to="/coach/scorecard"><Gauge size={17} strokeWidth={2} /><span>Scorecard</span></NavLink>
         <NavLink to="/coach/calls"><Webcam size={17} strokeWidth={2} /><span>Calls</span></NavLink>
         <Item to="/coach/messages" icon={MessageCircle} label="Messages" n={badges.messages} />
+        <NavLink to="/coach/texts"><MessageSquareText size={17} strokeWidth={2} /><span>Text Blast</span></NavLink>
         <NavLink to="/coach/testimonials"><Quote size={17} strokeWidth={2} /><span>Testimonials</span></NavLink>
         <NavLink to="/coach/notifications"><BellRing size={17} strokeWidth={2} /><span>Notifications</span></NavLink>
         <NavLink to="/coach/problems"><Bug size={17} strokeWidth={2} /><span>Problems</span></NavLink>
@@ -143,6 +145,7 @@ export default function CoachDashboard() {
           <Route path="scorecard" element={<CoachScorecard />} />
           <Route path="calls" element={<CoachCalls />} />
           <Route path="messages" element={<CoachMessages />} />
+          <Route path="texts" element={<TextBlast />} />
           {isHeadCoach && <Route path="team" element={<CoachTeam />} />}
           <Route path="notifications" element={<ReminderSettings />} />
           <Route path="problems" element={<CoachProblems />} />

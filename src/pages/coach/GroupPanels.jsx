@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { notifyEvent } from '../../lib/push'
 import RecipientPicker from './RecipientPicker'
@@ -132,6 +133,7 @@ export function Broadcast({ clients, coachId, onDone, onCancel }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <h2 style={{ fontSize: 18 }}>📣 Broadcast</h2>
       <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Sends the same message to each client's private thread. Replies come back to you one-on-one — clients don't see each other.</p>
+      <Link to="/coach/texts" style={{ fontSize: 12.5, color: 'var(--orange-hot)' }}>Send it as a text message to their phones instead →</Link>
       <textarea rows={4} placeholder="Message…" value={body} onChange={e => setBody(e.target.value)} />
       <RecipientPicker clients={clients} selected={to} onChange={setTo} />
       <div style={{ display: 'flex', gap: 8 }}>
