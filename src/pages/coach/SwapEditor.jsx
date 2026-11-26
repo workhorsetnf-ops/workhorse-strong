@@ -33,7 +33,7 @@ export default function SwapEditor({ item, library, alts, onChange, onClose }) {
           <div key={a.alt_id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
             <span className="muted" style={{ width: 18 }}>{i + 1}.</span>
             {byId[a.alt_id]?.icon_url && <img src={byId[a.alt_id].icon_url} alt="" style={{ width: 26, height: 26, borderRadius: 6, objectFit: 'cover' }} />}
-            <span style={{ flex: 1, fontWeight: 700 }}>{byId[a.alt_id]?.name || 'Deleted exercise'}</span>
+            <span style={{ flex: 1, fontWeight: 700 }}>{byId[a.alt_id]?.name || 'Deleted exercise'}{a.source === 'auto' && <span className="muted" style={{ fontWeight: 500, fontSize: 11.5 }}> · picked by Claude</span>}</span>
             <button onClick={() => remove(a.alt_id)} aria-label="Remove" style={{ background: 'none', color: 'var(--muted)' }}><X size={15} /></button>
           </div>
         ))}

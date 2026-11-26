@@ -5,6 +5,8 @@ import { supabase } from '../../lib/supabase'
 import FoodLibrary from './FoodLibrary'
 import RoutineLibrary from './RoutineLibrary'
 import SwapEditor from './SwapEditor'
+import AutoSwaps from './AutoSwaps'
+import { callApi } from '../../lib/push'
 import VideoFinder from './VideoFinder'
 import LibraryDuplicates from './LibraryDuplicates'
 import LibraryUnused from './LibraryUnused'
@@ -70,8 +72,15 @@ export default function CoachLibrary() {
     if (!form.name.trim()) return
     const row = { name: form.name.trim(), category: form.category.trim(), metric: form.metric, video_url: form.video_url.trim(), notes: form.notes.trim(), icon_url: form.icon_url || null }
     if (editingId) await supabase.from('exercise_library').update(row).eq('id', editingId)
-    else await supabase.from('exercise_library').insert(row)
+    else {
+      const { data: made } = await supabase.from('exercise_library').insert(row).select('id').maybeSingle()
+      if (made?.id) fillSwapsFor([made.id])
+    }
     setForm(EMPTY_EX); setEditingId(null); load()
+  }
+  // New exercise: Claude picks its swaps in the background (Update 187).
+  function fillSwapsFor(ids) {
+    callApi('/api/swaps-ai', { ids }).then(r => { if (r.added) load() }).catch(() => {})
   }
   async function removeEx(id) {
     if (!confirm('Remove from library? (Programs already using it are unaffected.)')) return
@@ -172,8 +181,9 @@ export default function CoachLibrary() {
 
   // No library match at all: add the program's spelling to the library as-is.
   async function addUnmatchedToLibrary(row) {
-    const { error } = await supabase.from('exercise_library').insert({ name: row.name.trim() })
+    const { data: made, error } = await supabase.from('exercise_library').insert({ name: row.name.trim() }).select('id').maybeSingle()
     if (error) { alert('Could not add: ' + error.message); return }
+    if (made?.id) fillSwapsFor([made.id])
     setMatchPanel(m => ({ ...m, rows: m.rows.filter(r => r.name !== row.name) }))
     load()
   }
@@ -265,6 +275,7 @@ export default function CoachLibrary() {
           onDone={n => { setDupesOpen(false); setFinderNote(n ? `Merged ${n} duplicate group${n === 1 ? '' : 's'}.` : ''); load() }} />
       )}
       {finderNote && tab === 'exercises' && !finder && <p style={{ fontSize: 13, color: 'var(--green)', margin: '0 0 12px' }}>{finderNote}</p>}
+      {tab === 'exercises' && !locked && <AutoSwaps library={items} alts={alts} onChange={load} />}
       {swapItem && tab === 'exercises' && <SwapEditor item={swapItem} library={items} alts={alts} onChange={load} onClose={() => setSwapItem(null)} />}
       {tab === 'foods' && <FoodLibrary />}
       {tab === 'routines' && <RoutineLibrary />}
