@@ -3243,3 +3243,30 @@ drop policy if exists "coach manages block swaps" on exercise_block_swaps;
 create policy "client manages own block swaps" on exercise_block_swaps for all using (client_id = auth.uid()) with check (client_id = auth.uid());
 create policy "coach manages block swaps" on exercise_block_swaps for all using (is_coach()) with check (is_coach());
 grant select, insert, update, delete on exercise_block_swaps to authenticated;
+
+-- ============ Update 188: text blasts (see migration_update188_text_blasts.sql) ============
+create table if not exists text_blasts (
+  id uuid primary key default gen_random_uuid(),
+  body text not null check (length(trim(body)) > 0),
+  created_by uuid references profiles(id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  finished_at timestamptz
+);
+alter table text_blasts enable row level security;
+drop policy if exists "coach manages text blasts" on text_blasts;
+create policy "coach manages text blasts" on text_blasts for all using (is_coach()) with check (is_coach());
+grant select, insert, update, delete on text_blasts to authenticated;
+create index if not exists text_blasts_open_idx on text_blasts (created_at desc) where finished_at is null;
+
+create table if not exists text_blast_recipients (
+  blast_id uuid not null references text_blasts(id) on delete cascade,
+  client_id uuid not null references profiles(id) on delete cascade,
+  position int not null default 0,
+  sent_at timestamptz,
+  skipped_at timestamptz,
+  primary key (blast_id, client_id)
+);
+alter table text_blast_recipients enable row level security;
+drop policy if exists "coach manages text blast recipients" on text_blast_recipients;
+create policy "coach manages text blast recipients" on text_blast_recipients for all using (is_coach()) with check (is_coach());
+grant select, insert, update, delete on text_blast_recipients to authenticated;
