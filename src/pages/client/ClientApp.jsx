@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import ClientMeasurements from './ClientMeasurements'
 import ClientPhotos from './ClientPhotos'
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
-import { Home, Dumbbell, Utensils, ClipboardCheck, LineChart, Video, Trophy, MessageCircle, Users } from 'lucide-react'
+import { Home, Utensils, LineChart, MessageCircle, Users, UserCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { localDateStr } from '../../lib/weeks'
@@ -37,6 +37,9 @@ import ClientNutritionGuide from './ClientNutritionGuide'
 import ContractPrint from '../ContractPrint'
 import ReminderSettings from '../ReminderSettings'
 import ClientProfile from './ClientProfile'
+import ProfileHub from './ProfileHub'
+import ClientTrends from './ClientTrends'
+import { tabFor } from '../../lib/clientRx'
 import StepsSync from './StepsSync'
 import ClientRecords from './ClientRecords'
 import { useOnboardingContracts, ContractGate } from './Onboarding'
@@ -164,7 +167,9 @@ export default function ClientApp() {
           <Route path="cardio" element={<ClientCardio />} />
           <Route path="habits" element={<ClientHabits />} />
           <Route path="reminders" element={<ReminderSettings />} />
-          <Route path="profile" element={<ClientProfile />} />
+          <Route path="profile" element={<ProfileHub badges={badges} />} />
+          <Route path="profile/edit" element={<ClientProfile />} />
+          <Route path="trends" element={<ClientTrends />} />
           <Route path="steps-sync" element={<StepsSync />} />
           <Route path="records" element={<ClientRecords />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
@@ -172,16 +177,13 @@ export default function ClientApp() {
         )}
       </main>
       <nav className="bottom-nav">
-        <NavLink to="/app" end style={{ position: 'relative' }}><span className="ico"><Home size={19} strokeWidth={2} /></span>Home{group && badges.checkin && <Dot />}</NavLink>
-        <NavLink to="/app/training"><span className="ico"><Dumbbell size={19} strokeWidth={2} /></span>Train</NavLink>
-        <NavLink to="/app/nutrition"><span className="ico"><Utensils size={19} strokeWidth={2} /></span>Eat</NavLink>
-        {!group && <NavLink to="/app/checkin" style={{ position: 'relative' }}><span className="ico"><ClipboardCheck size={19} strokeWidth={2} /></span>Check-in{badges.checkin && <Dot />}</NavLink>}
-        <NavLink to="/app/progress"><span className="ico"><LineChart size={19} strokeWidth={2} /></span>Log</NavLink>
-        {!group && <NavLink to="/app/form-checks" style={{ position: 'relative' }}><span className="ico"><Video size={19} strokeWidth={2} /></span>Film{badges.filmChecks && <Dot />}</NavLink>}
-        <NavLink to="/app/challenges"><span className="ico"><Trophy size={19} strokeWidth={2} /></span>Rank</NavLink>
+        <NavLink to="/app" end className={() => (tabFor(location.pathname) === 'home' ? 'active' : '')} style={{ position: 'relative' }}><span className="ico"><Home size={19} strokeWidth={2} /></span>Home{group && badges.checkin && <Dot />}</NavLink>
+        <NavLink to="/app/nutrition" className={() => (tabFor(location.pathname) === 'eat' ? 'active' : '')}><span className="ico"><Utensils size={19} strokeWidth={2} /></span>Eat</NavLink>
+        <NavLink to="/app/trends" className={() => (tabFor(location.pathname) === 'progress' ? 'active' : '')}><span className="ico"><LineChart size={19} strokeWidth={2} /></span>Progress</NavLink>
         {group
-          ? <NavLink to="/app/community" style={{ position: 'relative' }}><span className="ico"><Users size={19} strokeWidth={2} /></span>Team{badges.messages && <Dot />}</NavLink>
-          : <NavLink to="/app/messages" style={{ position: 'relative' }}><span className="ico"><MessageCircle size={19} strokeWidth={2} /></span>Coach{badges.messages && <Dot />}</NavLink>}
+          ? <NavLink to="/app/community" className={() => (tabFor(location.pathname) === 'chat' ? 'active' : '')} style={{ position: 'relative' }}><span className="ico"><Users size={19} strokeWidth={2} /></span>Team{badges.messages && <Dot />}</NavLink>
+          : <NavLink to="/app/messages" className={() => (tabFor(location.pathname) === 'chat' ? 'active' : '')} style={{ position: 'relative' }}><span className="ico"><MessageCircle size={19} strokeWidth={2} /></span>Chat{badges.messages && <Dot />}</NavLink>}
+        <NavLink to="/app/profile" className={() => (tabFor(location.pathname) === 'profile' ? 'active' : '')} style={{ position: 'relative' }}><span className="ico"><UserCircle size={19} strokeWidth={2} /></span>Profile{((!group && badges.checkin) || badges.filmChecks) && <Dot />}</NavLink>
       </nav>
     </div>
   )

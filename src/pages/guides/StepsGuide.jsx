@@ -40,7 +40,7 @@ function CopyLink() {
       <Hl x={38} y={172} w={80} h={26} r={8} color="#FFFFFF" />
       <Box x={124} y={172} w={78} h={26} r={8} fill="#2a2a2a" />
       <T x={163} y={189} s={9} w={700} c={C.white} a="middle">New link</T>
-      <T x={38} y={240} s={8.5} c={C.muted}>Log tab → “Sync steps from your</T>
+      <T x={38} y={240} s={8.5} c={C.muted}>Log page → “Sync steps from your</T>
       <T x={38} y={252} s={8.5} c={C.muted}>iPhone automatically →”</T>
     </Phone>
   )
@@ -333,7 +333,7 @@ export default function StepsGuide() {
       </Step>
       <Step n={11} title="Pick Sync Steps" art={<AutoPick />}>
         Tap <b>Sync Steps</b> in the list. If there’s no list, tap <b>New Blank Automation</b> → <b>Add Action</b> → search <b>Run Shortcut</b> → tap the blue word <b>Shortcut</b> → pick <b>Sync Steps</b>. Tap <b>Done</b>.
-        <Tip>That’s it. Every night at 11:30 your steps land in the app. You’ll see <b>✓ Steps synced from Apple Health</b> on the Log tab.</Tip>
+        <Tip>That’s it. Every night at 11:30 your steps land in the app. You’ll see <b>✓ Steps synced from Apple Health</b> on the Log page (Progress → Log today).</Tip>
       </Step>
 
       <div id="food" style={{ scrollMarginTop: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
