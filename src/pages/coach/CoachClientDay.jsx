@@ -40,7 +40,7 @@ export default function CoachClientDay() {
 
   useEffect(() => {
     let gone = false
-    supabase.from('profiles').select('id, full_name, avatar_url, email').eq('id', clientId).maybeSingle().then(({ data: p }) => { if (!gone) setClient(p) })
+    supabase.from('profiles').select('*').eq('id', clientId).maybeSingle().then(({ data: p }) => { if (!gone) setClient(p) })
     const since = addDays(today, -120)
     Promise.all([
       loadProgramSchedule(supabase, clientId).catch(() => null),
@@ -106,6 +106,13 @@ export default function CoachClientDay() {
         <Link to={`/coach/logs/${clientId}`} className="btn-ghost" title="All logs" style={{ padding: 10, display: 'flex' }}><ClipboardList size={20} /></Link>
         <Link to="/coach/messages" className="btn" title="Message" style={{ padding: 10, display: 'flex' }}><MessageSquare size={20} /></Link>
       </header>
+
+      {(client?.goal || client?.equipment?.length > 0) && (
+        <div data-client-facts style={{ fontSize: 13.5, display: 'flex', flexDirection: 'column', gap: 3, marginTop: -6 }}>
+          {client.goal && <span><span className="muted">Goal: </span>{client.goal}</span>}
+          {client.equipment?.length > 0 && <span><span className="muted">Equipment: </span>{client.equipment.join(', ')}</span>}
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <strong style={{ fontSize: 24 }}>{fmtDate(selected, { month: 'short', day: 'numeric', year: 'numeric' })}</strong>

@@ -220,3 +220,19 @@ export function loadByDate(logs, dates) {
   }
   return dates.map(d => ({ date: d, value: by[d] }))
 }
+
+// ---- Update 192: Profile, CoachRx-style ----
+export const EQUIPMENT = [
+  ['Where you train', ['Commercial gym', 'Home gym', 'Wrestling school / ring', 'Hotel gyms on the road']],
+  ['Free weights', ['Barbell + plates', 'Squat rack', 'Flat bench', 'Adjustable bench', 'Dumbbells', 'Kettlebells', 'Trap bar']],
+  ['Machines', ['Cable machine', 'Lat pulldown', 'Leg press', 'Smith machine', 'Selectorized machines']],
+  ['Bodyweight & extras', ['Pull-up bar', 'Dip station', 'Rings / TRX', 'Resistance bands', 'Medicine ball', 'Sled', 'Plyo box']],
+  ['Cardio', ['Air bike', 'Rower', 'Treadmill', 'Stationary bike', 'Stair climber', 'Jump rope']],
+]
+export function toggleEquipment(list, item) {
+  const s = new Set(list || [])
+  if (s.has(item)) s.delete(item); else s.add(item)
+  // keep the menu's order so it reads the same everywhere
+  const order = EQUIPMENT.flatMap(([, items]) => items)
+  return [...s].sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999))
+}
