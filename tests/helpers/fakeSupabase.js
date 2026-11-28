@@ -18,7 +18,7 @@ export function makeSb(tables = {}) {
         // like supabase-js with .select(): the rows actually written (none for skipped duplicates)
         return { data: written, error: null }
       }
-      if (mode === 'insert') { for (const p of [].concat(payload)) rows().push({ id: p.id || `id${Math.random().toString(36).slice(2, 8)}`, ...p }); return { data: payload, error: null } }
+      if (mode === 'insert') { const w = []; for (const p of [].concat(payload)) { const n = { id: p.id || `id${Math.random().toString(36).slice(2, 8)}`, ...p }; rows().push(n); w.push(n) } return { data: single ? w[0] : Array.isArray(payload) ? w : w[0], error: null } }
       let out = rows().filter(match); if (limitN) out = out.slice(0, limitN)
       return { data: single ? (out[0] || null) : out, error: null }
     }

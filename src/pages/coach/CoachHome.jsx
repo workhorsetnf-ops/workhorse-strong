@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Square, MessageCircle, ClipboardList, MoreVertical, Target } from 'lucide-react'
+import { Square, MessageCircle, ClipboardList, MoreVertical, Target, CalendarDays } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { localDateStr, logDate } from '../../lib/weeks'
-import { checkinDueDate, daysBetween } from '../../lib/dashboard'
+import { checkinDueDate, daysBetween, addDays } from '../../lib/dashboard'
+import { EFFORT, effortOf, loadByDate, dateRange } from '../../lib/clientRx'
 import { countedLogs } from '../../lib/foodlog'
 import Avatar from '../Avatar'
 import TodayAgenda from './TodayAgenda'
@@ -297,11 +298,13 @@ export default function CoachHome() {
     }
     setInsights(ins)
 
-    buildFeed(feedTab, cl || [], workoutLogs || [], dailyLogs || [], checkins || [])
+    // effort + minutes for the feed cards (Update 190); empty before its migration
+    const { data: fbRows, error: fbErr } = await supabase.from('session_feedback').select('*').gte('session_date', addDays(localDateStr(), -21)).limit(500)
+    buildFeed(feedTab, cl || [], workoutLogs || [], dailyLogs || [], checkins || [], fbErr ? [] : fbRows || [])
     setLoading(false)
   }
 
-  function buildFeed(tab, cl, workoutLogs, dailyLogs, checkins) {
+  function buildFeed(tab, cl, workoutLogs, dailyLogs, checkins, feedback = []) {
     const nameOf = id => cl.find(c => c.id === id)?.full_name || 'Client'
     // archived clients aren't in cl; keep their old activity out of the feed
     const ids = new Set(cl.map(c => c.id))
@@ -310,13 +313,21 @@ export default function CoachHome() {
       const byDay = {}
       for (const w of workoutLogs) {
         const key = w.client_id + logDate(w)
-        if (!byDay[key]) byDay[key] = { client_id: w.client_id, date: w.logged_at, items: [] }
+        if (!byDay[key]) byDay[key] = { client_id: w.client_id, date: w.logged_at, day: logDate(w), items: [] }
         byDay[key].items.push(w.exercise_name)
       }
-      setFeed(Object.values(byDay).slice(0, 15).map(d => ({
-        id: d.client_id + d.date, client_id: d.client_id, name: nameOf(d.client_id), date: d.date,
-        title: 'Workout logged', body: [...new Set(d.items)].slice(0,5).join(', '),
-      })))
+      setFeed(Object.values(byDay).slice(0, 15).map(d => {
+        const fb = feedback.filter(f => f.client_id === d.client_id && f.session_date === d.day)
+        return {
+          id: d.client_id + d.date, client_id: d.client_id, name: nameOf(d.client_id), date: d.date,
+          title: fb.map(f => f.day_label).filter(Boolean).join(' + ') || 'Workout logged', body: [...new Set(d.items)].slice(0,5).join(', '),
+          workout: {
+            effort: fb.map(effortOf).filter(Boolean).pop() || null,
+            minutes: fb.reduce((n, f) => n + (Number(f.minutes) || 0), 0) || null,
+            trend: loadByDate(workoutLogs.filter(x => x.client_id === d.client_id), dateRange(d.day, 7)),
+          },
+        }
+      }))
     } else if (tab === 'lifestyle') {
       setFeed(dailyLogs.slice(0, 15).map(d => ({
         id: d.client_id + d.log_date, client_id: d.client_id, name: nameOf(d.client_id), date: d.log_date,
@@ -507,6 +518,7 @@ export default function CoachHome() {
                 </div>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>
                   <Link to="/coach/messages" className="btn-ghost" style={{ padding: '6px 8px', display: 'flex' }} title="Message"><MessageCircle size={16} /></Link>
+                  <Link to={`/coach/day/${c.id}`} className="btn-ghost" style={{ padding: '6px 8px', display: 'flex' }} title="Day view"><CalendarDays size={16} /></Link>
                   <Link to={`/coach/logs/${c.id}`} className="btn-ghost" style={{ padding: '6px 8px', display: 'flex' }} title="View logs"><ClipboardList size={16} /></Link>
                   <button className="btn-ghost" style={{ padding: '6px 8px', display: 'flex' }} title="More" onClick={() => setMoreMenu(m => m === c.id ? null : c.id)}><MoreVertical size={16} /></button>
                 </div>
@@ -680,6 +692,7 @@ export default function CoachHome() {
                 <span className="muted" style={{ fontSize: 12 }}>{new Date(item.date).toLocaleDateString()}</span>
               </div>
               <p style={{ fontSize: 13, marginTop: 4, color: 'var(--muted)' }}>{item.body}</p>
+              {item.workout && <WorkoutStats w={item.workout} clientId={item.client_id} />}
               {openItem === item.id && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   <input placeholder="Write a comment…" value={comment} onChange={e => setComment(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendComment(item)} />
@@ -689,6 +702,41 @@ export default function CoachHome() {
             </div>
           ))}
           {feed.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Nothing logged yet.</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Activity feed card body, CoachRx-style (Update 190): client effort, duration,
+// and a 7-day load trend (weight × reps per day) ending on the session's day.
+export function WorkoutStats({ w, clientId }) {
+  const e = w.effort ? EFFORT[w.effort] : null
+  const top = Math.max(1, ...w.trend.map(p => p.value))
+  return (
+    <div data-workout-stats style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div style={{ background: 'var(--steel)', borderRadius: 10, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {e ? <>
+            <span style={{ width: 32, height: 32, borderRadius: 16, border: `2px solid ${e.color}`, color: e.color, display: 'grid', placeItems: 'center', fontWeight: 900 }}>{w.effort}</span>
+            <span style={{ lineHeight: 1.15 }}><strong style={{ fontSize: 12.5, display: 'block' }}>{e.label}</strong><span className="muted" style={{ fontSize: 11.5 }}>{e.sub}</span></span>
+          </> : <span className="muted" style={{ fontSize: 12 }}>No effort rating</span>}
+        </div>
+        <div style={{ background: 'var(--steel)', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
+          <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1 }}>{w.minutes || '–'}</div>
+          <div className="muted" style={{ fontSize: 11.5 }}>Minutes</div>
+        </div>
+      </div>
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 4 }}>
+          <span>LOAD TREND · 7 DAY</span>
+          <Link to={`/coach/day/${clientId}`} style={{ color: 'var(--orange-hot)', textDecoration: 'none' }}>DAY VIEW →</Link>
+        </div>
+        <div aria-label="Load trend" style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 40, background: 'var(--steel)', borderRadius: 8, padding: '6px 8px' }}>
+          {w.trend.map(p => (
+            <span key={p.date} title={`${p.date}: ${Math.round(p.value).toLocaleString()} lb moved`}
+              style={{ flex: 1, height: p.value ? `${Math.max(12, (p.value / top) * 100)}%` : 2, background: p.value ? '#C5F00F' : 'var(--line)', borderRadius: 2 }} />
+          ))}
         </div>
       </div>
     </div>

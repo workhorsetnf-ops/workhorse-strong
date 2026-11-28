@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { dash, effortText, effortMeaning } from '../../lib/targets'
 import { CALL_STYLE } from '../../lib/progression'
 import { supabase } from '../../lib/supabase'
@@ -14,7 +14,8 @@ import { saveSet, flushPending, readPending, withPending } from '../../lib/saveQ
 import { CONDITIONING_COLOR, LIFESTYLE_COLOR, trackColor, programWeekDates, scheduledDate, effectiveDate, loadProgramSchedule, sessionsOnDate, workUnit, UNIT_LABEL, secondsToUnit } from '../../lib/conditioning'
 import { eventAdvice, eventIcons } from '../../lib/clientEvents'
 import { bestOf, prFor, nameKey } from '../../lib/prs'
-import SessionFeel from './SessionFeel'
+import SessionFeel, { EffortOptions, saveFeedback } from './SessionFeel'
+import { videoLinks, sessionStreak, dateRange } from '../../lib/clientRx'
 import { alternativesFor, applySwap, activeSwap, scopeForReason, SCOPES, REASONS } from '../../lib/swaps'
 import { addDays as addDaysStr } from '../../lib/dashboard'
 import { Thermometer, Snowflake, X as XIcon, Check as CheckIcon, History as HistoryIcon, Play, MessageSquare } from 'lucide-react'
@@ -179,6 +180,7 @@ export default function ClientTraining() {
   const [days, setDays] = useState([])
   const [activeDay, setActiveDay] = useState(null)
   const location = useLocation()
+  const navigate = useNavigate()
   const autoOpened = useRef(false) // open today's (or the tapped) session once, on arrival
   const [movesReady, setMovesReady] = useState(false)
   const [baseExercises, setExercises] = useState([])
@@ -247,13 +249,52 @@ export default function ClientTraining() {
   const [history, setHistory] = useState({})
   const [histOpen, setHistOpen] = useState({})
   const touchStart = useRef(null)
-  const steps = chunkGroups(exercises)
+  // Warmup and cooldown are steps of their own in the step-through (Update 190)
+  const steps = !exercises.length ? [] : [
+    ...(activeDay?.warmup ? [{ kind: 'warmup', items: [] }] : []),
+    ...chunkGroups(exercises),
+    ...(activeDay?.cooldown ? [{ kind: 'cooldown', items: [] }] : []),
+  ]
 
   // exercises the client marked Missed this session (Update 189) — on screen only, not saved
   const [missed, setMissed] = useState(new Set())
   const [needNumbers, setNeedNumbers] = useState(new Set()) // tapped Completed with nothing to fill in
+  const [effortPick, setEffortPick] = useState(null)   // Rate Your Effort (Update 190)
+  const [effortMins, setEffortMins] = useState('')
+  const [effortErr, setEffortErr] = useState('')
+  const [recap, setRecap] = useState(null)              // { total, streak } for "Great session!"
+  const [demosOpen, setDemosOpen] = useState(false)
   // a new workout always opens on its overview
   useEffect(() => { setScreen('overview'); setStep(0); setRest(null); setMissed(new Set()) }, [activeDay?.id])
+  // what was marked Missed today comes back when the session is reopened (Update 190)
+  useEffect(() => {
+    if (!profile || !activeDay || !baseExercises.length) return
+    supabase.from('exercise_missed').select('exercise_id').eq('client_id', profile.id).eq('missed_date', todayStr())
+      .in('exercise_id', baseExercises.map(e => e.id))
+      .then(({ data, error }) => { if (!error && data?.length) setMissed(new Set(data.map(r => r.exercise_id))) })
+  }, [activeDay?.id, baseExercises.length])
+  // a one-off workout the coach added (Update 190) isn't in any program block: open it by id
+  useEffect(() => {
+    const t = location.state || {}
+    if (!profile || !t.oneOff || !t.targetDayId || activeDay?.id === t.targetDayId) return
+    autoOpened.current = true
+    supabase.from('program_days').select('*').eq('id', t.targetDayId).maybeSingle()
+      .then(({ data }) => { if (data) setActiveDay(data) })
+  }, [profile?.id])
+  // "Great session!" numbers: every day trained, and the streak of scheduled sessions hit
+  useEffect(() => {
+    if (screen !== 'done' || !profile) return
+    supabase.from('workout_logs').select('logged_date, logged_at, session_track').eq('client_id', profile.id).limit(20000)
+      .then(({ data }) => {
+        const logged = new Set((data || []).filter(l => l.session_track !== 'lifestyle').map(l => l.logged_date || (l.logged_at ? localDateStr(new Date(l.logged_at)) : null)).filter(Boolean))
+        logged.add(todayStr())
+        const today = todayStr()
+        const dates = dateRange(today, 60)
+        const counts = {}
+        if (schedule) for (const d of dates) counts[d] = sessionsOnDate(d, schedule, moves).filter(x => (x.track || 'exercise') !== 'lifestyle').length
+        setRecap({ total: logged.size, streak: sessionStreak(dates, today, counts, logged) })
+      })
+  }, [screen])
   // ...unless it was opened with START WORKOUT on Home (Update 189): straight to step 1, once
   const startedFromHome = useRef(false)
   useEffect(() => {
@@ -459,14 +500,25 @@ export default function ClientTraining() {
     })
     setLog(l => ({ ...l, [ex.id]: next }))
     if (keys.length) setDoneSets(d => { const n = new Set(d); keys.forEach(k => n.add(k)); return n })
+    clearMissed(ex)
     setMissed(m => { const n = new Set(m); n.delete(ex.id); return n })
     // a set with no numbers and no history can't be ticked — say so instead of doing nothing
     const left = rows.length - keys.length - rows.filter((_, i) => doneSets.has(`${ex.id}-${i + 1}`)).length
     setNeedNumbers(m => { const n = new Set(m); if (left > 0) n.add(ex.id); else n.delete(ex.id); return n })
   }
-  // MISSED: flags it on screen for this session and leaves its sets unlogged
-  function toggleMissed(ex) {
-    setMissed(m => { const n = new Set(m); if (n.has(ex.id)) n.delete(ex.id); else n.add(ex.id); return n })
+  // MISSED: leaves its sets unlogged and records it so the coach sees ✕ (Update 190)
+  async function toggleMissed(ex) {
+    const on = !missed.has(ex.id)
+    setMissed(m => { const n = new Set(m); if (on) n.add(ex.id); else n.delete(ex.id); return n })
+    if (!profile) return
+    const key = { client_id: profile.id, exercise_id: ex.id, missed_date: todayStr() }
+    if (on) await supabase.from('exercise_missed').upsert(key, { onConflict: 'client_id,exercise_id,missed_date' })
+    else await supabase.from('exercise_missed').delete().eq('client_id', profile.id).eq('exercise_id', ex.id).eq('missed_date', key.missed_date)
+  }
+  // ticking it Completed un-misses it
+  function clearMissed(ex) {
+    if (!missed.has(ex.id) || !profile) return
+    supabase.from('exercise_missed').delete().eq('client_id', profile.id).eq('exercise_id', ex.id).eq('missed_date', todayStr()).then(() => {})
   }
 
   // In focus mode, ticking a set starts the rest timer — but in a superset only
@@ -484,7 +536,8 @@ export default function ClientTraining() {
     if (n >= steps.length) {
       saveWorkout()
       setRest(null)
-      setScreen('done')
+      setEffortPick(null); setEffortMins(''); setEffortErr('')
+      setScreen('effort')
     } else {
       setStep(Math.max(0, n))
       setScreen('focus')
@@ -527,6 +580,7 @@ export default function ClientTraining() {
   }
 
   function progressNote(ex) {
+    if (activeDay?.client_id) return null   // a one-off workout has no weeks to progress through
     const g = guideFor(ex)
     if (!g) return null
     const pc = g.call
@@ -1273,15 +1327,15 @@ export default function ClientTraining() {
           </div>
           {renderMovePanel()}
           {activeDay.warmup && (
-            <div style={RX_BLOCK}>
+            <div style={{ ...RX_BLOCK, cursor: 'pointer' }} role="button" tabIndex={0} onClick={e => { if (e.target.tagName !== 'A') goStep(0) }}>
               <div style={RX_HEAD}><Thermometer size={16} /> WARMUP</div>
               <p style={{ fontSize: 15, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
                 {activeDay.warmup}
-                {activeDay.warmup_video && <a href={activeDay.warmup_video} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ demo</a>}
+                {videoLinks(activeDay.warmup_video).length > 0 && <span style={{ marginLeft: 6, color: 'var(--orange-hot)' }}>▶ {videoLinks(activeDay.warmup_video).length} demo{videoLinks(activeDay.warmup_video).length === 1 ? '' : 's'}</span>}
               </p>
             </div>
           )}
-          {steps.map((st, si) => (
+          {steps.map((st, si) => st.kind ? null : (
             <button key={si} type="button" onClick={() => goStep(si)}
               style={{ ...RX_BLOCK, textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 0, width: '100%', color: 'inherit', font: 'inherit' }}>
               {st.grouped && (
@@ -1313,11 +1367,11 @@ export default function ClientTraining() {
             </button>
           ))}
           {activeDay.cooldown && (
-            <div style={RX_BLOCK}>
+            <div style={{ ...RX_BLOCK, cursor: 'pointer' }} role="button" tabIndex={0} onClick={() => goStep(steps.length - 1)}>
               <div style={RX_HEAD}><Snowflake size={16} /> COOLDOWN</div>
               <p style={{ fontSize: 15, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
                 {activeDay.cooldown}
-                {activeDay.cooldown_video && <a href={activeDay.cooldown_video} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ demo</a>}
+                {videoLinks(activeDay.cooldown_video).length > 0 && <span style={{ marginLeft: 6, color: 'var(--orange-hot)' }}>▶ {videoLinks(activeDay.cooldown_video).length} demo{videoLinks(activeDay.cooldown_video).length === 1 ? '' : 's'}</span>}
               </p>
             </div>
           )}
@@ -1328,6 +1382,29 @@ export default function ClientTraining() {
           <button type="button" className="btn-ghost" style={{ padding: '8px 12px', fontSize: 12.5, alignSelf: 'center' }} onClick={() => setViewMode('list')}>
             Show everything on one page instead
           </button>
+        </div>
+      )
+    }
+
+    if (screen === 'effort') {
+      async function submit() {
+        if (!effortPick) return
+        setEffortErr('saving')
+        const { error } = await saveFeedback(profile, activeDay, { effort: effortPick, minutes: effortMins })
+        if (error) return setEffortErr('Could not save: ' + error.message)
+        setEffortErr(''); setScreen('done')
+      }
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18, paddingTop: 8 }}>
+          <button type="button" onClick={() => setScreen('focus')} style={{ ...RX_LINK, color: 'var(--white)', fontWeight: 800, letterSpacing: '.04em', alignSelf: 'flex-start' }}>‹ BACK</button>
+          <h2 style={{ fontSize: 36, lineHeight: 1 }}>Rate your effort</h2>
+          <EffortOptions value={effortPick} onChange={setEffortPick} />
+          <label style={{ fontSize: 16 }}>How many minutes was your workout?
+            <input inputMode="numeric" placeholder='e.g. "30"' value={effortMins} onChange={e => setEffortMins(e.target.value)} style={{ marginTop: 8, height: 52, fontSize: 18 }} />
+          </label>
+          <button className="btn" disabled={!effortPick || effortErr === 'saving'} onClick={submit} style={{ height: 56, fontSize: 17 }}>{effortErr === 'saving' ? 'Saving…' : 'Done'}</button>
+          {effortErr && effortErr !== 'saving' && <p style={{ color: 'var(--red)', fontSize: 13 }}>{effortErr}</p>}
+          <button type="button" className="btn-ghost" onClick={() => setScreen('done')} style={{ padding: '10px 0', fontSize: 14 }}>Skip</button>
         </div>
       )
     }
@@ -1348,8 +1425,24 @@ export default function ClientTraining() {
       }
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', textAlign: 'center', paddingTop: 24 }}>
-          <div style={{ width: 84, height: 84, borderRadius: 42, background: 'var(--orange)', color: '#140A02', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 42, fontWeight: 900 }}>✓</div>
-          <h2 style={{ fontSize: 38, lineHeight: 1, textTransform: 'uppercase' }}>{cardioDay ? 'Session done' : 'Workout done'}</h2>
+          <div aria-hidden="true" style={{ fontSize: 64, lineHeight: 1 }}>🔥</div>
+          <h2 style={{ fontSize: 40, lineHeight: 1 }}>Great session!</h2>
+          <p className="muted" style={{ fontSize: 15 }}>You made it through today’s workout. Here’s your recap.</p>
+          <div className="card" style={{ width: '100%', boxSizing: 'border-box', padding: '22px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            <CheckIcon size={34} color="var(--green)" />
+            <strong style={{ fontSize: 22 }}>{cardioDay ? 'Session Complete' : 'Workout Complete'}</strong>
+            <span className="muted" style={{ fontSize: 14 }}>{exercises.length} exercise{exercises.length === 1 ? '' : 's'}</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, width: '100%' }}>
+            <div className="card" style={{ padding: '18px 10px' }}>
+              <div style={{ fontSize: 42, fontWeight: 900, lineHeight: 1 }} data-recap="sessions">{recap ? recap.total : '–'}</div>
+              <div style={{ fontSize: 14, marginTop: 6 }}>Completed sessions</div>
+            </div>
+            <div className="card" style={{ padding: '18px 10px' }}>
+              <div style={{ fontSize: 42, fontWeight: 900, lineHeight: 1 }} data-recap="streak">{recap ? recap.streak : '–'}</div>
+              <div style={{ fontSize: 14, marginTop: 6 }}>Current streak</div>
+            </div>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, width: '100%' }}>
             <div className="card" style={{ padding: '16px 10px' }}>
               <div style={{ fontSize: 34, fontWeight: 800, color: 'var(--orange-hot)', lineHeight: 1 }}>{doneCount}/{totalSets}</div>
@@ -1360,18 +1453,9 @@ export default function ClientTraining() {
               <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{cardioDay ? 'Time worked' : 'Sets beat last time'}</div>
             </div>
           </div>
-          {activeDay.cooldown && (
-            <div className="card" style={{ borderLeft: '3px solid var(--orange)', textAlign: 'left', width: '100%', boxSizing: 'border-box' }}>
-              <span className="eyebrow" style={{ fontSize: 10 }}>Cooldown</span>
-              <p style={{ fontSize: 13.5, marginTop: 3, lineHeight: 1.5 }}>
-                {activeDay.cooldown}
-                {activeDay.cooldown_video && <a href={activeDay.cooldown_video} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ demo</a>}
-              </p>
-            </div>
-          )}
           <p className="muted" style={{ fontSize: 13.5 }}>{savingSets.size ? 'Saving…' : pendingSets.size ? `${pendingSets.size} set${pendingSets.size === 1 ? '' : 's'} saved on your phone, sending when you have signal.` : "Everything's saved. Your coach can see it now."}</p>
-          <button className="btn-ghost" style={{ width: '100%', padding: '14px 0', fontSize: 14 }} onClick={() => setScreen('overview')}>Back to overview</button>
-          <SessionFeel profile={profile} day={activeDay} logged={anyLogged} />
+          <button className="btn" style={{ width: '100%', height: 56, fontSize: 17 }} onClick={() => navigate('/app')}>Next</button>
+          <button className="btn-ghost" style={{ width: '100%', padding: '12px 0', fontSize: 14 }} onClick={() => setScreen('overview')}>Back to overview</button>
         </div>
       )
     }
@@ -1383,7 +1467,8 @@ export default function ClientTraining() {
     const left = rest ? Math.max(0, Math.ceil((rest.ends - now) / 1000)) : 0
     const resting = !!rest && left > 0
     const nextSt = steps[step + 1]
-    const nextLabel = !nextSt ? 'Finish workout'
+    const nextLabel = !nextSt ? 'Finish Workout'
+      : nextSt.kind ? `Next: ${nextSt.kind === 'warmup' ? 'Warmup' : 'Cooldown'}`
       : nextSt.grouped ? `Next: ${nextSt.items.length === 2 ? 'Superset' : 'Circuit'} ${nextSt.prefix}`
       : `Next: ${nextSt.items[0].name}`
 
@@ -1428,6 +1513,33 @@ export default function ClientTraining() {
             <span className="muted" style={{ fontSize: 13, fontWeight: 800 }}>{step + 1} / {steps.length}</span>
           </div>
         </div>
+
+        {st.kind && (() => {
+          const text = st.kind === 'warmup' ? activeDay.warmup : activeDay.cooldown
+          const vids = videoLinks(st.kind === 'warmup' ? activeDay.warmup_video : activeDay.cooldown_video)
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                <h2 style={{ fontSize: 32, lineHeight: 1 }}>{st.kind === 'warmup' ? 'Warmup' : 'Cooldown'}</h2>
+                {vids.length > 0 && (
+                  <button type="button" aria-expanded={demosOpen} onClick={() => setDemosOpen(o => !o)} style={RX_LINK}>
+                    <Play size={16} fill="currentColor" /> Demo Videos ({vids.length})
+                  </button>
+                )}
+              </div>
+              <p style={{ fontSize: 18, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{text}</p>
+              {demosOpen && vids.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {vids.map((v, i) => (
+                    <a key={i} href={v.url} target="_blank" rel="noreferrer" className="btn-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', fontSize: 14, textDecoration: 'none' }}>
+                      <Play size={14} /> {v.label}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {st.grouped && (
           <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--orange-hot)' }}>
@@ -1526,7 +1638,7 @@ export default function ClientTraining() {
     )
   }
 
-  if (!program) return (
+  if (!program && !activeDay?.client_id) return (
     <div className="card">
       <h2 style={{ fontSize: 18 }}>No program yet</h2>
       <p className="muted" style={{ marginTop: 8, fontSize: 14 }}>Your coach hasn't assigned a program. Message them from the Chat tab.</p>
@@ -1589,8 +1701,8 @@ export default function ClientTraining() {
           Training · {block?.name || 'Block 1'} · Week {week} of {blockWeeks}
           {rotations.length > 0 && ` · ${rotationForWeek(rotations, week)?.name || ''}`}
         </div>
-        <h1 style={{ fontSize: 24, marginTop: 4 }}>{program.name}</h1>
-        {program.notes && (
+        <h1 style={{ fontSize: 24, marginTop: 4 }}>{program?.name || 'Extra workout'}</h1>
+        {program?.notes && (
           <details style={{ marginTop: 8, border: '1px solid var(--line)', borderRadius: 10, padding: '8px 12px', background: 'var(--coal)' }} open={program.notes.length < 220}>
             <summary style={{ fontSize: 12, fontWeight: 900, letterSpacing: '.08em', color: 'var(--orange-hot)', cursor: 'pointer' }}>PROGRAM INSTRUCTIONS</summary>
             <p style={{ fontSize: 13.5, marginTop: 6, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{program.notes}</p>
@@ -1773,7 +1885,7 @@ export default function ClientTraining() {
               <span className="eyebrow" style={{ fontSize: 10 }}>Warmup</span>
               <p style={{ fontSize: 13.5, marginTop: 3, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                 {activeDay.warmup}
-                {activeDay.warmup_video && <a href={activeDay.warmup_video} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ demo</a>}
+                {videoLinks(activeDay.warmup_video).map((v, i) => <a key={i} href={v.url} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ {v.label}</a>)}
               </p>
             </div>
           )}
@@ -1800,7 +1912,7 @@ export default function ClientTraining() {
           <span className="eyebrow" style={{ fontSize: 10 }}>Cooldown</span>
           <p style={{ fontSize: 13.5, marginTop: 3, lineHeight: 1.5 }}>
             {activeDay.cooldown}
-            {activeDay.cooldown_video && <a href={activeDay.cooldown_video} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ demo</a>}
+            {videoLinks(activeDay.cooldown_video).map((v, i) => <a key={i} href={v.url} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ {v.label}</a>)}
           </p>
         </div>
       )}

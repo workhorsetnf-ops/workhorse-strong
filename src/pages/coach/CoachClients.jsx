@@ -599,7 +599,8 @@ export default function CoachClients() {
                 </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <Link to={`/coach/logs/${c.id}`} className="btn" style={{ textDecoration: 'none', display: 'inline-block' }}>View Logs</Link>
+                  <Link to={`/coach/day/${c.id}`} className="btn" style={{ textDecoration: 'none', display: 'inline-block' }}>Day view</Link>
+                  <Link to={`/coach/logs/${c.id}`} className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>View Logs</Link>
                   <Link to={`/coach/review/${c.id}`} className="btn" style={{ textDecoration: 'none', display: 'inline-block' }}>Week review</Link>
                   <Link to={`/coach/nutrition/${c.id}`} className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Nutrition</Link>
                   <Link to={`/coach/health/${c.id}`} className="btn-ghost" style={{ textDecoration: 'none', display: 'inline-block' }}>Supplements · Bloodwork · Cardio · Habits</Link>

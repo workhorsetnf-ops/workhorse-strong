@@ -57,7 +57,7 @@ export default function RoutineBox({ kind, text, video, library = [], onSave, on
         style={{ width: '100%', textAlign: 'left', padding: '7px 10px', fontSize: 12.5, display: 'flex', gap: 8, alignItems: 'baseline' }}>
         <span style={{ fontWeight: 800, whiteSpace: 'nowrap' }}>{kind === 'warmup' ? '🔥' : '🧊'} {label}</span>
         <span className="muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
-          {flash || preview || (saved.length ? 'Add, paste or load saved…' : 'Add / paste…')}{video && !flash ? ' · ▶' : ''}
+          {flash || preview || (saved.length ? 'Add, paste or load saved…' : 'Add / paste…')}{video && !flash ? ` · ▶${(video.match(/https?:\/\//g) || []).length > 1 ? ' ×' + (video.match(/https?:\/\//g) || []).length : ''}` : ''}
         </span>
       </button>
     )
@@ -76,7 +76,8 @@ export default function RoutineBox({ kind, text, video, library = [], onSave, on
       <span className="muted" style={{ fontSize: 11.5 }}>{kind === 'warmup' ? 'Shown above the exercises as the warm-up to do first.' : 'Shown after the last exercise.'}</span>
       <textarea rows={5} autoFocus value={t} placeholder={placeholder} onChange={e => setT(e.target.value)}
         style={{ width: '100%', boxSizing: 'border-box', fontSize: 13, lineHeight: 1.45, fontFamily: 'inherit', resize: 'vertical' }} />
-      <input placeholder="Video link (optional)" value={v} onChange={e => setV(e.target.value)} style={{ fontSize: 12.5, padding: '6px 9px' }} />
+      {/* several demos, one per line: "Air Bike | https://…" (Update 190) */}
+      <textarea placeholder={'Demo videos (optional), one per line:\nAir Bike | https://…\nRing Row | https://…'} rows={Math.min(5, Math.max(2, v.split('\n').length + 1))} value={v} onChange={e => setV(e.target.value)} style={{ fontSize: 12.5, padding: '6px 9px' }} />
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <button type="button" className="btn" disabled={busy || !dirty} onClick={save} style={{ padding: '6px 14px', fontSize: 12 }}>{busy ? 'Saving…' : 'Save'}</button>
         <button type="button" className="btn-ghost" onClick={() => { setT(text || ''); setV(video || ''); setOpen(false) }} style={{ padding: '6px 12px', fontSize: 12 }}>Cancel</button>
