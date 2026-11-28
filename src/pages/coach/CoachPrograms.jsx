@@ -657,6 +657,8 @@ export default function CoachPrograms() {
   const [blockPasteBusy, setBlockPasteBusy] = useState(false)
   const [exercises, setExercises] = useState({})  // dayId -> [exercises]
   const [newProgram, setNewProgram] = useState('')
+  const [addOpen, setAddOpen] = useState(false)     // Update 191: CoachRx-style "Add program"
+  const [progSearch, setProgSearch] = useState('')
   const [checkOpen, setCheckOpen] = useState(false) // Update 174: progression check
   const [newWeeks, setNewWeeks] = useState(4)
   const [library, setLibrary] = useState([])
@@ -1546,10 +1548,18 @@ export default function CoachPrograms() {
 
   return (
     <div>
-      <div className="eyebrow">Training</div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '6px 0 20px' }}>
-        <h1 style={{ fontSize: 28, margin: 0 }}>Programs</h1>
-        <button className="btn-ghost" onClick={() => setCheckOpen(v => !v)}>✓ Progression check</button>
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <h1 style={{ fontSize: 24, margin: 0 }}>Programs</h1>
+            <p className="muted" style={{ fontSize: 14.5, marginTop: 4 }}>Build programs once here, then assign them to clients.</p>
+          </div>
+          {!locked && <button className="btn" onClick={() => setAddOpen(v => !v)}>Add program</button>}
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
+          <input aria-label="Search programs" placeholder="Search" value={progSearch} onChange={e => setProgSearch(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+          <button className="btn-ghost" onClick={() => setCheckOpen(v => !v)}>✓ Progression check</button>
+        </div>
       </div>
       {locked && <ViewOnlyBanner what="Programs" also="You can still assign programs to clients and set their start dates, weeks and training days." />}
       {checkOpen && (
@@ -1562,31 +1572,35 @@ export default function CoachPrograms() {
         }} />
       )}
 
-      {!locked && <div className="card" style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center' }}>
+      {!locked && addOpen && <div className="card" style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
         <input placeholder="New program name (e.g. Off-Season 12-Week)" value={newProgram} onChange={e => setNewProgram(e.target.value)} onKeyDown={e => e.key === 'Enter' && createProgram()} />
         <input inputMode="numeric" style={{ width: 130 }} value={newWeeks} onChange={e => setNewWeeks(e.target.value)} title="Weeks in first block" placeholder="Block 1 weeks" />
         <button className="btn" style={{ whiteSpace: 'nowrap' }} onClick={createProgram}>Create</button>
       </div>}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {programs.map(p => {
+      <div className="rx-prog-head" aria-hidden="true">
+        <span>PROGRAM ▲</span><span>WEEKS</span><span>ACTIVE</span><span />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+        {programs.filter(p => !progSearch.trim() || (p.name + ' ' + (p.notes || '')).toLowerCase().includes(progSearch.trim().toLowerCase())).sort((a, b) => a.name.localeCompare(b.name)).map(p => {
           const assigned = assignments.filter(a => a.program_id === p.id)
           const pBlocks = blocks[p.id] || []
           const activeBlock = pBlocks.find(b => b.id === openBlock)
           return (
-            <div className="card" key={p.id} id={'program-' + p.id}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                <div>
-                  <strong onClick={() => !locked && renameProgram(p)} title={locked ? undefined : 'Click to rename'} style={{ fontSize: 16, cursor: locked ? 'default' : 'pointer' }}>{p.name} {!locked && <span style={{ fontSize: 11, opacity: 0.6 }}>✎</span>}</strong>
-                  <span className="muted" style={{ fontSize: 13, marginLeft: 8 }}>{p.weeks} total weeks</span>
-                  <div className="muted" style={{ fontSize: 13, marginTop: 3 }}>{assigned.length ? `Assigned to ${assigned.length} client(s)` : 'Not assigned'}</div>
+            <div className="card rx-prog" key={p.id} id={'program-' + p.id} data-program={p.name}>
+              <div className="rx-prog-row">
+                <div style={{ minWidth: 0 }}>
+                  <strong onClick={() => !locked && renameProgram(p)} title={locked ? undefined : 'Click to rename'} style={{ fontSize: 17, cursor: locked ? 'default' : 'pointer' }}>{p.name} {!locked && <span style={{ fontSize: 11, opacity: 0.6 }}>✎</span>}</strong>
+                  {p.notes && <p className="muted" style={{ fontSize: 13.5, marginTop: 4, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.notes}</p>}
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <span className="muted rx-prog-cell" data-label="Weeks">{p.weeks}</span>
+                <span className="muted rx-prog-cell" data-label="Active">{assigned.length} client{assigned.length === 1 ? '' : 's'}</span>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   <select style={{ width: 'auto' }} defaultValue="" onChange={e => { assign(p.id, e.target.value); e.target.value = '' }}>
                     <option value="" disabled>Assign to…</option>
                     {clients.map(c => <option key={c.id} value={c.id}>{c.full_name || c.id.slice(0, 8)}</option>)}
                   </select>
-                  <button className="btn-ghost" onClick={() => openProgram(p.id)}>{open === p.id ? 'Close' : locked ? 'View' : 'Open builder'}</button>
+                  <button className="btn-ghost" onClick={() => openProgram(p.id)}>{open === p.id ? 'Close' : locked ? 'View' : '✎ Edit'}</button>
                   {!locked && <button className="btn-ghost" onClick={() => duplicateProgram(p)}>Duplicate</button>}
                   {!locked && <button className="btn-ghost" style={{ color: 'var(--red)' }} onClick={() => deleteProgram(p.id)}>Delete</button>}
                 </div>

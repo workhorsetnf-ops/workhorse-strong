@@ -58,23 +58,23 @@ test('deactivated assistant lands on the access-off screen', async () => {
   expect(el.querySelector('.coach-side')).toBeNull()
 })
 
-test('active assistant gets the coach dashboard: Programs/Library marked view, no Team page', async () => {
+test('active assistant gets the coach dashboard: Programs/Library marked view, no Coaches tab', async () => {
   as(VA)
-  const el = await mount(<App />)
-  const nav = el.querySelector('.coach-side')
-  expect(nav).not.toBeNull()
-  const link = name => [...nav.querySelectorAll('a')].find(a => a.textContent.startsWith(name))
+  const el = await mount(<App />, '/coach/library')
+  const tabs = [...el.querySelectorAll('.coach-tabs a')].map(a => a.textContent)
+  expect(tabs).toEqual(expect.arrayContaining(['Dashboard', 'Clients', 'Index', 'Business', 'Programs']))
+  expect(tabs).not.toContain('Coaches')
+  const menu = el.querySelector('.coach-menu')
+  const link = name => [...menu.querySelectorAll('a')].find(a => a.textContent.startsWith(name))
   expect(link('Programs').textContent).toContain('view')
-  expect(link('Library').textContent).toContain('view')
-  expect(link('Messages')).toBeTruthy()
-  expect(link('Team')).toBeUndefined()
+  expect(link('Exercises').textContent).toContain('view')
 })
 
-test('coach sees the Team page and no view-only marks', async () => {
+test('coach sees the Coaches tab and no view-only marks', async () => {
   as(COACH)
-  const el = await mount(<App />)
-  const links = [...el.querySelectorAll('.coach-side a')].map(a => a.textContent)
-  expect(links).toContain('Team')
+  const el = await mount(<App />, '/coach/library')
+  expect([...el.querySelectorAll('.coach-tabs a')].map(a => a.textContent)).toContain('Coaches')
+  const links = [...el.querySelectorAll('.coach-menu a')].map(a => a.textContent)
   expect(links.find(t => t.startsWith('Programs'))).toBe('Programs')
 })
 
@@ -82,13 +82,14 @@ test('Programs as an assistant: view-only banner, no Create', async () => {
   as(VA)
   const el = await mount(<CoachPrograms />, '/coach/programs')
   expect(el.textContent).toContain('View only.')
-  expect([...el.querySelectorAll('button')].some(b => b.textContent === 'Create')).toBe(false)
+  expect([...el.querySelectorAll('button')].some(b => b.textContent === 'Create' || b.textContent === 'Add program')).toBe(false)
 })
 
 test('Programs as the coach: builder controls as before', async () => {
   as(COACH)
   const el = await mount(<CoachPrograms />, '/coach/programs')
   expect(el.textContent).not.toContain('View only.')
+  await act(async () => [...el.querySelectorAll('button')].find(b => b.textContent === 'Add program').click())
   expect([...el.querySelectorAll('button')].some(b => b.textContent === 'Create')).toBe(true)
 })
 

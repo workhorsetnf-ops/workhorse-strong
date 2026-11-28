@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import ClientsTable from './ClientsTable'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { calcMacros } from '../../lib/macros'
@@ -13,6 +14,7 @@ import { callApi } from '../../lib/push'
 
 export default function CoachClients() {
   const [clients, setClients] = useState([])
+  const [mode, setMode] = useState('table')   // CoachRx-style table (Update 191) or the detailed edit cards
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({})
   const [maxes, setMaxes] = useState([])          // [{id?, lift_name, max_weight}]
@@ -262,8 +264,18 @@ export default function CoachClients() {
     .filter(c => ((c.full_name || '') + ' ' + (c.email || '')).toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => (a.full_name ? 1 : 0) - (b.full_name ? 1 : 0))
 
+  if (mode === 'table') return (
+    <ClientsTable
+      clients={clients.filter(c => (c.plan || 'coaching') !== 'group')}
+      addPanel={<InviteClients onAdded={load} />}
+      onTagsChanged={load}
+      onEdit={c => { setMode('cards'); setSearch(c.full_name || c.email || ''); setStatusFilter('all'); setPlanFilter('all'); startEdit(c); window.scrollTo?.(0, 0) }}
+    />
+  )
+
   return (
     <div>
+      <button className="btn-ghost" onClick={() => { setMode('table'); setEditing(null); setSearch('') }} style={{ marginBottom: 12 }}>← Back to client table</button>
       <div className="eyebrow">Roster</div>
       <h1 style={{ fontSize: 28, margin: '6px 0 6px' }}>Clients</h1>
       <p className="muted" style={{ fontSize: 14, marginBottom: 16 }}>
