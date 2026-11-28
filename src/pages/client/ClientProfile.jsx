@@ -127,7 +127,7 @@ export default function ClientProfile() {
         <Link to="/app/reminders" className="btn-ghost" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><Bell size={15} /> Reminders</Link>
         <button className="btn-ghost" onClick={signOut}>Sign out</button>
       </div>
-      <Link to="/app" className="muted" style={{ fontSize: 13 }}>← Back to Home</Link>
+      <Link to="/app/profile" className="muted" style={{ fontSize: 13 }}>← Back to Profile</Link>
     </div>
   )
 }

@@ -17,6 +17,7 @@ import { bestOf, prFor, nameKey } from '../../lib/prs'
 import SessionFeel from './SessionFeel'
 import { alternativesFor, applySwap, activeSwap, scopeForReason, SCOPES, REASONS } from '../../lib/swaps'
 import { addDays as addDaysStr } from '../../lib/dashboard'
+import { Thermometer, Snowflake, X as XIcon, Check as CheckIcon, History as HistoryIcon, Play, MessageSquare } from 'lucide-react'
 
 function roundTo5(n) { return Math.round(n / 5) * 5 }
 
@@ -28,6 +29,15 @@ function loomEmbed(url) {
 const prefixOf = l => (l || '').replace(/[0-9]/g, '')
 const isNumbered = l => /^[A-Z]+\d+$/.test(l || '')
 const GROUP_COLORS = ['#FF5500', '#7C5CBF', '#3E8E7E', '#B0533E', '#4A6FA5', '#8E6E3E']
+
+// CoachRx-style blocks (Update 189)
+const RX_BLOCK = { background: 'rgba(255,85,0,0.07)', border: '1px solid rgba(255,85,0,0.22)', borderRadius: 14, padding: '14px 16px' }
+const RX_LINK = { display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, color: 'var(--orange-hot)', fontSize: 16, fontWeight: 600, cursor: 'pointer' }
+const RX_PILL = { flex: 1, height: 48, borderRadius: 10, border: '1px solid', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 16, fontWeight: 800, letterSpacing: '.04em', cursor: 'pointer' }
+const RX_HEAD = { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, letterSpacing: '.06em', fontSize: 13.5, marginBottom: 6 }
+function LetterBadge({ l, size = 40 }) {
+  return <span style={{ width: size, height: size, flexShrink: 0, borderRadius: '50%', border: '2px solid var(--orange-hot)', background: 'var(--black)', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: size > 44 ? 17 : 14 }}>{l || '•'}</span>
+}
 
 function chunkGroups(list) {
   const out = []
@@ -239,8 +249,19 @@ export default function ClientTraining() {
   const touchStart = useRef(null)
   const steps = chunkGroups(exercises)
 
+  // exercises the client marked Missed this session (Update 189) — on screen only, not saved
+  const [missed, setMissed] = useState(new Set())
+  const [needNumbers, setNeedNumbers] = useState(new Set()) // tapped Completed with nothing to fill in
   // a new workout always opens on its overview
-  useEffect(() => { setScreen('overview'); setStep(0); setRest(null) }, [activeDay?.id])
+  useEffect(() => { setScreen('overview'); setStep(0); setRest(null); setMissed(new Set()) }, [activeDay?.id])
+  // ...unless it was opened with START WORKOUT on Home (Update 189): straight to step 1, once
+  const startedFromHome = useRef(false)
+  useEffect(() => {
+    const t = location.state || {}
+    if (startedFromHome.current || !t.startNow || viewMode !== 'focus' || !activeDay || activeDay.id !== t.targetDayId || !baseExercises.length) return
+    startedFromHome.current = true
+    setStep(0); setScreen('focus')
+  }, [activeDay?.id, baseExercises.length])
 
   // tick while a rest is running; buzz once when it hits zero
   useEffect(() => {
@@ -422,6 +443,30 @@ export default function ClientTraining() {
       setDoneSets(d => new Set(d).add(key))
       maybeStartRest(ex)
     }
+  }
+
+  // COMPLETED (Update 189): tick every set not ticked yet, filling blanks the same
+  // way a single tick does (today's call, else last time, else the target).
+  function completeAll(ex) {
+    const rows = log[ex.id] || []
+    const next = [...rows]
+    const keys = []
+    rows.forEach((_, i) => {
+      if (doneSets.has(`${ex.id}-${i + 1}`)) return
+      const filled = fillSet(ex, i, next)
+      next[i] = filled
+      if (filled.weight || filled.reps) keys.push(`${ex.id}-${i + 1}`)
+    })
+    setLog(l => ({ ...l, [ex.id]: next }))
+    if (keys.length) setDoneSets(d => { const n = new Set(d); keys.forEach(k => n.add(k)); return n })
+    setMissed(m => { const n = new Set(m); n.delete(ex.id); return n })
+    // a set with no numbers and no history can't be ticked — say so instead of doing nothing
+    const left = rows.length - keys.length - rows.filter((_, i) => doneSets.has(`${ex.id}-${i + 1}`)).length
+    setNeedNumbers(m => { const n = new Set(m); if (left > 0) n.add(ex.id); else n.delete(ex.id); return n })
+  }
+  // MISSED: flags it on screen for this session and leaves its sets unlogged
+  function toggleMissed(ex) {
+    setMissed(m => { const n = new Set(m); if (n.has(ex.id)) n.delete(ex.id); else n.add(ex.id); return n })
   }
 
   // In focus mode, ticking a set starts the rest timer — but in a superset only
@@ -882,21 +927,9 @@ export default function ClientTraining() {
   }, [pendingSets.size > 0])
 
   // ---- pieces shared by the list view and focus mode ----
-  function renderExtras(ex) {
+  function renderComments(ex) {
     return (
       <>
-          {flaggedIds.has(ex.id) && flagging !== ex.id && (
-            <p style={{ fontSize: 11.5, color: 'var(--red)', margin: '2px 0 0' }}>⚠️ Flagged for your coach — they'll follow up.</p>
-          )}
-          {flagging === ex.id && (
-            <div style={{ background: 'rgba(214,69,69,0.12)', border: '1px solid var(--red)', borderRadius: 8, padding: 10, margin: '6px 0' }}>
-              <span className="eyebrow" style={{ fontSize: 10, color: 'var(--red)' }}>What's bothering you?</span>
-              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                <input placeholder="e.g. sharp pinch in left shoulder on the way up" value={flagNote} onChange={e => setFlagNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitFlag(ex.id)} style={{ padding: '6px 8px', fontSize: 12.5 }} />
-                <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12, borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => submitFlag(ex.id)}>Flag</button>
-              </div>
-            </div>
-          )}
           {openComments === ex.id && (
             <div style={{ background: 'var(--steel)', borderRadius: 8, padding: 10, margin: '6px 0' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
@@ -914,6 +947,26 @@ export default function ClientTraining() {
               </div>
             </div>
           )}
+      </>
+    )
+  }
+
+  function renderExtras(ex, opts = {}) {
+    return (
+      <>
+          {flaggedIds.has(ex.id) && flagging !== ex.id && (
+            <p style={{ fontSize: 11.5, color: 'var(--red)', margin: '2px 0 0' }}>⚠️ Flagged for your coach — they'll follow up.</p>
+          )}
+          {flagging === ex.id && (
+            <div style={{ background: 'rgba(214,69,69,0.12)', border: '1px solid var(--red)', borderRadius: 8, padding: 10, margin: '6px 0' }}>
+              <span className="eyebrow" style={{ fontSize: 10, color: 'var(--red)' }}>What's bothering you?</span>
+              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <input placeholder="e.g. sharp pinch in left shoulder on the way up" value={flagNote} onChange={e => setFlagNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitFlag(ex.id)} style={{ padding: '6px 8px', fontSize: 12.5 }} />
+                <button className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12, borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => submitFlag(ex.id)}>Flag</button>
+              </div>
+            </div>
+          )}
+          {!opts.noComments && renderComments(ex)}
       </>
     )
   }
@@ -1219,35 +1272,55 @@ export default function ClientTraining() {
             <h2 style={{ fontSize: 34, lineHeight: 1, marginTop: 4, textTransform: 'uppercase' }}>{activeDay.day_label}</h2>
           </div>
           {renderMovePanel()}
+          {activeDay.warmup && (
+            <div style={RX_BLOCK}>
+              <div style={RX_HEAD}><Thermometer size={16} /> WARMUP</div>
+              <p style={{ fontSize: 15, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                {activeDay.warmup}
+                {activeDay.warmup_video && <a href={activeDay.warmup_video} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ demo</a>}
+              </p>
+            </div>
+          )}
           {steps.map((st, si) => (
-            <button key={si} type="button" onClick={() => goStep(si)} className="card"
-              style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 9, width: '100%', color: 'inherit', font: 'inherit' }}>
+            <button key={si} type="button" onClick={() => goStep(si)}
+              style={{ ...RX_BLOCK, textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 0, width: '100%', color: 'inherit', font: 'inherit' }}>
               {st.grouped && (
-                <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--orange-hot)' }}>
+                <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--orange-hot)', marginBottom: 8 }}>
                   {st.items.length === 2 ? 'Superset' : 'Circuit'} {st.prefix} · alternate each round
                 </span>
               )}
-              {st.items.map(ex => {
+              {st.items.map((ex, i) => {
                 const c = exDoneCount(ex)
                 const full = c.total > 0 && c.done >= c.total
+                const skip = missed.has(ex.id) && !full
                 return (
-                  <span key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span key={ex.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, position: 'relative', paddingBottom: i < st.items.length - 1 ? 16 : 0 }}>
+                    {st.grouped && i < st.items.length - 1 && <span aria-hidden="true" style={{ position: 'absolute', left: 19, top: 40, bottom: 0, width: 2, background: 'var(--orange-hot)' }} />}
                     {ex.icon_url
-                      ? <img className="thumb" src={ex.icon_url} alt="" style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover', flexShrink: 0 }} />
-                      : <span style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 9, background: 'rgba(255,85,0,0.12)', color: 'var(--orange-hot)', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{ex.letter || '•'}</span>}
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <strong style={{ display: 'block', fontSize: 15 }}>{ex.name}</strong>
-                      <span className="muted" style={{ fontSize: 12 }}>{ex.kind === 'conditioning' ? 'Conditioning' : targetText(ex)}</span>
+                      ? <img className="thumb" src={ex.icon_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '2px solid var(--orange-hot)' }} />
+                      : <LetterBadge l={ex.letter} />}
+                    <span style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
+                      <strong style={{ display: 'block', fontSize: 16 }}>{ex.name}</strong>
+                      <span className="muted" style={{ fontSize: 13.5, whiteSpace: ex.kind === 'conditioning' ? 'pre-wrap' : undefined }}>{ex.kind === 'conditioning' ? (ex.description || 'Conditioning') : targetText(ex)}</span>
                     </span>
                     <span style={{ flexShrink: 0, minWidth: 44, height: 28, padding: '0 9px', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800,
-                      background: full ? 'var(--orange)' : c.done ? 'rgba(255,85,0,0.14)' : 'var(--steel)', color: full ? '#140A02' : c.done ? 'var(--orange-hot)' : 'var(--muted)' }}>
-                      {full ? 'Done' : ex.kind === 'conditioning' ? '—' : `${c.done}/${c.total}`}
+                      background: full ? 'var(--orange)' : skip ? 'rgba(214,69,69,0.16)' : c.done ? 'rgba(255,85,0,0.14)' : 'var(--steel)', color: full ? '#140A02' : skip ? 'var(--red)' : c.done ? 'var(--orange-hot)' : 'var(--muted)' }}>
+                      {full ? 'Done' : skip ? 'Missed' : ex.kind === 'conditioning' ? '—' : `${c.done}/${c.total}`}
                     </span>
                   </span>
                 )
               })}
             </button>
           ))}
+          {activeDay.cooldown && (
+            <div style={RX_BLOCK}>
+              <div style={RX_HEAD}><Snowflake size={16} /> COOLDOWN</div>
+              <p style={{ fontSize: 15, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                {activeDay.cooldown}
+                {activeDay.cooldown_video && <a href={activeDay.cooldown_video} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}>▶ demo</a>}
+              </p>
+            </div>
+          )}
           <button className="btn" style={{ height: 56, fontSize: 17, marginTop: 4 }}
             onClick={() => goStep(anyDone && firstOpen >= 0 ? firstOpen : 0)}>
             {anyDone ? (cardioDay ? 'Continue session' : 'Continue workout') : (cardioDay ? 'Start session' : 'Start workout')}
@@ -1329,26 +1402,30 @@ export default function ClientTraining() {
         style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         <div style={{ position: 'sticky', top: 0, zIndex: 5, background: 'rgba(11,11,12,0.94)', backdropFilter: 'blur(6px)', padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div aria-hidden="true" style={{ flex: 1, display: 'flex', gap: 6 }}>
+              {steps.map((_, i) => (
+                <span key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i === step ? 'var(--orange-hot)' : i < step ? 'var(--orange)' : 'var(--line)' }} />
+              ))}
+            </div>
+            <button type="button" aria-label="Exit to workout overview" onClick={() => setScreen('overview')}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--white)', fontWeight: 800, fontSize: 16, letterSpacing: '.04em', cursor: 'pointer', padding: '6px 0' }}>
+              EXIT <XIcon size={22} />
+            </button>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-            <button type="button" className="btn-ghost" aria-label="Back to workout overview" onClick={() => setScreen('overview')}
-              style={{ width: 44, height: 44, padding: 0, fontSize: 18 }}>☰</button>
             <button type="button" onClick={() => {
                 if (resting) setRest(null)
                 else { const secs = defaultRest || 90; setRest({ ends: Date.now() + secs * 1000, total: secs }); setNow(Date.now()) }
               }}
               aria-label={resting ? 'Resting — tap to skip' : 'Start rest timer'}
-              style={{ height: 44, padding: '0 18px', borderRadius: 22, fontSize: 16, fontWeight: 800, fontVariantNumeric: 'tabular-nums', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+              style={{ height: 40, padding: '0 16px', borderRadius: 20, fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
                 background: resting ? 'var(--orange)' : rest ? 'rgba(255,85,0,0.14)' : 'var(--steel)',
                 color: resting ? '#140A02' : rest ? 'var(--orange-hot)' : 'inherit',
                 border: resting || rest ? '1px solid var(--orange)' : '1px solid var(--line)' }}>
               ⏱ {resting ? fmtClock(left) : rest ? 'Rest over · go' : defaultRest ? `Rest ${fmtClock(defaultRest)}` : 'Rest timer'}
             </button>
-            <span className="muted" style={{ width: 44, textAlign: 'right', fontSize: 13, fontWeight: 800 }}>{step + 1} / {steps.length}</span>
-          </div>
-          <div aria-hidden="true" style={{ display: 'flex', gap: 5 }}>
-            {steps.map((_, i) => (
-              <span key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i < step ? 'var(--orange)' : i === step ? 'var(--orange-hot)' : 'var(--steel)' }} />
-            ))}
+            <span className="muted" style={{ fontSize: 13, fontWeight: 800 }}>{step + 1} / {steps.length}</span>
           </div>
         </div>
 
@@ -1362,11 +1439,11 @@ export default function ClientTraining() {
           <div key={ex.id} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
               {ex.icon_url
-                ? <img className="thumb" src={ex.icon_url} alt="" style={{ width: 52, height: 52, borderRadius: 12, objectFit: 'cover', flexShrink: 0 }} />
-                : <span style={{ width: 52, height: 52, flexShrink: 0, borderRadius: 12, background: 'rgba(255,85,0,0.12)', color: 'var(--orange-hot)', fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{ex.letter || '•'}</span>}
+                ? <img className="thumb" src={ex.icon_url} alt="" style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '2px solid var(--orange-hot)' }} />
+                : <LetterBadge l={ex.letter} size={52} />}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <h2 style={{ fontSize: 28, lineHeight: 1, textTransform: 'uppercase' }}>
-                  {ex.letter && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter} · </span>}{ex.name}
+                  {ex.letter && ex.icon_url && <span style={{ color: 'var(--orange-hot)' }}>{ex.letter} · </span>}{ex.name}
                 </h2>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>{swappedNote(ex)}{swapButton(ex)}</div>
                 <div style={{ color: 'var(--orange-hot)', fontSize: 13, fontWeight: 700, marginTop: 4 }}>{targetText(ex)}</div>
@@ -1375,23 +1452,18 @@ export default function ClientTraining() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {ex.video_url && (
-                <a href={ex.video_url} target="_blank" rel="noreferrer" className="btn-ghost"
-                  style={{ padding: '8px 12px', fontSize: 12.5, fontWeight: 700, textDecoration: 'none' }}>▶ Demo</a>
-              )}
-              {history[ex.id]?.length > 0 && (
-                <button type="button" className={histOpen[ex.id] ? 'btn' : 'btn-ghost'} aria-expanded={!!histOpen[ex.id]}
-                  onClick={() => setHistOpen(h => ({ ...h, [ex.id]: !h[ex.id] }))} style={{ padding: '8px 12px', fontSize: 12.5 }}>↺ History</button>
-              )}
-              <button type="button" className="btn-ghost" onClick={() => openExerciseComments(ex.id)} style={{ padding: '8px 12px', fontSize: 12.5 }}>
-                💬 {commentCounts[ex.id] > 0 ? commentCounts[ex.id] : 'Notes'}
-              </button>
-              <button type="button" className="btn-ghost" onClick={() => setFlagging(flagging === ex.id ? null : ex.id)} title="Flag pain or discomfort"
-                style={{ padding: '8px 12px', fontSize: 12.5, color: flaggedIds.has(ex.id) ? 'var(--red)' : undefined, borderColor: flaggedIds.has(ex.id) ? 'var(--red)' : undefined }}>⚠️</button>
+            <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 2 }}>
+              <button type="button" aria-expanded={!!histOpen[ex.id]} disabled={!history[ex.id]?.length}
+                onClick={() => setHistOpen(h => ({ ...h, [ex.id]: !h[ex.id] }))}
+                style={{ ...RX_LINK, opacity: history[ex.id]?.length ? 1 : 0.45 }}><HistoryIcon size={18} /> History</button>
+              {ex.video_url
+                ? <a href={ex.video_url} target="_blank" rel="noreferrer" style={{ ...RX_LINK, textDecoration: 'none' }}><Play size={16} fill="currentColor" /> Demo</a>
+                : <span style={{ ...RX_LINK, opacity: 0.45, cursor: 'default' }}><Play size={16} /> No demo</span>}
+              <button type="button" onClick={() => setFlagging(flagging === ex.id ? null : ex.id)} title="Flag pain or discomfort"
+                style={{ ...RX_LINK, color: flaggedIds.has(ex.id) ? 'var(--red)' : 'var(--muted)' }}>⚠️ Pain</button>
             </div>
 
-            {renderExtras(ex)}
+            {renderExtras(ex, { noComments: true })}
             {ex.progression_type === 'percent' && !maxes[(ex.based_on_lift || ex.name).toLowerCase()] && (
               <p className="muted" style={{ fontSize: 12.5 }}>No max on file for {ex.based_on_lift || ex.name} — ask your coach to set it.</p>
             )}
@@ -1411,6 +1483,27 @@ export default function ClientTraining() {
             )}
 
             {renderSetGrid(ex, true)}
+
+            {(() => {
+              const c = exDoneCount(ex)
+              const full = c.total > 0 && c.done >= c.total
+              const skip = missed.has(ex.id) && !full
+              return (
+                <>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button type="button" aria-pressed={skip} onClick={() => toggleMissed(ex)}
+                    style={{ ...RX_PILL, color: 'var(--red)', borderColor: skip ? 'var(--red)' : 'var(--line)', background: skip ? 'rgba(214,69,69,0.16)' : 'var(--coal)' }}>
+                    MISSED <XIcon size={18} />
+                  </button>
+                  <button type="button" aria-pressed={full} onClick={() => completeAll(ex)}
+                    style={{ ...RX_PILL, color: full ? '#06140B' : 'var(--green)', borderColor: full ? 'var(--green)' : 'var(--line)', background: full ? 'var(--green)' : 'var(--coal)' }}>
+                    COMPLETED <CheckIcon size={18} />
+                  </button>
+                </div>
+                {needNumbers.has(ex.id) && !full && <p style={{ fontSize: 13, color: 'var(--orange-hot)', margin: 0 }}>Add your weight and reps for each set, then tap Completed.</p>}
+              </>
+              )
+            })()}
           </div>
         ))}
 
@@ -1421,6 +1514,14 @@ export default function ClientTraining() {
             {nextLabel}
           </button>
         </div>
+
+        {st.items.filter(e => e.kind !== 'conditioning').map(ex => (
+          <button key={'c' + ex.id} type="button" className="btn" aria-expanded={openComments === ex.id} onClick={() => openExerciseComments(ex.id)}
+            style={{ height: 52, fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: '#43B5E8', borderColor: '#43B5E8', color: '#06121B' }}>
+            <MessageSquare size={18} /> Comments ({commentCounts[ex.id] || 0}){st.items.length > 1 ? ` · ${ex.letter || ex.name}` : ''}
+          </button>
+        ))}
+        {st.items.map(ex => <div key={'p' + ex.id}>{renderComments(ex)}</div>)}
       </div>
     )
   }
@@ -1428,7 +1529,7 @@ export default function ClientTraining() {
   if (!program) return (
     <div className="card">
       <h2 style={{ fontSize: 18 }}>No program yet</h2>
-      <p className="muted" style={{ marginTop: 8, fontSize: 14 }}>Your coach hasn't assigned a program. Message them from the Coach tab.</p>
+      <p className="muted" style={{ marginTop: 8, fontSize: 14 }}>Your coach hasn't assigned a program. Message them from the Chat tab.</p>
     </div>
   )
 
@@ -1661,13 +1762,13 @@ export default function ClientTraining() {
 
       {!calMode && !awayMode && activeDay && showList && renderMovePanel()}
 
-      {!calMode && !awayMode && activeDay && (showList || screen === 'overview') && (activeDay.notes || activeDay.video_note || activeDay.warmup) && (
+      {!calMode && !awayMode && activeDay && (showList || screen === 'overview') && (activeDay.notes || activeDay.video_note || (showList && activeDay.warmup)) && (
         <div className="card">
           {activeDay.notes && <p style={{ fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{activeDay.notes}</p>}
           {activeDay.video_note && (loomEmbed(activeDay.video_note)
             ? <iframe src={loomEmbed(activeDay.video_note)} style={{ width: '100%', height: 210, border: 'none', borderRadius: 8, marginTop: activeDay.notes ? 8 : 0 }} allowFullScreen title="Coach video note" />
             : <a href={activeDay.video_note} target="_blank" rel="noreferrer" style={{ display: 'inline-block', fontSize: 13, fontWeight: 800, marginTop: activeDay.notes ? 6 : 0 }}>🎥 Watch coach's video note</a>)}
-          {activeDay.warmup && (
+          {showList && activeDay.warmup && (
             <div style={{ marginTop: (activeDay.notes || activeDay.video_note) ? 10 : 0, borderLeft: '3px solid var(--orange)', paddingLeft: 10 }}>
               <span className="eyebrow" style={{ fontSize: 10 }}>Warmup</span>
               <p style={{ fontSize: 13.5, marginTop: 3, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
