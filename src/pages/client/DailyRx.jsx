@@ -10,7 +10,7 @@ import { Dumbbell, HeartPulse, Check, X, Thermometer, Snowflake, Bell } from 'lu
 import { supabase } from '../../lib/supabase'
 import { localDateStr, mondayOf, weekDaysFrom, weekdayNumber, logDate, repsSummary, targetSummary } from '../../lib/weeks'
 import { CONDITIONING_COLOR, loadProgramSchedule, sessionsOnDate } from '../../lib/conditioning'
-import { dayStatus, dailyLine, firstName, rxGroups } from '../../lib/clientRx'
+import { dayStatus, dailyLine, firstName, rxGroups, sessionTime } from '../../lib/clientRx'
 import Avatar from '../Avatar'
 
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
@@ -65,7 +65,7 @@ export default function DailyRx({ profile }) {
   }, [daySessions])
 
   const cardio = (data?.plan || []).find(r => r.weekday === weekdayNumber(selected) - 1 && (r.minutes || r.cardio_type) && r.cardio_type !== 'Rest') || null
-  const open = (s, startNow) => navigate('/app/training', { state: { targetBlockId: s.block_id, targetWeek: s.wk, targetDayNumber: s.day_number, targetDayId: s.id, startNow } })
+  const open = (s, startNow) => navigate('/app/training', { state: { targetBlockId: s.block_id, targetWeek: s.wk, targetDayNumber: s.day_number, targetDayId: s.id, startNow, oneOff: !!s.oneOff } })
   const isToday = selected === today
   const doneSelected = data?.logged.has(selected)
 
@@ -131,8 +131,8 @@ export default function DailyRx({ profile }) {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {daySessions.map(s => (
-              <SessionRx key={s.id} s={s} exercises={exByDay[s.id]} done={doneSelected}
+            {daySessions.map((s, i) => (
+              <SessionRx key={s.id} s={s} time={sessionTime(data.schedule?.assignment?.train_times, String(weekdayNumber(selected)), i, daySessions.length)} exercises={exByDay[s.id]} done={doneSelected}
                 canStart={selected <= today} onStart={() => open(s, true)} onOpen={() => open(s, false)} />
             ))}
             {cardio && (
@@ -158,7 +158,7 @@ function Letter({ l, color = 'var(--orange-hot)' }) {
 
 const blockCard = { background: 'rgba(255,85,0,0.07)', border: '1px solid rgba(255,85,0,0.22)', borderRadius: 14, padding: '14px 16px' }
 
-function SessionRx({ s, exercises, done, canStart, onStart, onOpen }) {
+function SessionRx({ s, exercises, done, canStart, onStart, onOpen, time }) {
   const cond = s.track === 'conditioning'
   const groups = rxGroups(exercises || [])
   return (
@@ -167,7 +167,7 @@ function SessionRx({ s, exercises, done, canStart, onStart, onOpen }) {
         {cond ? <HeartPulse size={22} color={CONDITIONING_COLOR} /> : <Dumbbell size={22} color="var(--orange-hot)" />}
         <span style={{ flex: 1, minWidth: 0 }}>
           <strong style={{ display: 'block', fontSize: 21, lineHeight: 1.1 }}>{s.day_label}</strong>
-          <span className="muted" style={{ fontSize: 12.5 }}>{cond ? 'Conditioning' : 'Workout'} · Week {s.wk}{s.movedFrom ? ' · moved here' : ''}</span>
+          <span className="muted" style={{ fontSize: 12.5 }}>{time ? <strong style={{ color: 'var(--orange-hot)' }}>{time} · </strong> : null}{s.oneOff ? 'Extra workout from your coach' : <>{cond ? 'Conditioning' : 'Workout'} · Week {s.wk}</>}{s.movedFrom ? ' · moved here' : ''}</span>
         </span>
         {done && <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--green)', display: 'flex', gap: 4, alignItems: 'center' }}><Check size={15} /> Logged</span>}
       </button>

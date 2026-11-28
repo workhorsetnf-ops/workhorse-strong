@@ -30,9 +30,12 @@ export function scheduledDate(startDate, dayNumber, date = localDateStr(), dayMa
 // Everything a schedule needs, loaded once. Used by the Calendar page and the
 // Home "Today" card so they show exactly what the Train tab shows.
 export async function loadProgramSchedule(sb, clientId) {
-  const { data: assignment } = await sb.from('program_assignments')
-    .select('*').eq('client_id', clientId).maybeSingle()
-  if (!assignment) return null
+  const [{ data: assignment }, oneOffs] = await Promise.all([
+    sb.from('program_assignments').select('*').eq('client_id', clientId).maybeSingle(),
+    loadOneOffs(sb, clientId),
+  ])
+  // no program, but the coach has dropped in one-off workouts: still a schedule
+  if (!assignment) return oneOffs.length ? { assignment: null, blocks: [], daysByBlock: {}, rotationsByBlock: {}, oneOffs } : null
   const { data: blocks } = await sb.from('program_blocks').select('*').eq('program_id', assignment.program_id).order('position')
   const ids = (blocks || []).map(b => b.id)
   const [{ data: days }, { data: rots, error: rotErr }] = ids.length
@@ -45,7 +48,14 @@ export async function loadProgramSchedule(sb, clientId) {
   for (const b of blocks || []) { daysByBlock[b.id] = []; rotationsByBlock[b.id] = [] }
   for (const d of days || []) (daysByBlock[d.block_id] ||= []).push(d)
   for (const r of rotErr ? [] : rots || []) (rotationsByBlock[r.block_id] ||= []).push(r)
-  return { assignment, blocks: blocks || [], daysByBlock, rotationsByBlock }
+  return { assignment, blocks: blocks || [], daysByBlock, rotationsByBlock, oneOffs }
+}
+
+// One-off workouts (Update 190): program_days rows the coach added for one
+// client on one date. Before the migration the columns don't exist: none.
+export async function loadOneOffs(sb, clientId) {
+  const { data, error } = await sb.from('program_days').select('*').eq('client_id', clientId).order('on_date').order('position')
+  return error ? [] : (data || []).filter(d => d.client_id === clientId && d.on_date)
 }
 
 // The program sessions on a date (before moves), using the SAME block and week
@@ -54,17 +64,19 @@ export async function loadProgramSchedule(sb, clientId) {
 // the coach's pick once the program runs out. Rotations decide A/B weeks.
 // Nothing before the start date.
 export function scheduledSessions(ymd, schedule) {
-  if (!schedule?.blocks?.length) return []
+  const extra = (schedule?.oneOffs || []).filter(d => d.on_date === ymd).map(d => ({ ...d, wk: 1, blockName: '', oneOff: true }))
+  if (!schedule?.blocks?.length) return extra
   const a = schedule.assignment || {}
-  if (a.start_date && ymd < a.start_date) return []
+  if (a.start_date && ymd < a.start_date) return extra
   const pos = resolveAssignment(a, schedule.blocks, new Date(ymd + 'T00:00:00'))
-  if (!pos.block) return []
+  if (!pos.block) return extra
   const wd = weekdayNumber(ymd)
   const rots = schedule.rotationsByBlock?.[pos.block.id] || []
   return (schedule.daysByBlock?.[pos.block.id] || [])
     .filter(d => dayWeekday(d.day_number, a.day_map) === wd && dayShowsInWeek(d, rots, pos.weekInBlock))
     .sort((x, y) => (x.position ?? 0) - (y.position ?? 0))
     .map(d => ({ ...d, wk: pos.weekInBlock, blockName: pos.block.name }))
+    .concat(extra)
 }
 
 // Same, with the client's moves applied.

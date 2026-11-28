@@ -25,6 +25,7 @@ import ClientCommunity from '../ClientCommunity'
 import CoachPrintSummary from './CoachPrintSummary'
 import CoachTestimonials from './CoachTestimonials'
 import CoachClientLogs from './CoachClientLogs'
+import CoachClientDay from './CoachClientDay'
 import CoachHealth from './CoachHealth'
 import CoachNutrition from './CoachNutrition'
 import CoachHub from './CoachHub'
@@ -136,6 +137,7 @@ export default function CoachDashboard() {
           <Route path="community" element={<ClientCommunity isCoach />} />
           <Route path="print/:clientId" element={<CoachPrintSummary />} />
           <Route path="logs/:clientId" element={<CoachClientLogs />} />
+          <Route path="day/:clientId" element={<CoachClientDay />} />
           <Route path="review/:clientId" element={<CoachReview />} />
           <Route path="body/:clientId" element={<CoachBody />} />
           <Route path="health/:clientId" element={<CoachHealth />} />

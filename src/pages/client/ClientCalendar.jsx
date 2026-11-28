@@ -78,7 +78,7 @@ export default function ClientCalendar() {
 
       <ShowsTravel profile={profile} events={events} onChange={loadEvents} />
 
-      {schedule && (daysOpen
+      {schedule?.assignment && (daysOpen
         ? <TrainingDays programId={schedule.assignment.program_id} initialMap={schedule.assignment.day_map} onClose={() => setDaysOpen(false)}
             onSaved={m => setSchedule(sc => ({ ...sc, assignment: { ...sc.assignment, day_map: m } }))} />
         : <button className="btn-ghost" onClick={() => setDaysOpen(true)} style={{ alignSelf: 'flex-start', padding: '8px 14px', fontSize: 13 }}>

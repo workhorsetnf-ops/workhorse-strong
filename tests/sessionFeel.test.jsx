@@ -31,21 +31,24 @@ beforeEach(() => { store.rows = []; store.upserts = [] })
 
 test('labels', () => { expect(feelLabel(1)).toBe('Barely tried'); expect(feelLabel(6)).toBe('Solid'); expect(feelLabel(10)).toBe('Everything I had') })
 test('hidden until something is logged', async () => { const { el } = await mount({ logged: false }); expect(el.textContent).toBe('') })
-test('pick effort, add a note, save once; then shows the answer with Change', async () => {
+test('pick effort (1-5) and minutes, save once; rpe still filled for the review', async () => {
   const { el } = await mount({ logged: true })
-  expect(el.textContent).toContain('How did that feel?')
+  expect(el.textContent).toContain('Rate your effort')
   const save = () => [...el.querySelectorAll('button')].find(b => b.textContent === 'Save')
   expect(save().disabled).toBe(true)
-  await act(async () => [...el.querySelectorAll('[aria-label="Session effort"] button')][7].click())
-  expect(el.textContent).toContain('Very hard')
+  await act(async () => [...el.querySelectorAll('[aria-label="Session effort"] button')][3].click())
+  expect(el.textContent).toContain('Really had to dig in')
+  const mins = el.querySelector('input[inputmode="numeric"]')
+  await act(async () => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(mins, '20'); mins.dispatchEvent(new Event('input', { bubbles: true })) })
   await act(async () => save().click()); await tick()
-  expect(store.upserts).toHaveLength(1); expect(store.upserts[0]).toMatchObject({ client_id: 'me', day_id: 'd1', day_label: 'Upper A', rpe: 8 })
-  expect(el.textContent).toContain('Felt: 8/10 · Very hard'); expect(el.textContent).toContain('Change')
+  expect(store.upserts).toHaveLength(1)
+  expect(store.upserts[0]).toMatchObject({ client_id: 'me', day_id: 'd1', day_label: 'Upper A', effort: 4, minutes: 20, rpe: 8 })
+  expect(el.textContent).toContain('Effort: 4/5 · HARD'); expect(el.textContent).toContain('20 min'); expect(el.textContent).toContain('Change')
 })
-test('already answered today shows the answer, not the form', async () => {
+test('an older 1-10 answer shows on the 1-5 scale', async () => {
   const today = new Date(); const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   store.rows = [{ client_id: 'me', day_id: 'd1', session_date: ymd, rpe: 6, note: 'tired' }]
-  const { el } = await mount({ logged: true }); expect(el.textContent).toContain('6/10'); expect(el.textContent).toContain('tired')
+  const { el } = await mount({ logged: true }); expect(el.textContent).toContain('3/5 · CHALLENGING'); expect(el.textContent).toContain('tired')
 })
 test('the AI check-in sees how sessions felt', () => {
   const f = checkinFacts({ profile: { full_name: 'Elliot P' }, review: { training: { done: 3, planned: 4 }, nutrition: { targets: {} }, body: {}, wins: [], flags: [], feel: [{ session_date: '2026-11-04', day_label: 'Upper A', rpe: 9, note: 'shoulder tweak' }] }, checkin: null, weekStart: '2026-11-02' })
