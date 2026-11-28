@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Square, MessageCircle, ClipboardList, MoreVertical, Target, CalendarDays } from 'lucide-react'
+import { Square, MessageCircle, ClipboardList, MoreVertical, Target, CalendarDays, Dumbbell, Leaf, CalendarCheck, Users } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import { localDateStr, logDate } from '../../lib/weeks'
+import { localDateStr, logDate, mondayOf } from '../../lib/weeks'
 import { checkinDueDate, daysBetween, addDays } from '../../lib/dashboard'
 import { EFFORT, effortOf, loadByDate, dateRange } from '../../lib/clientRx'
 import { countedLogs } from '../../lib/foodlog'
+import { checkinCard } from '../../lib/coachRoster'
 import Avatar from '../Avatar'
 import TodayAgenda from './TodayAgenda'
 import ClientEventsCard from './ClientEventsCard'
@@ -49,6 +50,7 @@ export default function CoachHome() {
   const [statuses, setStatuses] = useState({})     // clientId -> { exercise, lifestyle, checkin }
   const [contacted, setContacted] = useState(new Set())
   const [filter, setFilter] = useState('all')
+  const [feedClient, setFeedClient] = useState('')
   const [feedTab, setFeedTab] = useState('exercises')
   const [feed, setFeed] = useState([])
   const [openItem, setOpenItem] = useState(null)
@@ -111,14 +113,14 @@ export default function CoachHome() {
   const [healthPoints, setHealthPoints] = useState({})
   const [flags, setFlags] = useState([])
 
-  async function load() {
+  async function load(tab = feedTab) {   // tab passed in: state hasn't updated yet when a feed tab is clicked
     setLoading(true)
     const [{ data: cl }, { data: assigns }, { data: workoutLogs }, { data: dailyLogs }, { data: checkins }, { data: msgs }, { data: mealLogs }, { data: ratingsData }, { data: flagsData }] = await Promise.all([
       supabase.from('profiles').select('*').eq('role', 'client').neq('status', 'exited').neq('plan', 'group').order('full_name'),
       supabase.from('program_assignments').select('*'),
       supabase.from('workout_logs').select('client_id, exercise_name, logged_at, weight, reps, rir, result_text, logged_date, session_track').order('logged_at', { ascending: false }).limit(600),
       supabase.from('daily_logs').select('client_id, log_date, weight, steps').order('log_date', { ascending: false }).limit(400),
-      supabase.from('checkins').select('client_id, submitted_at, notes, weight').gte('submitted_at', new Date(Date.now() - 60 * 864e5).toISOString()).order('submitted_at', { ascending: false }).limit(1000),
+      supabase.from('checkins').select('*').gte('submitted_at', new Date(Date.now() - 60 * 864e5).toISOString()).order('submitted_at', { ascending: false }).limit(1000),
       supabase.from('messages').select('sender_id, recipient_id, created_at'),
       supabase.from('meal_logs').select('client_id, protein_g, logged_on, meal').order('logged_on', { ascending: false }).limit(600),
       supabase.from('client_ratings').select('*'),
@@ -300,7 +302,7 @@ export default function CoachHome() {
 
     // effort + minutes for the feed cards (Update 190); empty before its migration
     const { data: fbRows, error: fbErr } = await supabase.from('session_feedback').select('*').gte('session_date', addDays(localDateStr(), -21)).limit(500)
-    buildFeed(feedTab, cl || [], workoutLogs || [], dailyLogs || [], checkins || [], fbErr ? [] : fbRows || [])
+    buildFeed(tab, cl || [], workoutLogs || [], dailyLogs || [], checkins || [], fbErr ? [] : fbRows || [])
     setLoading(false)
   }
 
@@ -336,7 +338,7 @@ export default function CoachHome() {
     } else {
       setFeed(checkins.slice(0, 15).map(c => ({
         id: c.client_id + c.submitted_at, client_id: c.client_id, name: nameOf(c.client_id), date: c.submitted_at,
-        title: 'Weekly check-in', body: c.notes || (c.weight ? `${c.weight} lbs` : 'Submitted'),
+        title: 'Weekly check-in', body: '', checkin: checkinCard(c),
       })))
     }
   }
@@ -372,71 +374,12 @@ export default function CoachHome() {
 
   return (
     <div>
-      <TodayAgenda />
-      <CheckinTexts />
-      <ProgramsEndingCard />
-      <ClientEventsCard />
-      <SetupStatusCard />
-
-      {pipeline && pipeline.total > 0 && (
-        <div className="card" style={{ marginBottom: 20, borderLeft: `3px solid ${pipeline.due.length ? 'var(--red)' : 'var(--orange-hot)'}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <strong style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 7 }}>
-              <Target size={16} strokeWidth={2} /> Pipeline
-            </strong>
-            <Link to="/coach/pipeline" className="muted" style={{ fontSize: 12, textDecoration: 'none' }}>View board →</Link>
-          </div>
-
-          {pipeline.due.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--red)', marginBottom: 6 }}>
-                {pipeline.due.length} follow-up{pipeline.due.length === 1 ? '' : 's'} due
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {pipeline.due.slice(0, 5).map(l => (
-                  <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                    <button onClick={() => completeLeadAction(l.id)} title="Mark done"
-                      style={{ background: 'none', display: 'flex', color: 'var(--muted)', flexShrink: 0 }}>
-                      <Square size={16} />
-                    </button>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <strong>{l.full_name || 'Unnamed lead'}</strong>
-                      <span className="muted"> — {l.next_action || 'follow up'}</span>
-                    </span>
-                    {l.next_action_date < pipeline.today && (
-                      <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--red)', flexShrink: 0 }}>OVERDUE</span>
-                    )}
-                  </div>
-                ))}
-                {pipeline.due.length > 5 && (
-                  <Link to="/coach/pipeline" className="muted" style={{ fontSize: 12, textDecoration: 'none' }}>
-                    +{pipeline.due.length - 5} more →
-                  </Link>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 10 }}>
-            {[
-              { label: 'Open', value: pipeline.open },
-              { label: 'Value', value: '$' + pipeline.value.toLocaleString() },
-              { label: 'Won this month', value: pipeline.won, tone: pipeline.won > 0 ? 'var(--green)' : null },
-              { label: 'Going cold', value: pipeline.cold, tone: pipeline.cold > 0 ? 'var(--orange-hot)' : null },
-            ].map(s => (
-              <div key={s.label}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: s.tone || 'var(--white)' }}>{s.value}</div>
-                <div className="muted" style={{ fontSize: 11 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="eyebrow">Home</div>
-      <div style={{ display: 'flex', gap: 20, alignItems: 'baseline', margin: '6px 0 16px' }}>
-        <h1 style={{ fontSize: 22, cursor: 'pointer', color: view === 'attention' ? 'var(--white)' : 'var(--muted)' }} onClick={() => setView('attention')}>Needs Attention</h1>
-        <h1 style={{ fontSize: 22, cursor: 'pointer', color: view === 'insights' ? 'var(--orange-hot)' : 'var(--muted)' }} onClick={() => setView('insights')}>Client Insights</h1>
+      <h1 style={{ fontSize: 30, marginBottom: 18 }}>Dashboard</h1>
+      <div className="rx-dash">
+        <div className="rx-panel rx-dash-main">
+      <div className="rx-tabs" role="tablist">
+        <button role="tab" aria-selected={view === 'attention'} onClick={() => setView('attention')}>Needs Attention</button>
+        <button role="tab" aria-selected={view === 'insights'} onClick={() => setView('insights')}>Client insights</button>
       </div>
 
       {view === 'insights' && (
@@ -467,11 +410,11 @@ export default function CoachHome() {
 
       {view === 'attention' && <>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        <button className={filter === 'all' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('all')}>All</button>
-        <button className={filter === 'exercise' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('exercise')}>Exercise due ({counts.exercise})</button>
-        <button className={filter === 'lifestyle' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('lifestyle')}>Lifestyle due ({counts.lifestyle})</button>
-        <button className={filter === 'checkin' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('checkin')}>Check-in due ({counts.checkin})</button>
-        <button className={filter === 'consult' ? 'btn' : 'btn-ghost'} style={{ padding: '7px 14px', fontSize: 13 }} onClick={() => setFilter('consult')}>Consult due ({counts.consult})</button>
+        <button className="rx-chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>All</button>
+        <button className="rx-chip" aria-pressed={filter === 'exercise'} onClick={() => setFilter('exercise')}><Dumbbell size={15} color="#42A5F5" /> Exercise due ({counts.exercise})</button>
+        <button className="rx-chip" aria-pressed={filter === 'lifestyle'} onClick={() => setFilter('lifestyle')}><Leaf size={15} color="#3DD9A8" /> Lifestyle due ({counts.lifestyle})</button>
+        <button className="rx-chip" aria-pressed={filter === 'checkin'} onClick={() => setFilter('checkin')}><CalendarCheck size={15} color="#9B7FE0" /> Check-in due ({counts.checkin})</button>
+        <button className="rx-chip" aria-pressed={filter === 'consult'} onClick={() => setFilter('consult')}><Users size={15} color="#B49EE8" /> Consult due ({counts.consult})</button>
       </div>
 
       {view === 'attention' && flags.length > 0 && (
@@ -493,13 +436,13 @@ export default function CoachHome() {
         </div>
       )}
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 24 }}>
-        {filtered.length === 0 && <div style={{ padding: 16 }} className="muted">Nobody flagged right now — roster's on track.</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
+        {filtered.length === 0 && <div className="card muted">Nobody flagged right now — roster's on track.</div>}
         {filtered.map((c, i) => {
           const s = statuses[c.id]
           const lowCompliance = s.compliancePct !== null && s.compliancePct < 50
           return (
-            <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 16px', borderBottom: i < filtered.length - 1 ? '1px solid var(--line)' : 'none' }}>
+            <div key={c.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '16px 18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ position: 'relative', flexShrink: 0 }}>
                   <Avatar url={c.avatar_url} name={c.full_name} size={34} />
@@ -610,10 +553,13 @@ export default function CoachHome() {
         )
       })()}
 
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <strong style={{ fontSize: 15 }}>Touchpoints ({clients.length ? Math.round(contacted.size / clients.length * 100) : 0}%)</strong>
-          <span className="muted" style={{ fontSize: 12.5 }}>{contacted.size} of {clients.length} clients contacted this week</span>
+      <div style={{ marginBottom: 30 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ fontSize: 22 }}>Touchpoints <span className="muted" style={{ fontWeight: 400 }}>({clients.length ? Math.round(contacted.size / clients.length * 100) : 0}%)</span></h2>
+            <p className="muted" style={{ fontSize: 14, marginTop: 4 }}><strong style={{ color: 'var(--white)' }}>{contacted.size} of {clients.length}</strong> clients contacted at least 1 time for the week of Monday <strong style={{ color: 'var(--white)' }}>{new Date(mondayOf(localDateStr()) + 'T00:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })}</strong></p>
+          </div>
+          <Link to="/coach/clients" className="btn-ghost" style={{ padding: '8px 14px', fontSize: 14, textDecoration: 'none' }}>See all clients</Link>
         </div>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', position: 'relative' }}>
           {clients.map(c => {
@@ -672,37 +618,114 @@ export default function CoachHome() {
 
       </>}
 
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-          <strong style={{ fontSize: 15 }}>Activity Feed</strong>
-          <div style={{ display: 'flex', gap: 6 }}>
+      <div>
+        <h2 style={{ fontSize: 22, marginBottom: 14 }}>Activity Feed</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+          <select aria-label="Filter feed by client" value={feedClient} onChange={e => setFeedClient(e.target.value)} style={{ width: 'auto', minWidth: 220 }}>
+            <option value="">All clients</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.full_name || c.email || 'Client'}</option>)}
+          </select>
+          <div className="rx-tabs" role="tablist" style={{ border: 'none', margin: 0 }}>
             {[['exercises','Exercises'],['lifestyle','Lifestyle'],['checkins','Weekly Check-Ins']].map(([k,l]) => (
-              <button key={k} className={feedTab === k ? 'btn' : 'btn-ghost'} style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => { setFeedTab(k); load() }}>{l}</button>
+              <button key={k} role="tab" aria-selected={feedTab === k} style={{ fontSize: 16 }} onClick={() => { setFeedTab(k); load(k) }}>{l}</button>
             ))}
           </div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {feed.map(item => (
-            <div key={item.id} style={{ borderBottom: '1px solid var(--line)', padding: '10px 0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => setOpenItem(openItem === item.id ? null : item.id)}>
-                <div>
-                  <strong style={{ fontSize: 13.5 }}>{item.name}</strong>
-                  <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>{item.title}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {feed.filter(item => !feedClient || item.client_id === feedClient).map(item => {
+            const cl = clients.find(c => c.id === item.client_id)
+            return (
+            <div key={item.id} className="card" style={{ padding: 0, overflow: 'hidden' }} data-feed={item.title}>
+              <div style={{ padding: '18px 20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <Avatar url={cl?.avatar_url} name={item.name} size={46} ring="2px solid var(--orange)" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Link to={`/coach/day/${item.client_id}`} style={{ fontSize: 18, fontWeight: 800, color: 'inherit', textDecoration: 'none' }}>{item.name}</Link>
+                    <div className="muted" style={{ fontSize: 14 }}>{item.title} · {new Date(item.date + (String(item.date).length === 10 ? 'T00:00:00' : '')).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                  </div>
                 </div>
-                <span className="muted" style={{ fontSize: 12 }}>{new Date(item.date).toLocaleDateString()}</span>
+                {item.body && <p className="muted" style={{ fontSize: 14, marginTop: 12 }}>{item.body}</p>}
+                {item.workout && <WorkoutStats w={item.workout} clientId={item.client_id} />}
+                {item.checkin && <CheckinBody c={item.checkin} />}
               </div>
-              <p style={{ fontSize: 13, marginTop: 4, color: 'var(--muted)' }}>{item.body}</p>
-              {item.workout && <WorkoutStats w={item.workout} clientId={item.client_id} />}
-              {openItem === item.id && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                  <input placeholder="Write a comment…" value={comment} onChange={e => setComment(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendComment(item)} />
-                  <button className="btn" style={{ padding: '8px 16px', fontSize: 12.5 }} onClick={() => sendComment(item)}>Send</button>
+              <div style={{ borderTop: '1px solid var(--line)', background: 'rgba(255,255,255,.02)', padding: '14px 20px' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, borderBottom: '2px solid var(--orange)', display: 'inline-block', paddingBottom: 4, marginBottom: 10 }}>Comments</div>
+                <textarea rows={2} placeholder="Write a comment…" value={openItem === item.id ? comment : ''} onFocus={() => { if (openItem !== item.id) { setOpenItem(item.id); setComment('') } }} onChange={e => { setOpenItem(item.id); setComment(e.target.value) }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                  <span className="muted" style={{ fontSize: 12 }}>Sends to {item.name?.split(' ')[0] || 'them'} as a message</span>
+                  <button className="btn" disabled={openItem !== item.id || !comment.trim()} style={{ padding: '8px 18px', fontSize: 14 }} onClick={() => sendComment(item)}>Send</button>
                 </div>
-              )}
+              </div>
             </div>
-          ))}
+            )
+          })}
           {feed.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Nothing logged yet.</p>}
         </div>
+      </div>
+        </div>
+        <aside className="rx-dash-side">
+      <TodayAgenda />
+      <CheckinTexts />
+      <ProgramsEndingCard />
+      <ClientEventsCard />
+      <SetupStatusCard />
+
+      {pipeline && pipeline.total > 0 && (
+        <div className="card" style={{ marginBottom: 20, borderLeft: `3px solid ${pipeline.due.length ? 'var(--red)' : 'var(--orange-hot)'}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <strong style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 7 }}>
+              <Target size={16} strokeWidth={2} /> Pipeline
+            </strong>
+            <Link to="/coach/pipeline" className="muted" style={{ fontSize: 12, textDecoration: 'none' }}>View board →</Link>
+          </div>
+
+          {pipeline.due.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--red)', marginBottom: 6 }}>
+                {pipeline.due.length} follow-up{pipeline.due.length === 1 ? '' : 's'} due
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {pipeline.due.slice(0, 5).map(l => (
+                  <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                    <button onClick={() => completeLeadAction(l.id)} title="Mark done"
+                      style={{ background: 'none', display: 'flex', color: 'var(--muted)', flexShrink: 0 }}>
+                      <Square size={16} />
+                    </button>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <strong>{l.full_name || 'Unnamed lead'}</strong>
+                      <span className="muted"> — {l.next_action || 'follow up'}</span>
+                    </span>
+                    {l.next_action_date < pipeline.today && (
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--red)', flexShrink: 0 }}>OVERDUE</span>
+                    )}
+                  </div>
+                ))}
+                {pipeline.due.length > 5 && (
+                  <Link to="/coach/pipeline" className="muted" style={{ fontSize: 12, textDecoration: 'none' }}>
+                    +{pipeline.due.length - 5} more →
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 10 }}>
+            {[
+              { label: 'Open', value: pipeline.open },
+              { label: 'Value', value: '$' + pipeline.value.toLocaleString() },
+              { label: 'Won this month', value: pipeline.won, tone: pipeline.won > 0 ? 'var(--green)' : null },
+              { label: 'Going cold', value: pipeline.cold, tone: pipeline.cold > 0 ? 'var(--orange-hot)' : null },
+            ].map(s => (
+              <div key={s.label}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: s.tone || 'var(--white)' }}>{s.value}</div>
+                <div className="muted" style={{ fontSize: 11 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+        </aside>
       </div>
     </div>
   )
@@ -739,6 +762,35 @@ export function WorkoutStats({ w, clientId }) {
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+// Weekly Check-Ins card body: bars like CoachRx's "Sleep Quality This Week 5/5", then Q&A
+function CheckinBody({ c }) {
+  return (
+    <div style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {c.facts.length > 0 && <div className="muted" style={{ fontSize: 13.5 }}>{c.facts.join(' · ')}</div>}
+      {c.bars.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px 18px' }}>
+          {c.bars.map(b => (
+            <div key={b.label} data-bar={b.label}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 5 }}>
+                <span>{b.label}</span><span className="muted">{b.value}{b.max === 100 ? '%' : '/' + b.max}</span>
+              </div>
+              <div style={{ height: 7, borderRadius: 4, background: 'var(--steel)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.min(100, (b.value / b.max) * 100)}%`, background: b.value / b.max >= 0.6 ? 'var(--green)' : b.value / b.max >= 0.4 ? '#E0B23E' : 'var(--red)', borderRadius: 4 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {c.qa.map((q, i) => (
+        <div key={i}>
+          <strong style={{ display: 'block', fontSize: 15 }}>{q.label}</strong>
+          <p className="muted" style={{ fontSize: 14, marginTop: 3, whiteSpace: 'pre-wrap' }}>{q.value}</p>
+        </div>
+      ))}
     </div>
   )
 }

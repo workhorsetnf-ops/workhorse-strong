@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, NavLink, Navigate, useLocation, Link } from 'react-router-dom'
+import { SECTIONS, menuFor, sectionFor, topTabs, latestThreads, ago } from '../../lib/coachNav'
+import { supabase } from '../../lib/supabase'
+import Avatar from '../Avatar'
+import CoachBusiness from './CoachBusiness'
 import { loadCoachBadges, markSectionSeen } from '../../lib/coachBadges'
 import CoachTemplates from './CoachTemplates'
 import CoachReview from './CoachReview'
@@ -8,7 +12,8 @@ import ReminderSettings from '../ReminderSettings'
 import {
   LayoutDashboard, Users, Bell, Video, Trophy, FileText, BookOpen, Map, Users2,
   ClipboardList, Library, ListChecks, CalendarCheck, MessageCircle, Quote, Target, Webcam,
-  FileCheck2, ClipboardSignature, Copy, BellRing, Gauge, UsersRound, MessageSquareText } from 'lucide-react'
+  FileCheck2, ClipboardSignature, Copy, BellRing, Gauge, UsersRound, MessageSquareText,
+  ChevronRight, ChevronDown, MessagesSquare, LogOut } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import CoachHome from './CoachHome'
 import CoachGroup from './CoachGroup'
@@ -39,6 +44,8 @@ import CoachContracts from './CoachContracts'
 import ContractPrint from '../ContractPrint'
 import CoachProblems from './CoachProblems'
 import { Bug, UserCog } from 'lucide-react'
+
+const ICONS = { LayoutDashboard, Users, Bell, Video, Trophy, FileText, BookOpen, Map, Users2, ClipboardList, Library, ListChecks, CalendarCheck, MessageCircle, Quote, Target, Webcam, FileCheck2, ClipboardSignature, Copy, Gauge, UsersRound, MessageSquareText, UserCog }
 import CoachTeam from './CoachTeam'
 import TextBlast from './TextBlast'
 
@@ -70,51 +77,48 @@ export default function CoachDashboard() {
     return () => { alive = false; clearTimeout(t); clearInterval(i); window.removeEventListener('ws-coach-badges', refresh); window.removeEventListener('ws-badges', refresh); document.removeEventListener('visibilitychange', vis) }
   }, [me, self, location.pathname])
 
-  // A lit tab: orange glow plus the count.
-  const Item = ({ to, end, icon: Icon, label, n }) => (
-    <NavLink to={to} end={end} className={({ isActive }) => [isActive ? 'active' : '', n > 0 ? 'has-new' : ''].join(' ').trim()}
-      title={n > 0 ? `${n} waiting` : undefined}>
-      <Icon size={17} strokeWidth={2} /><span>{label}</span>
-      {n > 0 && <b className="nav-count">{n > 99 ? '99+' : n}</b>}
-    </NavLink>
-  )
+  const path = location.pathname
+  const menu = menuFor(path, isHeadCoach)
+  const section = sectionFor(path)
 
   return (
-    <div className="coach-shell">
-      <aside className="coach-side">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '0 14px 20px' }}>
-          <img src="/icon-192.png" alt="" style={{ width: 38, height: 38, borderRadius: 7, objectFit: 'cover' }} />
-          <div className="wordmark" style={{ fontSize: 19 }}>Workhorse <span>Strong</span></div>
+    <div className="coach-shell coach-top">
+      <header className="coach-bar">
+        <NavLink to="/coach" className="coach-brand" aria-label="Workhorse Strong home">
+          <img src="/icon-192.png" alt="" />
+          <span className="wordmark">Workhorse <span>Strong</span></span>
+        </NavLink>
+        <nav className="coach-tabs" aria-label="Sections">
+          {topTabs(isHeadCoach, badges).map(t => (
+            <NavLink key={t.key} to={t.to} end={t.key === 'dashboard'} className={() => [section === t.key ? 'active' : '', t.waiting > 0 ? 'has-new' : ''].join(' ').trim()}>
+              {t.label}{t.waiting > 0 && <b className="tab-dot" aria-label={`${t.waiting} waiting`} />}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="coach-tools">
+          <BellMenu badges={badges} />
+          <ChatMenu me={me} self={self} n={badges.messages} />
+          <AvatarMenu profile={profile} signOut={signOut} />
         </div>
-        <NavLink to="/coach" end><LayoutDashboard size={17} strokeWidth={2} /><span>Home</span></NavLink>
-        <NavLink to="/coach/pipeline"><Target size={17} strokeWidth={2} /><span>Pipeline</span></NavLink>
-        <NavLink to="/coach/clients"><Users size={17} strokeWidth={2} /><span>Clients</span></NavLink>
-        <NavLink to="/coach/group"><UsersRound size={17} strokeWidth={2} /><span>Group</span></NavLink>
-        <NavLink to="/coach/alerts"><Bell size={17} strokeWidth={2} /><span>Alerts</span></NavLink>
-        <Item to="/coach/form-checks" icon={Video} label="Form Checks" n={badges.formChecks} />
-        <NavLink to="/coach/challenges"><Trophy size={17} strokeWidth={2} /><span>Challenges</span></NavLink>
-        <NavLink to="/coach/resources"><FileText size={17} strokeWidth={2} /><span>Resources</span></NavLink>
-        <NavLink to="/coach/hub"><BookOpen size={17} strokeWidth={2} /><span>Client Hub</span></NavLink>
-        <NavLink to="/coach/roadmap"><Map size={17} strokeWidth={2} /><span>Roadmap</span></NavLink>
-        <Item to="/coach/community" icon={Users2} label="Community" n={badges.community} />
-        <NavLink to="/coach/programs"><ClipboardList size={17} strokeWidth={2} /><span>Programs</span>{programsLocked && <ViewOnly />}</NavLink>
-        <NavLink to="/coach/library"><Library size={17} strokeWidth={2} /><span>Library</span>{programsLocked && <ViewOnly />}</NavLink>
-        <NavLink to="/coach/templates"><Copy size={17} strokeWidth={2} /><span>Templates & Tracks</span></NavLink>
-        <NavLink to="/coach/forms"><ListChecks size={17} strokeWidth={2} /><span>Forms</span></NavLink>
-        <NavLink to="/coach/intake-forms"><FileCheck2 size={17} strokeWidth={2} /><span>Intake Forms</span></NavLink>
-        <NavLink to="/coach/contracts"><ClipboardSignature size={17} strokeWidth={2} /><span>Contracts</span></NavLink>
-        <Item to="/coach/checkins" icon={CalendarCheck} label="Check-ins" n={badges.checkins} />
-        <NavLink to="/coach/scorecard"><Gauge size={17} strokeWidth={2} /><span>Scorecard</span></NavLink>
-        <NavLink to="/coach/calls"><Webcam size={17} strokeWidth={2} /><span>Calls</span></NavLink>
-        <Item to="/coach/messages" icon={MessageCircle} label="Messages" n={badges.messages} />
-        <NavLink to="/coach/texts"><MessageSquareText size={17} strokeWidth={2} /><span>Text Blast</span></NavLink>
-        <NavLink to="/coach/testimonials"><Quote size={17} strokeWidth={2} /><span>Testimonials</span></NavLink>
-        <NavLink to="/coach/notifications"><BellRing size={17} strokeWidth={2} /><span>Notifications</span></NavLink>
-        <NavLink to="/coach/problems"><Bug size={17} strokeWidth={2} /><span>Problems</span></NavLink>
-        {isHeadCoach && <NavLink to="/coach/team"><UserCog size={17} strokeWidth={2} /><span>Team</span></NavLink>}
-        <div style={{ flex: 1 }} />
-        <button className="btn-ghost" onClick={signOut}>Sign out</button>
-      </aside>
+      </header>
+      <div className={menu.length ? 'coach-body with-menu' : 'coach-body'}>
+        {menu.length > 0 && (
+          <aside className="coach-menu" aria-label="Section menu">
+            <div className="coach-menu-title">{SECTIONS.find(x => x.key === section)?.label === 'Programs' ? 'Index' : SECTIONS.find(x => x.key === section)?.label}</div>
+            {menu.map(i => {
+              const Icon = ICONS[i.icon] || ClipboardList
+              const n = i.badge ? badges[i.badge] || 0 : 0
+              return (
+                <NavLink key={i.to} to={i.to} end={i.end || i.to === '/coach/clients'} className={({ isActive }) => [isActive ? 'active' : '', n > 0 ? 'has-new' : ''].join(' ').trim()}>
+                  <Icon size={17} strokeWidth={2} /><span>{i.label}</span>
+                  {i.to === '/coach/programs' && programsLocked && <ViewOnly />}
+                  {i.to === '/coach/library' && programsLocked && <ViewOnly />}
+                  {n > 0 && <b className="nav-count">{n > 99 ? '99+' : n}</b>}
+                </NavLink>
+              )
+            })}
+          </aside>
+        )}
       <main className="coach-main">
         <Routes>
           <Route index element={<CoachHome />} />
@@ -152,8 +156,108 @@ export default function CoachDashboard() {
           <Route path="notifications" element={<ReminderSettings />} />
           <Route path="problems" element={<CoachProblems />} />
           <Route path="*" element={<Navigate to="/coach" replace />} />
+          <Route path="business" element={<CoachBusiness />} />
         </Routes>
       </main>
+      </div>
+    </div>
+  )
+}
+
+// 🔔 what's waiting, by type, with a way in
+function BellMenu({ badges }) {
+  const [open, setOpen] = useState(false)
+  const rows = [['checkins', 'Check-ins to review', '/coach/checkins'], ['formChecks', 'Form checks to watch', '/coach/form-checks'], ['messages', 'Unread messages', '/coach/messages'], ['community', 'New community posts', '/coach/community']]
+  const total = rows.reduce((n, [k]) => n + (badges[k] || 0), 0)
+  return (
+    <Dropdown open={open} setOpen={setOpen} label="Notifications" icon={<Bell size={20} />} count={total}>
+      <div className="dd-head"><Link to="/coach/alerts" onClick={() => setOpen(false)}>See all</Link></div>
+      {total === 0 && <p className="muted dd-empty">You're all caught up.</p>}
+      {rows.filter(([k]) => badges[k] > 0).map(([k, label, to]) => (
+        <Link key={k} to={to} className="dd-row" onClick={() => setOpen(false)}>
+          <span className="dd-pill">{badges[k]}</span><span style={{ flex: 1 }}>{label}</span><ChevronRight size={16} />
+        </Link>
+      ))}
+    </Dropdown>
+  )
+}
+
+// 💬 latest message per client, like CoachRx's chat drop-down
+function ChatMenu({ me, self, n }) {
+  const [open, setOpen] = useState(false)
+  const [threads, setThreads] = useState(null)
+  const [names, setNames] = useState({})
+  async function load() {
+    const { data } = await supabase.from('messages').select('id, sender_id, recipient_id, body, created_at, read_at')
+      .or(`sender_id.eq.${me},recipient_id.eq.${me}`).order('created_at', { ascending: false }).limit(300)
+    const t = latestThreads(data || [], me)
+    setThreads(t)
+    const ids = t.map(x => x.other)
+    if (ids.length) {
+      const { data: ps } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', ids)
+      setNames(Object.fromEntries((ps || []).map(p => [p.id, p])))
+    }
+  }
+  useEffect(() => { if (open && me) load() }, [open, me])
+  async function markAll() {
+    await Promise.all((threads || []).filter(t => t.unread).map(t => supabase.rpc('mark_messages_read', { other_id: t.other })))
+    window.dispatchEvent(new Event('ws-coach-badges'))
+    load()
+  }
+  return (
+    <Dropdown open={open} setOpen={setOpen} label="Messages" icon={<MessagesSquare size={20} />} count={n}>
+      <div className="dd-head">
+        {me === self && <button type="button" onClick={markAll}>Mark all as read</button>}
+        <span className="muted">|</span>
+        <Link to="/coach/messages" onClick={() => setOpen(false)}>See all</Link>
+      </div>
+      {threads === null && <p className="muted dd-empty">Loading…</p>}
+      {threads?.length === 0 && <p className="muted dd-empty">No messages yet.</p>}
+      {(threads || []).map(t => (
+        <Link key={t.other} to="/coach/messages" className="dd-thread" onClick={() => setOpen(false)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Avatar url={names[t.other]?.avatar_url} name={names[t.other]?.full_name} size={30} />
+            <strong style={{ flex: 1, fontSize: 14 }}>{names[t.other]?.full_name || 'Client'}</strong>
+            <span className="muted" style={{ fontSize: 12 }}>{ago(t.last.created_at)}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+            <span className="muted" style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {t.last.sender_id === me ? 'You: ' : ''}{t.last.body || '📎 Attachment'}
+            </span>
+            <span aria-label={t.unread ? 'unread' : 'read'} style={{ width: 10, height: 10, borderRadius: 5, flexShrink: 0, border: '1.5px solid ' + (t.unread ? 'var(--orange)' : 'var(--line)'), background: t.unread ? 'var(--orange)' : 'transparent' }} />
+          </div>
+        </Link>
+      ))}
+    </Dropdown>
+  )
+}
+
+function AvatarMenu({ profile, signOut }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Dropdown open={open} setOpen={setOpen} label="Account" icon={<span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Avatar url={profile?.avatar_url} name={profile?.full_name} size={30} /><ChevronDown size={16} /></span>} framed>
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)' }}><strong>{profile?.full_name || 'Coach'}</strong></div>
+      <Link to="/coach/notifications" className="dd-row" onClick={() => setOpen(false)}><BellRing size={16} /> Notification settings</Link>
+      <Link to="/coach/problems" className="dd-row" onClick={() => setOpen(false)}><Bug size={16} /> Problems log</Link>
+      <button type="button" className="dd-row" onClick={signOut}><LogOut size={16} /> Sign out</button>
+    </Dropdown>
+  )
+}
+
+function Dropdown({ open, setOpen, label, icon, count = 0, framed, children }) {
+  useEffect(() => {
+    if (!open) return
+    const close = e => { if (!e.target.closest?.('.dd-wrap')) setOpen(false) }
+    const esc = e => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', close); document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc) }
+  }, [open])
+  return (
+    <div className="dd-wrap">
+      <button type="button" className={framed ? 'dd-btn framed' : 'dd-btn'} aria-label={label} aria-expanded={open} onClick={() => setOpen(o => !o)}>
+        {icon}{count > 0 && <b className="dd-count">{count > 99 ? '99+' : count}</b>}
+      </button>
+      {open && <div className="dd-panel" role="menu" aria-label={label}>{children}</div>}
     </div>
   )
 }
