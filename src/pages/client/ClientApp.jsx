@@ -38,6 +38,7 @@ import ContractPrint from '../ContractPrint'
 import ReminderSettings from '../ReminderSettings'
 import ClientProfile from './ClientProfile'
 import ProfileHub from './ProfileHub'
+import { ClientEquipment, ClientGoals, ClientSchedule } from './ProfilePages'
 import ClientTrends from './ClientTrends'
 import { tabFor } from '../../lib/clientRx'
 import StepsSync from './StepsSync'
@@ -169,6 +170,9 @@ export default function ClientApp() {
           <Route path="reminders" element={<ReminderSettings />} />
           <Route path="profile" element={<ProfileHub badges={badges} />} />
           <Route path="profile/edit" element={<ClientProfile />} />
+          <Route path="equipment" element={<ClientEquipment />} />
+          <Route path="goals" element={<ClientGoals />} />
+          <Route path="schedule" element={<ClientSchedule />} />
           <Route path="trends" element={<ClientTrends />} />
           <Route path="steps-sync" element={<StepsSync />} />
           <Route path="records" element={<ClientRecords />} />

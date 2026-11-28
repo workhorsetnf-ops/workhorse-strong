@@ -414,3 +414,5 @@ table.data tr:hover td { background: rgba(255,255,255,0.04); }
   .rx-prog { border-radius: 12px !important; margin-bottom: 10px; border-top: 1px solid var(--line) !important; }
 }
 @media (max-width: 600px) { .rx-stats { grid-template-columns: 1fr 1fr; padding: 16px 8px; gap: 16px 8px; } .rx-stats .num { font-size: 26px; } .rx-stats .lbl { font-size: 12.5px; } }
+/* Profile tab header bar, CoachRx-style (Update 192) */
+.rx-profile-bar { display: flex; justify-content: space-between; align-items: center; margin: -8px -16px 8px; padding: 14px 16px 22px; border-bottom: 1px solid var(--line); }

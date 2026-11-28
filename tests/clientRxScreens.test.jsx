@@ -152,7 +152,7 @@ test('Profile hub: coach, compliance tiles and the moved screens', async () => {
   expect(el.textContent).toContain('Your Coach')
   expect(el.textContent).toContain('Anthony Henry')
   expect(el.querySelector('[data-stat="Workouts Completed"]').textContent).toBe('2')
-  for (const t of ['Weekly check-in', 'Form checks', 'Leaderboard', 'Progress pictures', 'Documents', 'Book a Call', 'Log out']) expect(el.textContent).toContain(t)
+  for (const t of ['Weekly check-in', 'Form checks', 'Leaderboard', 'Progress Pictures', 'Documents', 'Book a Call', 'Log Out']) expect(el.textContent).toContain(t)
   expect(el.querySelector('[aria-label="needs attention"]')).not.toBe(null)
   expect(el.querySelector('a[href="https://cal.example/izzy"]')).not.toBe(null)
 })
